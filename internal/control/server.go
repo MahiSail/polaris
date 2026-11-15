@@ -496,6 +496,8 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/db/backup", s.downloadDatabaseBackup)
 	mux.HandleFunc("POST /api/v1/db/restore", s.restoreDatabase)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/agent/upgrade", s.upgradeNodeAgent)
+	mux.HandleFunc("POST /api/v1/nodes/agent/upgrade-all", s.upgradeAllNodeAgents)
+	mux.HandleFunc("POST /api/v1/nodes/upgrade-all-agents", s.upgradeAllNodeAgents)
 	mux.HandleFunc("GET /api/v1/sing-box/releases", s.listSingBoxReleases)
 	mux.HandleFunc("GET /api/v1/sing-box/latest", s.latestSingBoxRelease)
 	mux.HandleFunc("POST /api/v1/sing-box/releases", s.createSingBoxRelease)

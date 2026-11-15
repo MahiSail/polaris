@@ -6,7 +6,11 @@ import { isDark, applyTheme } from '../theme'
 import PageHeader from '../components/PageHeader.vue'
 
 const canWrite = inject('canWrite')
-const section = computed(() => location.hash.match(/^#\/admin-(notify|data|themes|security|settings|update)/)?.[1] || 'settings')
+const section = computed(() => {
+  const match = location.pathname.match(/^\/admin-(notify|data|themes|security|settings|update)/)
+    || location.hash.match(/^#\/admin-(notify|data|themes|security|settings|update)/)
+  return match?.[1] || 'settings'
+})
 const loading = ref(false)
 const saving = ref(false)
 const message = ref('')

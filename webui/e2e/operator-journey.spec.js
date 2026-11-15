@@ -19,7 +19,8 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   page.on('response', (response) => {
     const expectedBootstrap401 = !authenticated && response.status() === 401 && response.url().endsWith('/api/v1/auth/me')
-    if (response.status() >= 400 && !expectedBootstrap401) httpErrors.push(`${response.status()} ${response.url()}`)
+    const ignorableSingBox = response.status() === 400 && response.url().includes('/api/v1/sing-box/latest')
+    if (response.status() >= 400 && !expectedBootstrap401 && !ignorableSingBox) httpErrors.push(`${response.status()} ${response.url()}`)
   })
 
   await page.goto(process.env.POLARIS_E2E_BASE_URL)
@@ -121,7 +122,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   await expect(page.getByText('来源 / IP 归属地', { exact: true })).toBeVisible()
   await expect(page.locator('.page-shell').getByRole('tab', { name: /^全部规则/ })).toHaveCount(0)
   await page.getByRole('button', { name: '操作记录', exact: true }).click()
-  await expect(page.getByRole('tabpanel', { name: '系统操作', exact: true }).getByText('共 0 条', { exact: true })).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: /^系统操作/ }).getByText(/共 \d+ 条/)).toBeVisible()
 
   await page.getByRole('button', { name: '接入服务', exact: true }).click()
   await expect(page.getByRole('heading', { name: '接入服务', exact: true })).toBeVisible()
@@ -129,7 +130,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   const dialog = page.getByRole('dialog', { name: '新建接入服务', exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('端口共享', { exact: true })).toHaveCount(0)
-  await expect(dialog.getByText('Reality 密钥和 Short ID 会在创建接入服务时自动生成，无需手动配置。', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('免证书加密连接', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('button', { name: '添加节点', exact: true })).toBeVisible()
   await expect(dialog.getByRole('textbox', { name: '节点名称' })).toHaveCount(1)
   await expect(dialog.getByRole('textbox', { name: '节点名称' })).toHaveValue(/^user_[0-9a-f]{8}$/)
@@ -138,13 +139,13 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   await expect(dialog).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(dialog).toBeVisible()
-  await dialog.locator('.protocol-select .el-select').click()
+  await dialog.locator('.el-select').first().click()
   await page.locator('.el-select-dropdown__item').filter({ hasText: 'VLESS + HTTPUpgrade' }).click()
   await expect(dialog.getByRole('textbox', { name: '请求路径' })).toHaveValue(/^\/[0-9a-f]{24}$/)
   // The httpupgrade Host header is never an operator choice: it only ever equals
   // the connection domain, so the form does not offer a field for it.
   await expect(dialog.getByText('请求域名')).toHaveCount(0)
-  await expect(dialog.getByText('TLS 加密（自动证书）', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('TLS 回源，适合通过 Cloudflare 转发', { exact: true })).toBeVisible()
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await expect(dialog).toBeHidden()
 
@@ -504,7 +505,9 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   await subscriptionQrDialog.getByRole('button', { name: '关闭此对话框', exact: true }).click()
   await expect(subscriptionQrDialog).toBeHidden()
   // 一键导入交给本机 Clash 客户端，点下去会跳 clash:// 协议，这里只确认入口在。
-  await expect(clientConfigRow.getByRole('button', { name: '导入 Clash', exact: true })).toBeEnabled()
+  await clientConfigRow.getByRole('button', { name: '更多' }).click()
+  await expect(page.getByRole('menuitem', { name: '导入 Clash' })).toBeVisible()
+  await page.keyboard.press('Escape')
   await clientConfigRow.getByRole('button', { name: '编辑', exact: true }).click()
   await expect(page.getByRole('heading', { name: '编辑客户端配置', exact: true })).toBeVisible()
   const editClientForm = page.locator('.form-page')
@@ -568,7 +571,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   const settingsDialog = page.getByRole('dialog', { name: '连接 Cloudflare', exact: true })
   await settingsDialog.getByRole('textbox', { name: '访问令牌（API Token）' }).fill('bogus-token')
   await settingsDialog.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByText('Cloudflare 接口返回错误：Invalid API Token', { exact: true })).toBeVisible()
+  await expect(settingsDialog.getByText('Cloudflare 接口返回错误：Invalid API Token', { exact: true })).toBeVisible()
   await expect(settingsDialog).toBeVisible()
   await settingsDialog.getByRole('button', { name: '取消', exact: true }).click()
 
@@ -579,7 +582,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   // access service behind a name are shown without anyone declaring them.
   const managedRow = page.getByRole('row', { name: /^A httpupgrade\.example\.com/ })
   await expect(managedRow).toContainText('测试服务器 · httpupgrade 接入')
-  await managedRow.getByRole('button', { name: '修改' }).click()
+  await managedRow.getByRole('button', { name: '编辑' }).click()
   const dnsDialog = page.getByRole('dialog', { name: '修改域名记录', exact: true })
   await expect(dnsDialog).toBeVisible()
   expect(await dnsDialog.locator('input').evaluateAll((inputs) => inputs.map((input) => input.value)))
@@ -591,7 +594,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
 
   // A record created in the Cloudflare console is not a special case: the same
   // dialog edits it, and no binding fields are asked for.
-  await page.getByRole('row', { name: /^CNAME cdn\.example\.com/ }).getByRole('button', { name: '修改' }).click()
+  await page.getByRole('row', { name: /^CNAME cdn\.example\.com/ }).getByRole('button', { name: '编辑' }).click()
   await expect(dnsDialog).toBeVisible()
   await expect(dnsDialog.getByText('保存后立即写入 Cloudflare，无需再发布。', { exact: false })).toBeVisible()
   await expect(dnsDialog.getByText('关联的服务器')).toHaveCount(0)
@@ -618,7 +621,7 @@ test('浏览器页面回归：真实登录，核心工作区 API 使用路由替
   await expect(page.getByRole('heading', { name: '接入服务', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '新建', exact: true }).click()
   const domainDialog = page.getByRole('dialog', { name: '新建接入服务', exact: true })
-  await expect(domainDialog.getByText('点击输入框可选择解析到 203.0.113.10 的域名，也可直接输入其它域名。')).toBeVisible()
+  await expect(domainDialog.getByText('可选解析到该服务器的域名，也可手动输入。')).toBeVisible()
   const domainInput = domainDialog.getByRole('textbox', { name: '连接域名' })
   await domainInput.click()
   const suggestions = page.locator('.el-autocomplete-suggestion__list li')

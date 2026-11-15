@@ -169,11 +169,13 @@ async function exportCSV() {
   }
 }
 
-function parseHashParams() {
-  const hash = location.hash || ''
-  const qIndex = hash.indexOf('?')
-  if (qIndex === -1) return
-  const queryStr = hash.slice(qIndex + 1)
+function parseQueryParams() {
+  let queryStr = location.search ? location.search.slice(1) : ''
+  if (!queryStr && location.hash) {
+    const qIndex = location.hash.indexOf('?')
+    if (qIndex !== -1) queryStr = location.hash.slice(qIndex + 1)
+  }
+  if (!queryStr) return false
   const params = new URLSearchParams(queryStr)
   let changed = false
   if (params.has('ip')) {
@@ -191,8 +193,8 @@ function parseHashParams() {
   return changed
 }
 
-function onHashChange() {
-  if (parseHashParams()) {
+function onUrlParamsChange() {
+  if (parseQueryParams()) {
     handleSearch()
   }
 }
@@ -252,13 +254,15 @@ function parseTargetInfo(row) {
 
 onMounted(() => {
   loadNodes?.().catch(() => {})
-  parseHashParams()
+  parseQueryParams()
   loadRecords()
-  window.addEventListener('hashchange', onHashChange)
+  window.addEventListener('popstate', onUrlParamsChange)
+  window.addEventListener('hashchange', onUrlParamsChange)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('popstate', onUrlParamsChange)
+  window.removeEventListener('hashchange', onUrlParamsChange)
 })
 </script>
 

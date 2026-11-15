@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { createSocket } from 'node:dgram'
 import { existsSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -72,14 +73,28 @@ function run(command, args, options = {}) {
 }
 
 async function freePort() {
-  return await new Promise((resolvePort, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      server.close(() => resolvePort(address.port))
-    })
-  })
+  for (let port = 21000 + Math.floor(Math.random() * 10000); port < 45000; port += 1) {
+    try {
+      await new Promise((resolve, reject) => {
+        const tcp = createServer()
+        tcp.once('error', reject)
+        tcp.listen(port, '127.0.0.1', () => {
+          tcp.close(() => resolve())
+        })
+      })
+      await new Promise((resolve, reject) => {
+        const udp = createSocket('udp4')
+        udp.once('error', reject)
+        udp.bind(port, '127.0.0.1', () => {
+          udp.close(() => resolve())
+        })
+      })
+      return port
+    } catch {
+      // try next
+    }
+  }
+  throw new Error('找不到可用的 TCP/UDP 端口')
 }
 
 async function waitForHealth(baseURL, master, logPath) {

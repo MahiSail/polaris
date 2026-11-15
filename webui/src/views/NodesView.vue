@@ -25,7 +25,7 @@ import { api, post, put } from '../api'
 import { buildDDNSIPOptions, formatDDNSBindLabel } from '../ddns'
 import { formatBytes, formatDateTime, formatDate, formatRelativeTime, formatUptime, includesText } from '../format'
 import { subscribeLive } from '../live'
-import { performAgentUpgrade } from '../agent_upgrade'
+import { performAgentUpgrade, performAllAgentsUpgrade } from '../agent_upgrade'
 import { isNewerVersion } from '../version'
 import { connectionSnapshots, subscribeConnections } from '../connections'
 import PageHeader from '../components/PageHeader.vue'
@@ -659,6 +659,37 @@ function agentUpdateAvailable(node) {
   return isNewerVersion(appState.systemUpdate?.latest_version, node.agent_version)
 }
 
+const upgradableAgentNodes = computed(() => {
+  return (appState.nodes || []).filter((node) => {
+    const osOk = !node.os || !/windows|darwin|macos|freebsd/i.test(node.os)
+    const archOk = Boolean(node.architecture)
+    return osOk && archOk && agentUpdateAvailable(node)
+  })
+})
+
+const upgradingAllAgents = ref(false)
+
+async function upgradeAllAgents() {
+  if (!upgradableAgentNodes.value.length) {
+    ElMessage.info('当前所有服务器的 Agent 均已是最新版本，无需升级')
+    return
+  }
+  upgradingAllAgents.value = true
+  try {
+    await performAllAgentsUpgrade(upgradableAgentNodes.value, {
+      refreshList: () => load(true),
+      refreshNodes: () => loadNodes(),
+      latestVersion: appState.systemUpdate?.latest_version,
+    })
+  } catch (error) {
+    if (error !== 'cancel' && error?.message !== 'cancel') {
+      ElMessage.error(error?.message || '一键升级失败')
+    }
+  } finally {
+    upgradingAllAgents.value = false
+  }
+}
+
 async function upgradeAgent(node) {
   await performAgentUpgrade(node, {
     refreshList: () => load(true),
@@ -972,6 +1003,15 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-shell">
     <PageHeader title="服务器">
+      <el-button
+        v-if="isAdmin"
+        :type="upgradableAgentNodes.length > 0 ? 'warning' : 'default'"
+        :icon="Top"
+        :loading="upgradingAllAgents"
+        @click="upgradeAllAgents"
+      >
+        一键升级所有 Agent{{ upgradableAgentNodes.length > 0 ? ` (${upgradableAgentNodes.length})` : '' }}
+      </el-button>
       <el-button v-if="canWrite" :icon="Connection" @click="probesDialog = true">探针</el-button>
       <el-button :icon="Refresh" :loading="refreshing" @click="load">刷新</el-button>
       <el-button v-if="canWrite" :icon="Share" @click="shareOpen = true">分享</el-button>

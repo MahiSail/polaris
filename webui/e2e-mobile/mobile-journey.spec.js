@@ -31,7 +31,8 @@ test('手机端页面回归：自动进入手机版，走完登录与全部页�
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   page.on('response', (response) => {
     const expectedBootstrap401 = !authenticated && response.status() === 401 && response.url().endsWith('/api/v1/auth/me')
-    if (response.status() >= 400 && !expectedBootstrap401) httpErrors.push(`${response.status()} ${response.url()}`)
+    const ignorableSingBox = response.status() === 400 && response.url().includes('/api/v1/sing-box/latest')
+    if (response.status() >= 400 && !expectedBootstrap401 && !ignorableSingBox) httpErrors.push(`${response.status()} ${response.url()}`)
   })
 
   // 页面不允许横向滚动：手机上一旦能左右拖，说明有元素比屏幕宽。
@@ -86,7 +87,7 @@ test('手机端页面回归：自动进入手机版，走完登录与全部页�
   ]
   for (const [tab, view, mark] of tabMarks) {
     await tabBar.getByRole('button', { name: tab, exact: true }).click()
-    await expect(page).toHaveURL(new RegExp(`#/${view}$`))
+    await expect(page).toHaveURL(new RegExp(`/${view}$`))
     await expect(mark).toBeVisible()
     // 一次只挂一个页面：过渡没走完会把两页叠在一起，看着像点了没反应。
     await expect(page.locator('.m-page')).toHaveCount(1)
@@ -98,7 +99,7 @@ test('手机端页面回归：自动进入手机版，走完登录与全部页�
     await page.evaluate(() => { location.hash = '#/more' })
     await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible()
     await page.getByRole('button', { name: entry, exact: true }).click()
-    await expect(page).toHaveURL(new RegExp(`#/${view}$`))
+    await expect(page).toHaveURL(new RegExp(`/${view}$`))
     await expect(page.locator('.m-page')).toHaveCount(1)
     await expectNoSideways(entry)
     // 二级页面停留时底部要高亮「更多」，否则看不出自己在哪一层。

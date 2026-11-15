@@ -426,3 +426,76 @@ func TestUpgradeNodeAgentHTTPDispatchesAndSupersedesStaleTask(t *testing.T) {
 		t.Fatalf("expected already-latest node upgrade to be rejected, got 202: %s", rec3.Body.String())
 	}
 }
+
+func TestUpgradeAllNodeAgentsHTTP(t *testing.T) {
+	ctx := t.Context()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := strings.Repeat("d", 64)
+	server.latestPolarisReleaseFn = func(_ context.Context, architecture string) (SingBoxRelease, error) {
+		return SingBoxRelease{
+			Version: "2026110901", Architecture: architecture,
+			URL: "https://releases.example.invalid/polaris_2026110901_linux_" + architecture + ".tar.gz",
+			SHA256: hash, Enabled: true, Archive: "tar.gz",
+		}, nil
+	}
+
+	admin, _, err := store.createOperator(ctx, "batch_admin", "AdminPass123456!", "admin", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.createSession(ctx, admin.ID, admin.Role, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert 2 outdated nodes and 1 up-to-date node
+	for _, item := range []struct {
+		id, name, version string
+	}{
+		{"node-outdated-1", "节点1", "v2026110101"},
+		{"node-outdated-2", "节点2", "v2026110201"},
+		{"node-current-3", "节点3", "v2026110901"},
+	} {
+		if _, err := store.db.ExecContext(ctx,
+			`INSERT INTO nodes (id, name, public_key, agent_version, os, architecture, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			item.id, item.name, []byte(item.id+"-key"), item.version, "linux", "amd64", nowUnix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	handler := server.BrowserHandler()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/nodes/agent/upgrade-all", bytes.NewReader([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", session.CSRFToken)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: session.Token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result struct {
+		Dispatched int    `json:"dispatched"`
+		Tasks      []Task `json:"tasks"`
+		Skipped    int    `json:"skipped"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Dispatched != 2 {
+		t.Fatalf("expected 2 dispatched tasks, got %d", result.Dispatched)
+	}
+	if result.Skipped != 1 {
+		t.Fatalf("expected 1 skipped node, got %d", result.Skipped)
+	}
+}

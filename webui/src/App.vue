@@ -45,6 +45,34 @@ const checking = ref(true)
 // sending the visitor to the login form.
 const shareError = ref('')
 const sharePage = ref('')
+// Views load on demand. Bundling them together meant every visitor
+// downloaded the charting and QR-code libraries before the first page could
+// render, which is most of what made the console slow to open.
+const views = {
+  dashboard: defineAsyncComponent(() => import('./views/DashboardView.vue')),
+  status: defineAsyncComponent(() => import('./views/StatusView.vue')),
+  nodes: defineAsyncComponent(() => import('./views/NodesView.vue')),
+  inbounds: defineAsyncComponent(() => import('./views/InboundsView.vue')),
+  'proxy-groups': defineAsyncComponent(() => import('./views/ProxyGroupsView.vue')),
+  'rule-providers': defineAsyncComponent(() => import('./views/RuleProvidersView.vue')),
+  subscriptions: defineAsyncComponent(() => import('./views/SubscriptionsView.vue')),
+  routes: defineAsyncComponent(() => import('./views/RoutesView.vue')),
+  outbounds: defineAsyncComponent(() => import('./views/OutboundsView.vue')),
+  connections: defineAsyncComponent(() => import('./views/ConnectionsView.vue')),
+  devices: defineAsyncComponent(() => import('./views/DevicesView.vue')),
+  'connection-history': defineAsyncComponent(() => import('./views/ConnectionHistoryView.vue')),
+  security: defineAsyncComponent(() => import('./views/SecurityView.vue')),
+  cloudflare: defineAsyncComponent(() => import('./views/CloudflareView.vue')),
+  audit: defineAsyncComponent(() => import('./views/AuditView.vue')),
+  settings: defineAsyncComponent(() => import('./views/SettingsView.vue')),
+  'admin-notify': AdminManagementView,
+  'admin-data': AdminManagementView,
+  'admin-themes': AdminManagementView,
+  'admin-security': AdminManagementView,
+  'admin-settings': AdminManagementView,
+  'admin-update': AdminManagementView,
+}
+
 const viewAliases = {
   'ingress-routes': 'inbounds',
   history: 'connection-history',
@@ -53,11 +81,21 @@ const viewAliases = {
   firewall: 'security',
 }
 const resolveInitialView = () => {
-  const raw = location.hash.replace(/^#\/?/, '') || 'nodes'
-  const [view] = raw.split('?')
-  return viewAliases[view] || view
+  if (typeof window === 'undefined') return 'nodes'
+  if (isShareMode) return 'nodes'
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const [view] = raw.split('?')
+    return viewAliases[view] || view || 'nodes'
+  }
+  const pathSeg = location.pathname.replace(/^\/+/, '').split('/')[0]
+  if (pathSeg && views[viewAliases[pathSeg] || pathSeg]) {
+    return viewAliases[pathSeg] || pathSeg
+  }
+  return 'nodes'
 }
 const currentView = ref(resolveInitialView())
+
 const appState = reactive({
   username: '',
   role: '',
@@ -122,34 +160,6 @@ const visibleGroups = computed(() => groups
     items: group.items.filter((item) => !item.adminOnly || appState.role === 'admin'),
   }))
   .filter((group) => group.items.length))
-
-// Views load on demand. Bundling them together meant every visitor
-// downloaded the charting and QR-code libraries before the first page could
-// render, which is most of what made the console slow to open.
-const views = {
-  dashboard: defineAsyncComponent(() => import('./views/DashboardView.vue')),
-  status: defineAsyncComponent(() => import('./views/StatusView.vue')),
-  nodes: defineAsyncComponent(() => import('./views/NodesView.vue')),
-  inbounds: defineAsyncComponent(() => import('./views/InboundsView.vue')),
-  'proxy-groups': defineAsyncComponent(() => import('./views/ProxyGroupsView.vue')),
-  'rule-providers': defineAsyncComponent(() => import('./views/RuleProvidersView.vue')),
-  subscriptions: defineAsyncComponent(() => import('./views/SubscriptionsView.vue')),
-  routes: defineAsyncComponent(() => import('./views/RoutesView.vue')),
-  outbounds: defineAsyncComponent(() => import('./views/OutboundsView.vue')),
-  connections: defineAsyncComponent(() => import('./views/ConnectionsView.vue')),
-  devices: defineAsyncComponent(() => import('./views/DevicesView.vue')),
-  'connection-history': defineAsyncComponent(() => import('./views/ConnectionHistoryView.vue')),
-  security: defineAsyncComponent(() => import('./views/SecurityView.vue')),
-  cloudflare: defineAsyncComponent(() => import('./views/CloudflareView.vue')),
-  audit: defineAsyncComponent(() => import('./views/AuditView.vue')),
-  settings: defineAsyncComponent(() => import('./views/SettingsView.vue')),
-  'admin-notify': AdminManagementView,
-  'admin-data': AdminManagementView,
-  'admin-themes': AdminManagementView,
-  'admin-security': AdminManagementView,
-  'admin-settings': AdminManagementView,
-  'admin-update': AdminManagementView,
-}
 
 const activeComponent = computed(() => views[currentView.value] || views.dashboard)
 const roleLabel = computed(() => ({ admin: '管理员', operator: '运维人员', viewer: '只读用户' })[appState.role] || appState.role)
@@ -261,7 +271,9 @@ async function initShareMode() {
     appState.must_change_password = false
     authenticated.value = true
     currentView.value = sharePage.value
-    location.hash = `#/${sharePage.value}`
+    if (location.hash) {
+      window.history.replaceState(null, '', location.pathname + location.search)
+    }
     await loadNodes()
     startLiveSubscription()
     shareError.value = ''
@@ -302,19 +314,35 @@ function navigate(view, query = '') {
     return
   }
   currentView.value = views[resolved] ? resolved : 'dashboard'
-  location.hash = `#/${currentView.value}${query ? `?${query}` : ''}`
+  if (!isShareMode) {
+    const target = `/${currentView.value}${query ? `?${query}` : ''}`
+    if (window.location.pathname + window.location.search !== target || window.location.hash) {
+      window.history.pushState({ view: currentView.value }, '', target)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }
+  }
 }
 
-function onHashChange() {
+function onUrlChange() {
   if (isShareMode) {
     const page = sharePage.value || 'nodes'
     currentView.value = page
-    if (location.hash !== `#/${page}`) location.hash = `#/${page}`
+    if (location.hash) {
+      window.history.replaceState(null, '', location.pathname + location.search)
+    }
     return
   }
-  const raw = location.hash.replace(/^#\/?/, '') || 'dashboard'
-  const [view] = raw.split('?')
-  const resolved = viewAliases[view] || view
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const [view, query] = raw.split('?')
+    const resolved = viewAliases[view] || view || 'dashboard'
+    currentView.value = views[resolved] ? resolved : 'dashboard'
+    const cleanUrl = `/${currentView.value}${query ? `?${query}` : ''}`
+    window.history.replaceState(null, '', cleanUrl)
+    return
+  }
+  const raw = location.pathname.replace(/^\/+/, '').split('/')[0] || 'dashboard'
+  const resolved = viewAliases[raw] || raw
   currentView.value = views[resolved] ? resolved : 'dashboard'
 }
 
@@ -332,14 +360,25 @@ provide('loadSystemUpdate', loadSystemUpdate)
 provide('navigate', navigate)
 
 onMounted(() => {
-  window.addEventListener('hashchange', onHashChange)
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const [hView, hQuery] = raw.split('?')
+    const resolved = viewAliases[hView] || hView || currentView.value
+    const cleanUrl = isShareMode
+      ? (location.pathname + location.search)
+      : `/${resolved}${hQuery ? `?${hQuery}` : ''}`
+    window.history.replaceState(null, '', cleanUrl)
+  }
+  window.addEventListener('popstate', onUrlChange)
+  window.addEventListener('hashchange', onUrlChange)
   window.addEventListener('sb:unauthorized', onUnauthorized)
   if (isShareMode) initShareMode()
   else checkSession()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('popstate', onUrlChange)
+  window.removeEventListener('hashchange', onUrlChange)
   window.removeEventListener('sb:unauthorized', onUnauthorized)
 })
 </script>
@@ -364,7 +403,7 @@ onBeforeUnmount(() => {
     @changed="setAuthenticated"
   />
 
-  <el-container class="app-layout">
+  <el-container v-else class="app-layout">
     <el-aside :width="sidebarCollapsed ? '64px' : '224px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
       <div class="sidebar-header">
         <el-popover placement="right-start" :width="308" trigger="click" :disabled="isShareMode" popper-class="update-popover">

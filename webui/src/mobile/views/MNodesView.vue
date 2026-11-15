@@ -1,13 +1,13 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Check, Delete, Plus, Refresh, Search, Top } from '@element-plus/icons-vue'
 import { api, post, put } from '../../api'
 import { buildDDNSIPOptions } from '../../ddns'
 import { writeClipboard } from '../../clipboard'
 import { formatBandwidth, formatBytes, formatDateTime, formatRelativeTime, includesText } from '../../format'
 import { subscribeLive } from '../../live'
-import { performAgentUpgrade } from '../../agent_upgrade'
+import { performAgentUpgrade, performAllAgentsUpgrade } from '../../agent_upgrade'
 import { connectionSnapshots, subscribeConnections } from '../../connections'
 import MPage from '../components/MPage.vue'
 import MSegmented from '../components/MSegmented.vue'
@@ -84,7 +84,16 @@ const metrics = ref({})
 const keyword = ref('')
 // 从看板的「在线服务器」「N 台离线」点进来时直接落在筛好的那一档上，
 // 否则用户得再点一次分段控件才看到自己刚才点的那批。
-const statusFilter = ref(new URLSearchParams(location.hash.split('?')[1] || '').get('status') || '')
+function getInitialStatusFilter() {
+  const queryStr = location.search ? location.search.slice(1) : (location.hash.split('?')[1] || '')
+  return new URLSearchParams(queryStr).get('status') || ''
+}
+const statusFilter = ref(getInitialStatusFilter())
+
+function onPopStateFilter() {
+  const s = getInitialStatusFilter()
+  if (s) statusFilter.value = s
+}
 const visible = ref(20)
 
 const tokenSheet = ref(false)
@@ -270,6 +279,37 @@ async function approve(registration) {
 
 function agentUpdateAvailable(node) {
   return isNewerVersion(appState.systemUpdate?.latest_version, node.agent_version)
+}
+
+const upgradableAgentNodes = computed(() => {
+  return (appState.nodes || []).filter((node) => {
+    const osOk = !node.os || !/windows|darwin|macos|freebsd/i.test(node.os)
+    const archOk = Boolean(node.architecture)
+    return osOk && archOk && agentUpdateAvailable(node)
+  })
+})
+
+const upgradingAllAgents = ref(false)
+
+async function upgradeAllAgents() {
+  if (!upgradableAgentNodes.value.length) {
+    ElMessage.info('当前所有服务器的 Agent 均已是最新版本，无需升级')
+    return
+  }
+  upgradingAllAgents.value = true
+  try {
+    await performAllAgentsUpgrade(upgradableAgentNodes.value, {
+      refreshList: () => load(true),
+      refreshNodes: () => loadNodes(),
+      latestVersion: appState.systemUpdate?.latest_version,
+    })
+  } catch (error) {
+    if (error !== 'cancel' && error?.message !== 'cancel') {
+      ElMessage.error(error?.message || '一键升级失败')
+    }
+  } finally {
+    upgradingAllAgents.value = false
+  }
 }
 
 // 同一架构的服务器共用一个官方版本号，按架构查一次即可；已经拿到的不再重复请求。
@@ -484,6 +524,7 @@ function openProvider(node) {
 let mobilePendingTimer = null
 
 onMounted(() => {
+  window.addEventListener('popstate', onPopStateFilter)
   load()
   stopConnections = subscribeConnections(() => {})
   stopLive = subscribeLive((event) => {
@@ -502,6 +543,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onPopStateFilter)
   if (mobilePendingTimer) clearInterval(mobilePendingTimer)
   stopLive?.()
   stopConnections?.()
@@ -511,6 +553,16 @@ onBeforeUnmount(() => {
 <template>
   <MPage title="服务器" :loading="loading">
     <template #actions>
+      <el-button
+        v-if="isAdmin && upgradableAgentNodes.length > 0"
+        size="small"
+        type="warning"
+        :icon="Top"
+        :loading="upgradingAllAgents"
+        @click="upgradeAllAgents"
+      >
+        升级 Agent ({{ upgradableAgentNodes.length }})
+      </el-button>
       <el-button
         circle
         size="small"

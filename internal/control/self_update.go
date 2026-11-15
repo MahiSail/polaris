@@ -210,6 +210,17 @@ func (s *Server) applySystemUpdate(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
+func isLinuxOS(osName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(osName))
+	if lower == "" || lower == "linux" {
+		return true
+	}
+	if strings.Contains(lower, "windows") || strings.Contains(lower, "darwin") || strings.Contains(lower, "macos") || strings.Contains(lower, "freebsd") {
+		return false
+	}
+	return true
+}
+
 // upgradeNodeAgent dispatches a signed agent.upgrade task, following the same
 // signed-manifest path as sing-box installations: the agent never accepts a
 // bare download URL from the control stream.
@@ -225,7 +236,7 @@ func (s *Server) upgradeNodeAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if node.OS != "" && node.OS != "linux" {
+	if !isLinuxOS(node.OS) {
 		writeError(w, errors.New("agent 自动更新仅支持 Linux 服务器"))
 		return
 	}
@@ -269,6 +280,80 @@ func (s *Server) upgradeNodeAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, task)
+}
+
+// upgradeAllNodeAgents dispatches signed agent.upgrade tasks for all nodes that have
+// an outdated agent version and compatible architecture.
+func (s *Server) upgradeAllNodeAgents(w http.ResponseWriter, r *http.Request) {
+	operator, err := s.admin(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	nodes, err := s.store.ListNodes(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	refresh := r.URL.Query().Get("refresh") == "1"
+	var tasks []Task
+	var skipped []string
+	var failures []string
+
+	for _, node := range nodes {
+		if !isLinuxOS(node.OS) {
+			skipped = append(skipped, node.ID)
+			continue
+		}
+		if node.Architecture == "" {
+			skipped = append(skipped, node.ID)
+			continue
+		}
+		release, err := s.latestPolarisReleaseCached(r.Context(), node.Architecture, refresh)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", node.Name, err))
+			continue
+		}
+		currentVersion := strings.TrimPrefix(strings.TrimSpace(node.AgentVersion), "v")
+		if currentVersion == release.Version || !IsNewerVersion(release.Version, node.AgentVersion) {
+			skipped = append(skipped, node.ID)
+			continue
+		}
+		if activeTask, active, prepErr := s.store.PrepareAgentUpgradeTask(r.Context(), node.ID, release.SHA256, 15*time.Second); prepErr != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", node.Name, prepErr))
+			continue
+		} else if active {
+			tasks = append(tasks, activeTask)
+			continue
+		}
+		payload, err := s.store.SignedSingBoxReleasePayload(release)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", node.Name, err))
+			continue
+		}
+		task, err := s.DispatchTask(r.Context(), Task{
+			NodeID: node.ID, OperatorID: operator.ID, Kind: "agent.upgrade",
+			IdempotencyKey: "agent-upgrade-" + release.Version + "-" + release.SHA256,
+			Payload:        payload, ExpectedHash: release.SHA256,
+		})
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", node.Name, err))
+			continue
+		}
+		_ = s.store.AppendAudit(r.Context(), operator.ID, "agent.upgrade_requested", "node", node.ID, "signed agent upgrade task requested for version "+release.Version)
+		tasks = append(tasks, task)
+	}
+
+	if len(tasks) > 0 {
+		_ = s.store.AppendAudit(r.Context(), operator.ID, "agent.upgrade_all_requested", "system", "", fmt.Sprintf("batch signed agent upgrade requested for %d nodes", len(tasks)))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"dispatched": len(tasks),
+		"tasks":      tasks,
+		"skipped":    len(skipped),
+		"failures":   failures,
+	})
 }
 
 const maximumRelayedArtifactBytes = 200 * 1024 * 1024

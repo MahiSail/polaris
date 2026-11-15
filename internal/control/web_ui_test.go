@@ -62,3 +62,14 @@ func TestDashboardUsesGuidedOperatorLanguage(t *testing.T) {
 		t.Fatalf("dashboard asset did not return gzip encoding, got %q", encoding)
 	}
 }
+
+func TestDashboardFallbackForSPARoutes(t *testing.T) {
+	for _, route := range []string{"/nodes", "/dashboard", "/subscriptions", "/connection-history", "/share/test-token"} {
+		request := httptest.NewRequest("GET", route, nil)
+		response := httptest.NewRecorder()
+		(&Server{}).dashboard(response, request)
+		if response.Code != 200 || !strings.Contains(response.Body.String(), `id="app"`) {
+			t.Fatalf("route %s did not serve SPA index.html, code=%d", route, response.Code)
+		}
+	}
+}

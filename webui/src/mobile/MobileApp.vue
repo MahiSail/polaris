@@ -26,18 +26,6 @@ const viewAliases = {
   'alert-settings': 'settings',
 }
 
-const viewOf = (hash) => hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard'
-const requestedView = viewOf(location.hash)
-const currentView = ref(viewAliases[requestedView] || requestedView)
-const appState = reactive({
-  username: '',
-  role: '',
-  totp_enabled: false,
-  must_change_password: false,
-  nodes: [],
-  systemUpdate: null,
-})
-
 const views = {
   dashboard: defineAsyncComponent(() => import('./views/MDashboardView.vue')),
   nodes: defineAsyncComponent(() => import('./views/MNodesView.vue')),
@@ -56,6 +44,29 @@ const views = {
   cloudflare: defineAsyncComponent(() => import('./views/MCloudflareView.vue')),
   settings: defineAsyncComponent(() => import('./views/MSettingsView.vue')),
 }
+
+const resolveInitialView = () => {
+  if (typeof window === 'undefined') return 'dashboard'
+  if (isShareMode) return 'dashboard'
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '').split('?')[0]
+    return viewAliases[raw] || raw || 'dashboard'
+  }
+  const pathSeg = location.pathname.replace(/^\/+/, '').split('/')[0]
+  if (pathSeg && views[viewAliases[pathSeg] || pathSeg]) {
+    return viewAliases[pathSeg] || pathSeg
+  }
+  return 'dashboard'
+}
+const currentView = ref(resolveInitialView())
+const appState = reactive({
+  username: '',
+  role: '',
+  totp_enabled: false,
+  must_change_password: false,
+  nodes: [],
+  systemUpdate: null,
+})
 
 const tabs = [
   { id: 'dashboard', label: '概览', icon: DataAnalysis },
@@ -85,28 +96,51 @@ function navigate(view, query = '') {
     if (historyStack.value.length > 20) historyStack.value.shift()
   }
   currentView.value = views[resolved] ? resolved : 'dashboard'
-  location.hash = `#/${view}${query ? `?${query}` : ''}`
+  if (!isShareMode) {
+    const target = `/${currentView.value}${query ? `?${query}` : ''}`
+    if (window.location.pathname + window.location.search !== target || window.location.hash) {
+      window.history.pushState({ view: currentView.value }, '', target)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }
+  }
 }
 
 function goBack(fallback = 'more') {
   if (historyStack.value.length > 0) {
     const prev = historyStack.value.pop()
     currentView.value = views[prev] ? prev : fallback
-    location.hash = `#/${currentView.value}`
+    if (!isShareMode) {
+      const target = `/${currentView.value}`
+      if (window.location.pathname + window.location.search !== target || window.location.hash) {
+        window.history.pushState({ view: currentView.value }, '', target)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    }
   } else {
     navigate(fallback)
   }
 }
 
-function onHashChange() {
+function onUrlChange() {
   if (isShareMode) {
     const page = sharePage.value || 'nodes'
     currentView.value = page
-    if (location.hash !== `#/${page}`) location.hash = `#/${page}`
+    if (location.hash) {
+      window.history.replaceState(null, '', location.pathname + location.search)
+    }
     return
   }
-  const view = viewOf(location.hash)
-  const resolved = viewAliases[view] || view
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const [view, query] = raw.split('?')
+    const resolved = viewAliases[view] || view || 'dashboard'
+    currentView.value = views[resolved] ? resolved : 'dashboard'
+    const cleanUrl = `/${currentView.value}${query ? `?${query}` : ''}`
+    window.history.replaceState(null, '', cleanUrl)
+    return
+  }
+  const raw = location.pathname.replace(/^\/+/, '').split('/')[0] || 'dashboard'
+  const resolved = viewAliases[raw] || raw
   currentView.value = views[resolved] ? resolved : 'dashboard'
 }
 
@@ -185,7 +219,9 @@ async function initShareMode() {
     appState.must_change_password = false
     authenticated.value = true
     currentView.value = sharePage.value
-    location.hash = `#/${sharePage.value}`
+    if (location.hash) {
+      window.history.replaceState(null, '', location.pathname + location.search)
+    }
     await loadNodes()
     startLiveSubscription()
     shareError.value = ''
@@ -230,14 +266,25 @@ provide('currentView', currentView)
 provide('logout', logout)
 
 onMounted(() => {
-  window.addEventListener('hashchange', onHashChange)
+  if (location.hash) {
+    const raw = location.hash.replace(/^#\/?/, '')
+    const [hView, hQuery] = raw.split('?')
+    const resolved = viewAliases[hView] || hView || currentView.value
+    const cleanUrl = isShareMode
+      ? (location.pathname + location.search)
+      : `/${resolved}${hQuery ? `?${hQuery}` : ''}`
+    window.history.replaceState(null, '', cleanUrl)
+  }
+  window.addEventListener('popstate', onUrlChange)
+  window.addEventListener('hashchange', onUrlChange)
   window.addEventListener('sb:unauthorized', clearSession)
   if (isShareMode) initShareMode()
   else checkSession()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('popstate', onUrlChange)
+  window.removeEventListener('hashchange', onUrlChange)
   window.removeEventListener('sb:unauthorized', clearSession)
 })
 </script>
