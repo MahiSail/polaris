@@ -1411,6 +1411,38 @@ func (s *Store) ClaimNodeExpiryReminder(ctx context.Context, nodeID, expiresOn s
 	return n == 1, err
 }
 
+func stringSlicesEqualIgnoringOrder(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	ma := make(map[string]int, len(a))
+	for _, v := range a {
+		ma[v]++
+	}
+	for _, v := range b {
+		ma[v]--
+		if ma[v] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func stringMapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Store) UpdateNodeWithDDNS(ctx context.Context, nodeID, name, address string, ddnsEnabled *bool, ddnsRecordID, ddnsDomain *string, multiOptions ...[]string) error {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 128 || strings.ContainsAny(name, "\r\n") {
@@ -1480,12 +1512,18 @@ func (s *Store) UpdateNodeWithDDNS(ctx context.Context, nodeID, name, address st
 		enabledInt = 1
 	}
 
-	existingRecIDsJSON, _ := json.Marshal(existing.DDNSRecordIDs)
 	recordIDsJSON, _ := json.Marshal(multiRecordIDs)
 	domainsJSON, _ := json.Marshal(multiDomains)
 
+	recordsChanged := false
+	if len(existing.DDNSRecordIDs) > 0 || len(multiRecordIDs) > 0 {
+		recordsChanged = !stringSlicesEqualIgnoringOrder(existing.DDNSRecordIDs, multiRecordIDs)
+	} else {
+		recordsChanged = existing.DDNSRecordID != recordIDVal
+	}
+
 	lastObservedIP := existing.LastObservedIP
-	if (enabledVal && !existing.DDNSEnabled) || (existing.DDNSRecordID != recordIDVal) || (string(existingRecIDsJSON) != string(recordIDsJSON)) {
+	if (enabledVal && !existing.DDNSEnabled) || recordsChanged {
 		lastObservedIP = ""
 	}
 
@@ -1553,10 +1591,17 @@ func (s *Store) UpdateNodeDDNSBinding(ctx context.Context, nodeID string, bindIP
 		nextRecordIPs = map[string]string{}
 	}
 
-	oldJSON, _ := json.Marshal(existing.DDNSRecordIPs)
+	oldMap := existing.DDNSRecordIPs
+	if oldMap == nil {
+		oldMap = map[string]string{}
+	}
+	newMap := nextRecordIPs
+	if newMap == nil {
+		newMap = map[string]string{}
+	}
 	newJSON, _ := json.Marshal(nextRecordIPs)
 	lastObservedIP := existing.LastObservedIP
-	if nextBindIP != existing.DDNSBindIP || string(oldJSON) != string(newJSON) {
+	if nextBindIP != existing.DDNSBindIP || !stringMapsEqual(oldMap, newMap) {
 		lastObservedIP = ""
 	}
 

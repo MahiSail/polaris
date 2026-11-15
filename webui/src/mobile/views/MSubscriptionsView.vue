@@ -13,6 +13,7 @@ import MValueList from '../components/MValueList.vue'
 import MActionSheet from '../components/MActionSheet.vue'
 import MQrSheet from '../components/MQrSheet.vue'
 import { defaultDNS, cloneDNS, parseDNSYAML, renderDNSYAML } from '../../dns_yaml'
+import { parseRawRules, formatRules } from '../../rules'
 
 const canWrite = inject('canWrite')
 const isAdmin = inject('isAdmin')
@@ -131,7 +132,15 @@ const providerValueOptions = computed(() => selectedProviders.value.map((provide
 
 const basicValid = computed(() => Boolean(form.name.trim() && form.proxy_group_ids.length))
 const rulesValid = computed(() => {
-  if (form.rule_mode === 'text') return Boolean(form.raw_rules.trim())
+  if (form.rule_mode === 'text') {
+    if (!form.raw_rules.trim()) return false
+    try {
+      const parsed = parseRawRules(form.raw_rules)
+      return Boolean(parsed.length && parsed.at(-1)?.type === 'MATCH')
+    } catch {
+      return false
+    }
+  }
   return Boolean(form.rules.length && form.rules.at(-1)?.type === 'MATCH' && form.rules.every((rule) => rule.action && (rule.type === 'MATCH' || (rule.value.trim() && (rule.type !== 'RULE-SET' || providerNames.value.has(rule.value))))))
 })
 // dns 打开后 Mihomo 缺了这两个列表就起不来。
@@ -227,18 +236,35 @@ function openForm(config = null) {
       initialRaw = renderDNSYAML(initialDNS)
     }
 
+    const ruleMode = config.rule_mode || 'table'
+    let initialRules = (config.rules || []).map((rule) => ({
+      type: rule.type,
+      value: rule.value || '',
+      action: rule.action,
+      no_resolve: Boolean(rule.no_resolve),
+    }))
+    let initialRawRules = config.raw_rules || ''
+
+    if (initialRawRules.trim()) {
+      try {
+        const parsed = parseRawRules(initialRawRules)
+        if (parsed.length > 0 && (initialRules.length === 0 || ruleMode === 'text')) {
+          initialRules = parsed
+        }
+      } catch {
+        // preserve initialRules
+      }
+    } else if (initialRules.length > 0) {
+      initialRawRules = formatRules(initialRules)
+    }
+
     Object.assign(form, {
       name: config.name,
       proxy_group_ids: [...(config.proxy_group_ids || [])],
       rule_provider_ids: [...(config.rule_provider_ids || [])],
-      rule_mode: config.rule_mode || 'table',
-      rules: (config.rules || []).map((rule) => ({
-        type: rule.type,
-        value: rule.value || '',
-        action: rule.action,
-        no_resolve: Boolean(rule.no_resolve),
-      })),
-      raw_rules: config.raw_rules || '',
+      rule_mode: ruleMode,
+      rules: initialRules,
+      raw_rules: initialRawRules,
       dns_mode: dnsMode,
       dns: initialDNS,
       raw_dns: initialRaw,
@@ -271,6 +297,27 @@ function setDNSMode(value) {
     }
     Object.assign(form.dns, result.dns)
     form.dns_mode = 'form'
+  }
+}
+
+function setRuleMode(value) {
+  if (form.rule_mode === value) return
+  if (value === 'text') {
+    form.raw_rules = formatRules(form.rules)
+    form.rule_mode = 'text'
+  } else if (value === 'table') {
+    if (!form.raw_rules.trim()) {
+      form.rules = []
+      form.rule_mode = 'table'
+      return
+    }
+    try {
+      const parsed = parseRawRules(form.raw_rules)
+      form.rules = parsed
+      form.rule_mode = 'table'
+    } catch (e) {
+      ElMessage.error(`分流规则格式错误，无法切换至表格：${e.message}`)
+    }
   }
 }
 
@@ -307,6 +354,22 @@ function removeRule(index) {
 }
 
 async function save() {
+  if (form.rule_mode === 'text') {
+    if (form.raw_rules.trim()) {
+      try {
+        const parsed = parseRawRules(form.raw_rules)
+        form.rules = parsed
+      } catch (err) {
+        ElMessage.error(`分流规则格式错误：${err.message}`)
+        return
+      }
+    } else {
+      form.rules = []
+    }
+  } else {
+    form.raw_rules = formatRules(form.rules)
+  }
+
   if (form.dns_mode === 'text') {
     if (form.raw_dns.trim()) {
       const res = parseDNSYAML(form.raw_dns, form.dns)
@@ -334,13 +397,13 @@ async function save() {
       proxy_group_ids: [...form.proxy_group_ids],
       rule_provider_ids: [...form.rule_provider_ids],
       rule_mode: form.rule_mode,
-      rules: form.rule_mode === 'table' ? form.rules.map((rule) => ({
+      rules: form.rules.map((rule) => ({
         type: rule.type,
         value: rule.type === 'MATCH' ? '' : rule.value.trim(),
         action: rule.action,
         no_resolve: Boolean(rule.no_resolve),
-      })) : [],
-      raw_rules: form.rule_mode === 'text' ? form.raw_rules : '',
+      })),
+      raw_rules: form.raw_rules,
       dns_mode: form.dns_mode,
       dns: form.dns,
       raw_dns: form.raw_dns,
@@ -656,7 +719,7 @@ onMounted(() => { load(); loadAccess() })
     </template>
 
     <template v-else-if="activeSection === 'rules'">
-      <MSegmented v-model="form.rule_mode" :options="[{ value: 'table', label: '表格配置' }, { value: 'text', label: '高级纯文本' }]" />
+      <MSegmented :model-value="form.rule_mode" :options="[{ value: 'table', label: '表格配置' }, { value: 'text', label: '高级纯文本' }]" @update:model-value="setRuleMode" />
       <template v-if="form.rule_mode === 'table'">
         <!-- 桌面版是一张五列表格，手机上一条规则一张卡：点卡片改内容，
              卡片右侧留出上下移动，顺序就是匹配顺序。 -->

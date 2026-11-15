@@ -1160,11 +1160,15 @@ func (s *Server) dispatchNodeBatchDNSUpdate(ctx context.Context, nodeIDs []strin
 		}
 		tasks = append(tasks, task)
 		if operatorID != "" {
+			nodeName := nodeID
+			if targetNode, getErr := s.store.GetNode(ctx, nodeID); getErr == nil && targetNode.Name != "" {
+				nodeName = targetNode.Name
+			}
 			var auditSummary string
 			if len(normalized) == 1 {
-				auditSummary = fmt.Sprintf("NAT 出口 IP 变更，已向前置服务器「%s」下发 DNS 刷新与链路自愈指令（目标 IP: %s，域名: %s）", nodeID, normalized[0].IP, strings.Join(normalized[0].Domains, ", "))
+				auditSummary = fmt.Sprintf("已向前置服务器「%s」下发动态 DNS 刷新与链路自愈指令（目标 IP: %s，域名: %s）", nodeName, normalized[0].IP, strings.Join(normalized[0].Domains, ", "))
 			} else {
-				auditSummary = fmt.Sprintf("已向前置服务器「%s」下发合并的 DNS 刷新与链路自愈指令（合并包含 %d 个目标节点）", nodeID, len(normalized))
+				auditSummary = fmt.Sprintf("已向前置服务器「%s」下发合并的 DNS 刷新与链路自愈指令（合并包含 %d 个目标节点）", nodeName, len(normalized))
 			}
 			_ = s.store.AppendAudit(ctx, operatorID, "node.dns_update_dispatched", "node", nodeID, auditSummary)
 		}

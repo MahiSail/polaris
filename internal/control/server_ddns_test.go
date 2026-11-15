@@ -1589,3 +1589,449 @@ func TestReconcileNodeChainedDDNS_ConsolidatesMultipleTargets(t *testing.T) {
 	}
 }
 
+func TestUpdateNodeWithDDNS_PreservesLastObservedIPWhenRecordsUnchanged(t *testing.T) {
+	ctx := t.Context()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	nodeID := newTestNode(t, store, "ddns-preserve-test", "d")
+	enabled := true
+	recIDs := []string{"rec-1", "rec-2"}
+	domains := []string{"d1.example.com", "d2.example.com"}
+
+	if err := store.UpdateNodeWithDDNS(ctx, nodeID, "DDNS Node", "", &enabled, nil, nil, recIDs, domains); err != nil {
+		t.Fatalf("initial UpdateNodeWithDDNS failed: %v", err)
+	}
+	if err := store.SetNodeLastObservedIP(ctx, nodeID, "129.221.174.61"); err != nil {
+		t.Fatalf("SetNodeLastObservedIP failed: %v", err)
+	}
+
+	// 1. Updating with same record IDs in different order must NOT wipe LastObservedIP
+	scrambledRecs := []string{"rec-2", "rec-1"}
+	if err := store.UpdateNodeWithDDNS(ctx, nodeID, "DDNS Node Renamed", "", &enabled, nil, nil, scrambledRecs, domains); err != nil {
+		t.Fatalf("UpdateNodeWithDDNS scrambled failed: %v", err)
+	}
+	n, err := store.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.LastObservedIP != "129.221.174.61" {
+		t.Fatalf("expected LastObservedIP to be preserved, got %q", n.LastObservedIP)
+	}
+
+	// 2. Updating bindings with empty/nil map must NOT wipe LastObservedIP
+	emptyBind := ""
+	if err := store.UpdateNodeDDNSBinding(ctx, nodeID, &emptyBind, map[string]string{}); err != nil {
+		t.Fatalf("UpdateNodeDDNSBinding failed: %v", err)
+	}
+	n, err = store.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.LastObservedIP != "129.221.174.61" {
+		t.Fatalf("expected LastObservedIP to be preserved after binding update, got %q", n.LastObservedIP)
+	}
+
+	// 3. Actually changing record IDs SHOULD wipe LastObservedIP
+	differentRecs := []string{"rec-1", "rec-3"}
+	if err := store.UpdateNodeWithDDNS(ctx, nodeID, "DDNS Node Renamed", "", &enabled, nil, nil, differentRecs, domains); err != nil {
+		t.Fatalf("UpdateNodeWithDDNS different failed: %v", err)
+	}
+	n, err = store.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.LastObservedIP != "" {
+		t.Fatalf("expected LastObservedIP to be cleared when records change, got %q", n.LastObservedIP)
+	}
+}
+
+func TestExecuteNodeDDNS_NoTasksDispatchedWhenIPUnchanged(t *testing.T) {
+	ctx := t.Context()
+	var mu sync.Mutex
+	recordContent := "129.221.174.61"
+
+	mockCF := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/zones/zone-master":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result":  map[string]any{"id": "zone-master", "name": "example.com", "status": "active"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/zones/zone-master/dns_records/rec-master":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result": map[string]any{
+					"id":      "rec-master",
+					"type":    "A",
+					"name":    "master.example.com",
+					"content": recordContent,
+					"ttl":     60,
+					"proxied": false,
+				},
+			})
+		case r.Method == http.MethodPatch && r.URL.Path == "/zones/zone-master/dns_records/rec-master":
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if c, ok := req["content"].(string); ok {
+				recordContent = c
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result": map[string]any{
+					"id":      "rec-master",
+					"type":    "A",
+					"name":    "master.example.com",
+					"content": recordContent,
+					"ttl":     60,
+					"proxied": false,
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockCF.Close()
+
+	oldAPI := cloudflareAPI
+	cloudflareAPI = mockCF.URL
+	defer func() { cloudflareAPI = oldAPI }()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.SetCloudflareSettings(ctx, "zone-master", "example.com", "mock-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entryNodeID := createTestNode(t, store, "Entry Node", "198.51.100.1")
+	masterNodeID := createTestNode(t, store, "Master Node", "129.221.174.61")
+
+	enabled := true
+	recID := "rec-master"
+	domain := "master.example.com"
+	if err := store.UpdateNodeWithDDNS(ctx, masterNodeID, "Master Node", "master.example.com", &enabled, &recID, &domain); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set entry node chaining to master node
+	masterListener, err := store.CreateListener(ctx, Listener{
+		NodeID:     masterNodeID,
+		Name:       "master-svc",
+		Domain:     "master.example.com",
+		Port:       10443,
+		ListenAddr: "0.0.0.0",
+		Enabled:    true,
+		Spec: ProtocolSpec{
+			Protocol:  "vless",
+			Network:   "tcp",
+			Transport: TransportOptions{Type: "httpupgrade", Path: "/"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	masterEP, err := store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: masterListener.ID,
+		Name:       "master-user",
+		Enabled:    true,
+	}, EndpointCredentials{UUID: "11111111-2222-3333-4444-555555555555"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entryListener, err := store.CreateListener(ctx, Listener{
+		NodeID:     entryNodeID,
+		Name:       "entry-chain-master",
+		Domain:     "entry.example.com",
+		Port:       8443,
+		ListenAddr: "0.0.0.0",
+		Enabled:    true,
+		Spec: ProtocolSpec{
+			Protocol:  "vless",
+			Network:   "tcp",
+			TLS:       TLSOptions{Enabled: true},
+			Transport: TransportOptions{Type: "httpupgrade", Path: "/in"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: entryListener.ID,
+		Name:       "entry-chain-ep",
+		Enabled:    true,
+		OutboundID: "chain:" + masterEP.ID,
+	}, EndpointCredentials{UUID: "66666666-7777-8888-9999-000000000000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Case 1: First DDNS run when Master's IP in CF already matches and lastObservedIP is empty.
+	// Since Cloudflare record did not change, ipChanged must be false and NO dns.update task dispatched.
+	resolved, err := server.executeNodeDDNSWithResult(ctx, masterNodeID, "129.221.174.61")
+	if err != nil {
+		t.Fatalf("executeNodeDDNSWithResult failed: %v", err)
+	}
+	if resolved != "129.221.174.61" {
+		t.Fatalf("expected resolved IP 129.221.174.61, got %q", resolved)
+	}
+
+	tasks, _, err := store.ListTasks(ctx, entryNodeID, "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 dns.update tasks dispatched when IP has not changed, got %d", len(tasks))
+	}
+
+	// Case 2: Subsequent DDNS run with same IP.
+	// LastObservedIP is now set to 129.221.174.61, still no tasks dispatched.
+	_, err = server.executeNodeDDNSWithResult(ctx, masterNodeID, "129.221.174.61")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks, _, err = store.ListTasks(ctx, entryNodeID, "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 dns.update tasks on subsequent run, got %d", len(tasks))
+	}
+
+	// Case 3: Real IP change to 129.221.174.99.
+	// MUST trigger Cloudflare patch and dispatch exactly 1 dns.update task to chained node.
+	resolved, err = server.executeNodeDDNSWithResult(ctx, masterNodeID, "129.221.174.99")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != "129.221.174.99" {
+		t.Fatalf("expected resolved IP 129.221.174.99, got %q", resolved)
+	}
+
+	tasks, _, err = store.ListTasks(ctx, entryNodeID, "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected exactly 1 dns.update task dispatched on true IP change, got %d", len(tasks))
+	}
+	if tasks[0].Kind != "dns.update" {
+		t.Fatalf("expected dns.update task, got %s", tasks[0].Kind)
+	}
+}
+
+func TestUpdateNodeAPI_DoesNotTriggerSpuriousDNSTasksOnMaster(t *testing.T) {
+	ctx := t.Context()
+	var mu sync.Mutex
+	recordContent := "129.221.174.61"
+
+	mockCF := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/zones/zone-master-api":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result":  map[string]any{"id": "zone-master-api", "name": "example.com", "status": "active"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/zones/zone-master-api/dns_records/rec-master-api":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result": map[string]any{
+					"id":      "rec-master-api",
+					"type":    "A",
+					"name":    "master.example.com",
+					"content": recordContent,
+					"ttl":     60,
+					"proxied": false,
+				},
+			})
+		case r.Method == http.MethodPatch && r.URL.Path == "/zones/zone-master-api/dns_records/rec-master-api":
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if c, ok := req["content"].(string); ok {
+				recordContent = c
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"result": map[string]any{
+					"id":      "rec-master-api",
+					"type":    "A",
+					"name":    "master.example.com",
+					"content": recordContent,
+					"ttl":     60,
+					"proxied": false,
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockCF.Close()
+
+	oldAPI := cloudflareAPI
+	cloudflareAPI = mockCF.URL
+	defer func() { cloudflareAPI = oldAPI }()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.SetCloudflareSettings(ctx, "zone-master-api", "example.com", "mock-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	admin, _, err := store.createOperator(ctx, "admin_api", "AdminPass123456!", "admin", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.createSession(ctx, admin.ID, admin.Role, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entryNodeID := createTestNode(t, store, "Entry Node", "198.51.100.1")
+	masterNodeID := createTestNode(t, store, "Master Node", "129.221.174.61")
+
+	enabled := true
+	recID := "rec-master-api"
+	domain := "master.example.com"
+	if err := store.UpdateNodeWithDDNS(ctx, masterNodeID, "Master Node", "master.example.com", &enabled, &recID, &domain); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetNodeLastObservedIP(ctx, masterNodeID, "129.221.174.61"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Setup chaining: entry node chains to master node
+	masterListener, err := store.CreateListener(ctx, Listener{
+		NodeID:     masterNodeID,
+		Name:       "master-svc",
+		Domain:     "master.example.com",
+		Port:       10443,
+		ListenAddr: "0.0.0.0",
+		Enabled:    true,
+		Spec: ProtocolSpec{
+			Protocol:  "vless",
+			Network:   "tcp",
+			Transport: TransportOptions{Type: "httpupgrade", Path: "/"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	masterEP, err := store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: masterListener.ID,
+		Name:       "master-user",
+		Enabled:    true,
+	}, EndpointCredentials{UUID: "11111111-2222-3333-4444-555555555555"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryListener, err := store.CreateListener(ctx, Listener{
+		NodeID:     entryNodeID,
+		Name:       "entry-chain-master",
+		Domain:     "entry.example.com",
+		Port:       8443,
+		ListenAddr: "0.0.0.0",
+		Enabled:    true,
+		Spec: ProtocolSpec{
+			Protocol:  "vless",
+			Network:   "tcp",
+			TLS:       TLSOptions{Enabled: true},
+			Transport: TransportOptions{Type: "httpupgrade", Path: "/in"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: entryListener.ID,
+		Name:       "entry-chain-ep",
+		Enabled:    true,
+		OutboundID: "chain:" + masterEP.ID,
+	}, EndpointCredentials{UUID: "66666666-7777-8888-9999-000000000000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler := server.BrowserHandler()
+	doRequest := func(method, path string, body any) *httptest.ResponseRecorder {
+		var reqBody []byte
+		if body != nil {
+			reqBody, _ = json.Marshal(body)
+		}
+		req := httptest.NewRequest(method, path, bytes.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-CSRF-Token", session.CSRFToken)
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: session.Token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Simulate WebUI PUT /api/v1/nodes/{id} saving Master node
+	bindIP := ""
+	updatePayload := map[string]any{
+		"name":            "Master Node Renamed",
+		"client_address":  "129.221.174.61",
+		"ddns_enabled":    true,
+		"ddns_record_ids": []string{"rec-master-api"},
+		"ddns_domains":    []string{"master.example.com"},
+		"ddns_bind_ip":    bindIP,
+		"ddns_record_ips": map[string]string{},
+	}
+	rec := doRequest(http.MethodPut, "/api/v1/nodes/"+masterNodeID, updatePayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from updateNode, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 1. Verify LastObservedIP was NOT wiped by PUT /api/v1/nodes/{id}
+	updatedNode, err := store.GetNode(ctx, masterNodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedNode.LastObservedIP != "129.221.174.61" {
+		t.Fatalf("expected LastObservedIP to remain 129.221.174.61, got %q", updatedNode.LastObservedIP)
+	}
+
+	// 2. Wait briefly for any background triggerNodeDDNS goroutine to settle
+	time.Sleep(200 * time.Millisecond)
+
+	// 3. Verify ZERO tasks were dispatched to entry node!
+	tasks, _, err := store.ListTasks(ctx, entryNodeID, "", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected 0 dns.update tasks dispatched to chained nodes when Master is updated, got %d", len(tasks))
+	}
+}
+
+
+

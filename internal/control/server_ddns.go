@@ -414,7 +414,7 @@ func (s *Server) executeNodeDDNSWithResult(ctx context.Context, nodeID, currentI
 		return "", errors.New("无效的公网 IP 地址")
 	}
 
-	ipChanged := len(updatedDomains) > 0 || node.LastObservedIP != primaryIP
+	ipChanged := len(updatedDomains) > 0 || (node.LastObservedIP != "" && node.LastObservedIP != primaryIP)
 
 	_ = s.store.SetNodeLastObservedIP(ctx, node.ID, primaryIP)
 	if node.DDNSDomain != "" && (node.ClientAddress == "" || node.ClientAddress == oldIP || net.ParseIP(node.ClientAddress) != nil) {
@@ -424,19 +424,19 @@ func (s *Server) executeNodeDDNSWithResult(ctx context.Context, nodeID, currentI
 	if ipChanged {
 		chainedNodeIDs, err := s.store.NodeChainedNodeIDs(ctx, node.ID)
 		if err == nil && len(chainedNodeIDs) > 0 {
-			var domains []string
-			if len(node.DDNSDomains) > 0 {
-				domains = append(domains, node.DDNSDomains...)
-			} else if node.DDNSDomain != "" {
-				domains = append(domains, node.DDNSDomain)
+			for _, chainedID := range chainedNodeIDs {
+				s.reconcileNodeChainedDDNS(ctx, chainedID)
 			}
-			listenerDomains, _ := s.store.NodeConnectionDomains(ctx, node.ID)
-			domains = append(domains, listenerDomains...)
-			operatorID := s.store.SystemOperatorID(ctx)
-			if _, dispatchErr := s.dispatchNodeDNSUpdate(ctx, chainedNodeIDs, domains, primaryIP, operatorID); dispatchErr != nil {
-				log.Printf("ddns: dispatch dns.update for node %s (%v) failed: %v", node.ID, chainedNodeIDs, dispatchErr)
-			} else if s.alertEngine != nil {
-				s.alertEngine.NotifyChainedDNSHealing(node.Name, len(chainedNodeIDs), domains, primaryIP)
+			if s.alertEngine != nil {
+				var domains []string
+				if len(node.DDNSDomains) > 0 {
+					domains = append(domains, node.DDNSDomains...)
+				} else if node.DDNSDomain != "" {
+					domains = append(domains, node.DDNSDomain)
+				}
+				listenerDomains, _ := s.store.NodeConnectionDomains(ctx, node.ID)
+				domains = append(domains, listenerDomains...)
+				s.alertEngine.NotifyChainedDNSHealing(node.Name, len(chainedNodeIDs), deduplicateStrings(domains), primaryIP)
 			}
 		}
 	}
@@ -534,7 +534,11 @@ func (s *Server) reconcileNodeDDNS(ctx context.Context, nodeID string) {
 	s.ddnsReconcileMu.Unlock()
 
 	go func() {
-		resolvedPrimary, err := s.executeNodeDDNSWithResult(context.Background(), nodeID, activeAddr)
+		execIP := activeAddr
+		if execIP == "" {
+			execIP = primaryIP
+		}
+		resolvedPrimary, err := s.executeNodeDDNSWithResult(context.Background(), nodeID, execIP)
 		finishTime := time.Now()
 
 		s.ddnsReconcileMu.Lock()
@@ -588,6 +592,20 @@ func (s *Server) syncNodeDDNS(w http.ResponseWriter, r *http.Request) {
 	currentIP := s.nodeActiveAddress(node.ID)
 	if currentIP == "" {
 		currentIP = node.LastObservedIP
+	}
+	if currentIP == "" && s.nodeMasterLocal(node) {
+		detected, err := s.fetchMasterPublicIP(r.Context())
+		if err == nil && detected != "" {
+			currentIP = detected
+		}
+	}
+	if currentIP == "" {
+		for _, rawIP := range node.IPAddresses {
+			if p := net.ParseIP(strings.TrimSpace(rawIP)); isPublicRoutableIP(p, true) {
+				currentIP = p.String()
+				break
+			}
+		}
 	}
 	resolvedIP, err := s.executeNodeDDNSWithResult(r.Context(), node.ID, currentIP, "manual")
 	if err != nil {

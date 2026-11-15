@@ -103,6 +103,37 @@ func parseMihomoClientRawRules(raw string, actions, providers map[string]string)
 	return rules, nil
 }
 
+func parseRawRulesUnchecked(raw string) []MihomoRule {
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	rules := make([]MihomoRule, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		parts, err := splitMihomoRuleFields(line)
+		if err != nil {
+			continue
+		}
+		var rule MihomoRule
+		if len(parts) == 2 && strings.EqualFold(parts[0], "MATCH") {
+			rule = MihomoRule{Type: "MATCH", Action: parts[1]}
+		} else if len(parts) >= 3 {
+			rule = MihomoRule{Type: strings.ToUpper(parts[0]), Value: parts[1], Action: parts[2]}
+			for _, option := range parts[3:] {
+				if strings.EqualFold(option, "no-resolve") {
+					rule.NoResolve = true
+				}
+			}
+		} else {
+			continue
+		}
+		rules = append(rules, rule)
+	}
+	return rules
+}
+
 // validateMihomoRuleProviderFields checks everything about a provider that can
 // be judged on its own. The download proxy is only checked for shape here:
 // whether the name resolves depends on which client configuration is using it,
@@ -372,6 +403,11 @@ func (s *Store) normalizeMihomoClientConfigV3(ctx context.Context, config *Mihom
 	}
 	switch config.RuleMode {
 	case "table":
+		if len(config.Rules) == 0 && strings.TrimSpace(config.RawRules) != "" {
+			if parsed, err := parseMihomoClientRawRules(config.RawRules, actions, providers); err == nil && len(parsed) > 0 {
+				config.Rules = parsed
+			}
+		}
 		normalized := make([]MihomoRule, 0, len(config.Rules))
 		for _, rule := range config.Rules {
 			rule, err = normalizeMihomoClientRule(rule, actions, providers)
@@ -383,6 +419,9 @@ func (s *Store) normalizeMihomoClientConfigV3(ctx context.Context, config *Mihom
 		config.Rules = normalized
 		config.RawRules = formatMihomoRules(normalized)
 	case "text":
+		if strings.TrimSpace(config.RawRules) == "" && len(config.Rules) > 0 {
+			config.RawRules = formatMihomoRules(config.Rules)
+		}
 		config.RawRules = strings.TrimSpace(strings.ReplaceAll(config.RawRules, "\r\n", "\n"))
 		config.Rules, err = parseMihomoClientRawRules(config.RawRules, actions, providers)
 		if err != nil {
@@ -457,6 +496,11 @@ func scanMihomoClientConfig(scanner interface{ Scan(...any) error }, masterKey [
 	config.RuleProviderIDs, config.Rules, config.RawRules = rules.RuleProviderIDs, rules.Rules, rules.RawRules
 	if config.RuleProviderIDs == nil {
 		config.RuleProviderIDs = []string{}
+	}
+	if len(config.Rules) == 0 && strings.TrimSpace(config.RawRules) != "" {
+		config.Rules = parseRawRulesUnchecked(config.RawRules)
+	} else if strings.TrimSpace(config.RawRules) == "" && len(config.Rules) > 0 {
+		config.RawRules = formatMihomoRules(config.Rules)
 	}
 	config.CreatedAt, config.UpdatedAt = unixTimeString(created), unixTimeString(updated)
 	token, err := security.Decrypt(masterKey, encryptedToken)
