@@ -120,14 +120,28 @@ func normalizeMihomoClientDNS(config *MihomoClientConfig) error {
 	if config.DNSMode == "" || config.DNSMode == "structured" {
 		config.DNSMode = "form"
 	}
-	// Only the active editor is validated, and both are kept: switching modes
-	// back and forth must not throw away what was entered on the other side.
 	config.RawDNS = strings.TrimSpace(strings.ReplaceAll(config.RawDNS, "\r\n", "\n"))
 	switch config.DNSMode {
 	case "form":
-		return normalizeMihomoClientDNSForm(config)
+		if err := normalizeMihomoClientDNSForm(config); err != nil {
+			return err
+		}
+		raw, err := renderMihomoDNSYAML(config.DNS, config.RawDNS)
+		if err != nil {
+			return fmt.Errorf("render DNS YAML: %w", err)
+		}
+		config.RawDNS = raw
+		return nil
 	case "text":
-		return validateMihomoClientRawDNS(config.RawDNS)
+		if err := validateMihomoClientRawDNS(config.RawDNS); err != nil {
+			return err
+		}
+		parsed, err := parseMihomoClientRawDNS(config.RawDNS)
+		if err != nil {
+			return fmt.Errorf("parse DNS YAML: %w", err)
+		}
+		config.DNS = parsed
+		return nil
 	default:
 		return errors.New("DNS mode must be form or text")
 	}
@@ -224,6 +238,243 @@ func unwrapMihomoRawDNSNode(node *yaml.Node) *yaml.Node {
 	return target
 }
 
+func renderMihomoDNSYAML(dns MihomoClientDNS, existingRaw string) (string, error) {
+	if !dns.Enable {
+		return "", nil
+	}
+	section := mihomoYAMLDNS{
+		Enable:                       true,
+		IPv6:                         dns.IPv6,
+		EnhancedMode:                 dns.EnhancedMode,
+		FakeIPRange:                  dns.FakeIPRange,
+		FakeIPFilterMode:             dns.FakeIPFilterMode,
+		FakeIPFilter:                 dns.FakeIPFilter,
+		RespectRules:                 dns.RespectRules,
+		DefaultNameserver:            dns.DefaultNameserver,
+		Nameserver:                   dns.Nameserver,
+		ProxyServerNameserver:        dns.ProxyServerNameserver,
+		DirectNameserver:             dns.DirectNameserver,
+		DirectNameserverFollowPolicy: dns.DirectNameserverFollowPolicy,
+	}
+
+	trimmed := strings.TrimSpace(existingRaw)
+	if trimmed == "" {
+		out, err := yaml.Marshal(section)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(trimmed), &doc); err != nil {
+		out, err := yaml.Marshal(section)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	target := unwrapMihomoRawDNSNode(&doc)
+	if target == nil || target.Kind != yaml.MappingNode {
+		out, err := yaml.Marshal(section)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	setField := func(key string, val any) {
+		var valNode yaml.Node
+		if err := valNode.Encode(val); err != nil {
+			return
+		}
+		for i := 0; i < len(target.Content); i += 2 {
+			if target.Content[i].Value == key {
+				target.Content[i+1] = &valNode
+				return
+			}
+		}
+		var keyNode yaml.Node
+		keyNode.Encode(key)
+		target.Content = append(target.Content, &keyNode, &valNode)
+	}
+
+	removeField := func(key string) {
+		for i := 0; i < len(target.Content); i += 2 {
+			if target.Content[i].Value == key {
+				target.Content = append(target.Content[:i], target.Content[i+2:]...)
+				return
+			}
+		}
+	}
+
+	setField("enable", section.Enable)
+	setField("ipv6", section.IPv6)
+	setField("enhanced-mode", section.EnhancedMode)
+	if section.EnhancedMode == "fake-ip" {
+		setField("fake-ip-range", section.FakeIPRange)
+		setField("fake-ip-filter-mode", section.FakeIPFilterMode)
+		if len(section.FakeIPFilter) > 0 {
+			setField("fake-ip-filter", section.FakeIPFilter)
+		} else {
+			removeField("fake-ip-filter")
+		}
+	} else {
+		removeField("fake-ip-range")
+		removeField("fake-ip-filter-mode")
+		removeField("fake-ip-filter")
+	}
+	setField("respect-rules", section.RespectRules)
+	setField("default-nameserver", section.DefaultNameserver)
+	setField("nameserver", section.Nameserver)
+	if len(section.ProxyServerNameserver) > 0 {
+		setField("proxy-server-nameserver", section.ProxyServerNameserver)
+	} else {
+		removeField("proxy-server-nameserver")
+	}
+	if len(section.DirectNameserver) > 0 {
+		setField("direct-nameserver", section.DirectNameserver)
+	} else {
+		removeField("direct-nameserver")
+	}
+	setField("direct-nameserver-follow-policy", section.DirectNameserverFollowPolicy)
+
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		out, err := yaml.Marshal(section)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func parseMihomoClientRawDNS(raw string) (MihomoClientDNS, error) {
+	if raw == "" {
+		res := defaultMihomoClientDNS()
+		res.Enable = false
+		return res, nil
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(raw), &document); err != nil {
+		return MihomoClientDNS{}, err
+	}
+	target := unwrapMihomoRawDNSNode(&document)
+	if target == nil || target.Kind != yaml.MappingNode {
+		return MihomoClientDNS{}, errors.New("DNS text must be a YAML mapping of dns options")
+	}
+
+	var intermediate struct {
+		Enable                            *bool    `yaml:"enable"`
+		IPv6                              *bool    `yaml:"ipv6"`
+		IPv6Hyphen                        *bool    `yaml:"ipv-6"`
+		EnhancedMode                      string   `yaml:"enhanced-mode"`
+		EnhancedModeSnake                 string   `yaml:"enhanced_mode"`
+		FakeIPRange                       string   `yaml:"fake-ip-range"`
+		FakeIPRangeSnake                  string   `yaml:"fake_ip_range"`
+		FakeIPFilterMode                  string   `yaml:"fake-ip-filter-mode"`
+		FakeIPFilterModeSnake             string   `yaml:"fake_ip_filter_mode"`
+		FakeIPFilter                      []string `yaml:"fake-ip-filter"`
+		FakeIPFilterSnake                 []string `yaml:"fake_ip_filter"`
+		RespectRules                      *bool    `yaml:"respect-rules"`
+		RespectRulesSnake                 *bool    `yaml:"respect_rules"`
+		DefaultNameserver                 []string `yaml:"default-nameserver"`
+		DefaultNameserverSnake            []string `yaml:"default_nameserver"`
+		Nameserver                        []string `yaml:"nameserver"`
+		ProxyServerNameserver             []string `yaml:"proxy-server-nameserver"`
+		ProxyServerNameserverSnake        []string `yaml:"proxy_server_nameserver"`
+		DirectNameserver                  []string `yaml:"direct-nameserver"`
+		DirectNameserverSnake             []string `yaml:"direct_nameserver"`
+		DirectNameserverFollowPolicy      *bool    `yaml:"direct-nameserver-follow-policy"`
+		DirectNameserverFollowPolicySnake *bool    `yaml:"direct_nameserver_follow_policy"`
+	}
+
+	if err := target.Decode(&intermediate); err != nil {
+		return MihomoClientDNS{}, err
+	}
+
+	res := defaultMihomoClientDNS()
+	if intermediate.Enable != nil {
+		res.Enable = *intermediate.Enable
+	} else {
+		res.Enable = true
+	}
+	if intermediate.IPv6 != nil {
+		res.IPv6 = *intermediate.IPv6
+	} else if intermediate.IPv6Hyphen != nil {
+		res.IPv6 = *intermediate.IPv6Hyphen
+	} else {
+		res.IPv6 = false
+	}
+	mode := intermediate.EnhancedMode
+	if mode == "" {
+		mode = intermediate.EnhancedModeSnake
+	}
+	if mode != "" {
+		res.EnhancedMode = mode
+	}
+
+	fakeRange := intermediate.FakeIPRange
+	if fakeRange == "" {
+		fakeRange = intermediate.FakeIPRangeSnake
+	}
+	if fakeRange != "" {
+		res.FakeIPRange = fakeRange
+	}
+
+	filterMode := intermediate.FakeIPFilterMode
+	if filterMode == "" {
+		filterMode = intermediate.FakeIPFilterModeSnake
+	}
+	if filterMode != "" {
+		res.FakeIPFilterMode = filterMode
+	}
+
+	if intermediate.FakeIPFilter != nil {
+		res.FakeIPFilter = intermediate.FakeIPFilter
+	} else if intermediate.FakeIPFilterSnake != nil {
+		res.FakeIPFilter = intermediate.FakeIPFilterSnake
+	}
+
+	if intermediate.RespectRules != nil {
+		res.RespectRules = *intermediate.RespectRules
+	} else if intermediate.RespectRulesSnake != nil {
+		res.RespectRules = *intermediate.RespectRulesSnake
+	}
+
+	if intermediate.DefaultNameserver != nil {
+		res.DefaultNameserver = intermediate.DefaultNameserver
+	} else if intermediate.DefaultNameserverSnake != nil {
+		res.DefaultNameserver = intermediate.DefaultNameserverSnake
+	}
+
+	if intermediate.Nameserver != nil {
+		res.Nameserver = intermediate.Nameserver
+	}
+
+	if intermediate.ProxyServerNameserver != nil {
+		res.ProxyServerNameserver = intermediate.ProxyServerNameserver
+	} else if intermediate.ProxyServerNameserverSnake != nil {
+		res.ProxyServerNameserver = intermediate.ProxyServerNameserverSnake
+	}
+
+	if intermediate.DirectNameserver != nil {
+		res.DirectNameserver = intermediate.DirectNameserver
+	} else if intermediate.DirectNameserverSnake != nil {
+		res.DirectNameserver = intermediate.DirectNameserverSnake
+	}
+
+	if intermediate.DirectNameserverFollowPolicy != nil {
+		res.DirectNameserverFollowPolicy = *intermediate.DirectNameserverFollowPolicy
+	} else if intermediate.DirectNameserverFollowPolicySnake != nil {
+		res.DirectNameserverFollowPolicy = *intermediate.DirectNameserverFollowPolicySnake
+	}
+
+	return res, nil
+}
+
 // validateMihomoClientRawDNS only checks what can be judged without running
 // Mihomo: that the text is a YAML mapping, plus the two conditions Mihomo
 // refuses to start on.
@@ -259,12 +510,12 @@ func validateMihomoClientRawDNS(raw string) error {
 
 // mihomoClientDNSNode renders the configured section, or nil when nothing
 // should be written and the client is left to its own DNS settings.
+// DNS configuration is a single source of truth: if RawDNS has content, it is used
+// directly to preserve all options (including fallback, nameserver-policy);
+// otherwise config.DNS is encoded. Mode distinction is eliminated from output generation.
 func mihomoClientDNSNode(config MihomoClientConfig) (*yaml.Node, error) {
-	var node yaml.Node
-	if config.DNSMode == "text" {
-		if config.RawDNS == "" {
-			return nil, nil
-		}
+	if config.RawDNS != "" {
+		var node yaml.Node
 		if err := yaml.Unmarshal([]byte(config.RawDNS), &node); err != nil {
 			return nil, fmt.Errorf("encode DNS section: %w", err)
 		}
@@ -272,11 +523,18 @@ func mihomoClientDNSNode(config MihomoClientConfig) (*yaml.Node, error) {
 		if target == nil {
 			return nil, nil
 		}
+		var section struct {
+			Enable *bool `yaml:"enable"`
+		}
+		if err := target.Decode(&section); err == nil && section.Enable != nil && !*section.Enable {
+			return nil, nil
+		}
 		return target, nil
 	}
 	if !config.DNS.Enable {
 		return nil, nil
 	}
+	var node yaml.Node
 	section := mihomoYAMLDNS{
 		Enable:                       true,
 		IPv6:                         config.DNS.IPv6,

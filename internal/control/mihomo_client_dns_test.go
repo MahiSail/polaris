@@ -249,3 +249,109 @@ func TestMihomoClientDNSRejectsSettingsMihomoWouldRefuse(t *testing.T) {
 		})
 	}
 }
+
+func TestMihomoClientDNSFormAndTextSynchronization(t *testing.T) {
+	store, groupID := newMihomoDNSFixture(t)
+
+	t.Run("表单模式保存自动同步渲染纯文本", func(t *testing.T) {
+		input := mihomoDNSConfig(groupID)
+		input.Name = "表单同步测试"
+		input.DNSMode = "form"
+		input.DNS = control.MihomoClientDNS{
+			Enable:            true,
+			IPv6:              true,
+			EnhancedMode:      "fake-ip",
+			FakeIPRange:       "198.18.0.1/16",
+			FakeIPFilterMode:  "rule",
+			FakeIPFilter:      []string{"MATCH,fake-ip"},
+			DefaultNameserver: []string{"223.5.5.5"},
+			Nameserver:        []string{"https://223.5.5.5/dns-query"},
+		}
+		config, err := store.CreateMihomoClientConfig(t.Context(), input)
+		if err != nil {
+			t.Fatalf("create config failed: %v", err)
+		}
+		if config.RawDNS == "" {
+			t.Fatal("expected RawDNS to be generated from form DNS, got empty")
+		}
+		if !strings.Contains(config.RawDNS, "fake-ip-range: 198.18.0.1/16") {
+			t.Fatalf("expected RawDNS to contain fake-ip-range, got:\n%s", config.RawDNS)
+		}
+		if !strings.Contains(config.RawDNS, "https://223.5.5.5/dns-query") {
+			t.Fatalf("expected RawDNS to contain nameserver, got:\n%s", config.RawDNS)
+		}
+	})
+
+	t.Run("纯文本模式保存自动同步解析表单", func(t *testing.T) {
+		input := mihomoDNSConfig(groupID)
+		input.Name = "纯文本同步测试"
+		input.DNSMode = "text"
+		input.RawDNS = `enable: true
+enhanced-mode: fake-ip
+fake-ip-range: 198.18.0.1/16
+nameserver:
+  - 1.1.1.1
+default-nameserver:
+  - 8.8.8.8
+`
+		config, err := store.CreateMihomoClientConfig(t.Context(), input)
+		if err != nil {
+			t.Fatalf("create config failed: %v", err)
+		}
+		if !config.DNS.Enable {
+			t.Fatal("expected DNS.Enable to be true, got false")
+		}
+		if config.DNS.EnhancedMode != "fake-ip" {
+			t.Fatalf("expected enhanced_mode fake-ip, got %s", config.DNS.EnhancedMode)
+		}
+		if len(config.DNS.Nameserver) != 1 || config.DNS.Nameserver[0] != "1.1.1.1" {
+			t.Fatalf("expected nameserver 1.1.1.1, got %#v", config.DNS.Nameserver)
+		}
+		if len(config.DNS.DefaultNameserver) != 1 || config.DNS.DefaultNameserver[0] != "8.8.8.8" {
+			t.Fatalf("expected default-nameserver 8.8.8.8, got %#v", config.DNS.DefaultNameserver)
+		}
+	})
+
+	t.Run("表单更新保留原有自定义纯文本属性", func(t *testing.T) {
+		input := mihomoDNSConfig(groupID)
+		input.Name = "自定义属性保留测试"
+		input.DNSMode = "text"
+		input.RawDNS = `enable: true
+enhanced-mode: fake-ip
+nameserver:
+  - 1.1.1.1
+default-nameserver:
+  - 8.8.8.8
+nameserver-policy:
+  "+.lan": system
+`
+		config, err := store.CreateMihomoClientConfig(t.Context(), input)
+		if err != nil {
+			t.Fatalf("create config failed: %v", err)
+		}
+
+		// 现在模拟切到表单修改 enhanced-mode 并以 form 保存
+		config.DNSMode = "form"
+		config.DNS.EnhancedMode = "redir-host"
+		updated, err := store.UpdateMihomoClientConfig(t.Context(), config)
+		if err != nil {
+			t.Fatalf("update config failed: %v", err)
+		}
+		if !strings.Contains(updated.RawDNS, "nameserver-policy") {
+			t.Fatalf("expected custom nameserver-policy to be preserved in RawDNS, got:\n%s", updated.RawDNS)
+		}
+		if !strings.Contains(updated.RawDNS, "enhanced-mode: redir-host") {
+			t.Fatalf("expected enhanced-mode: redir-host in RawDNS, got:\n%s", updated.RawDNS)
+		}
+
+		// 关键测试：即使以 form 模式保存，下发的订阅也必须完整包含 nameserver-policy 等高级属性
+		_, yaml, err := store.GenerateStoredMihomoYAML(t.Context(), updated.ID)
+		if err != nil {
+			t.Fatalf("generate yaml failed: %v", err)
+		}
+		if !strings.Contains(yaml, "nameserver-policy") {
+			t.Fatalf("expected generated subscription to carry nameserver-policy even under form mode:\n%s", yaml)
+		}
+	})
+}
+

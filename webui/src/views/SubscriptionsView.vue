@@ -8,6 +8,7 @@ import { formatDateTime, includesText } from '../format'
 import PageHeader from '../components/PageHeader.vue'
 import PagedTable from '../components/PagedTable.vue'
 import QrCodeDialog from '../components/QrCodeDialog.vue'
+import { defaultDNS, cloneDNS, parseDNSYAML, renderDNSYAML } from '../dns_yaml'
 
 const canWrite = inject('canWrite')
 const isAdmin = inject('isAdmin')
@@ -34,46 +35,25 @@ const accessQuery = reactive({ page: 1, pageSize: 10, total: 0, config_id: '', i
 const qrOpen = ref(false)
 const qrTitle = ref('')
 const qrItems = ref([])
-// A new subscription starts from the settings that used to be generated
-// automatically, so it works out of the box and stays fully editable.
-function defaultDNS() {
-  return {
-    enable: true,
-    ipv6: false,
-    enhanced_mode: 'fake-ip',
-    fake_ip_range: '198.18.0.1/16',
-    fake_ip_filter_mode: 'rule',
-    fake_ip_filter: ['MATCH,fake-ip'],
-    respect_rules: true,
-    default_nameserver: ['223.5.5.5', '119.29.29.29'],
-    nameserver: ['https://223.5.5.5/dns-query'],
-    proxy_server_nameserver: ['https://223.5.5.5/dns-query'],
-    direct_nameserver: ['https://223.5.5.5/dns-query'],
-    direct_nameserver_follow_policy: false,
-  }
-}
-function cloneDNS(dns) {
-  const base = defaultDNS()
-  if (!dns) return base
-  return {
-    enable: Boolean(dns.enable),
-    ipv6: Boolean(dns.ipv6),
-    enhanced_mode: dns.enhanced_mode || base.enhanced_mode,
-    fake_ip_range: dns.fake_ip_range || base.fake_ip_range,
-    fake_ip_filter_mode: dns.fake_ip_filter_mode || base.fake_ip_filter_mode,
-    fake_ip_filter: [...(dns.fake_ip_filter || [])],
-    respect_rules: Boolean(dns.respect_rules),
-    default_nameserver: [...(dns.default_nameserver || [])],
-    nameserver: [...(dns.nameserver || [])],
-    proxy_server_nameserver: [...(dns.proxy_server_nameserver || [])],
-    direct_nameserver: [...(dns.direct_nameserver || [])],
-    direct_nameserver_follow_policy: Boolean(dns.direct_nameserver_follow_policy),
-  }
-}
-const form = reactive({ name: '', proxy_group_ids: [], rule_provider_ids: [], rule_mode: 'table', rules: [], raw_rules: '', dns_mode: 'form', dns: defaultDNS(), raw_dns: '', access_secret: '', access_window_start: '', access_window_end: '', access_expires_at: '' })
 function emptyForm() {
-  return { name: '', proxy_group_ids: [], rule_provider_ids: [], rule_mode: 'table', rules: [], raw_rules: '', dns_mode: 'form', dns: defaultDNS(), raw_dns: '', access_secret: '', access_window_start: '', access_window_end: '', access_expires_at: '' }
+  const dns = defaultDNS()
+  return {
+    name: '',
+    proxy_group_ids: [],
+    rule_provider_ids: [],
+    rule_mode: 'table',
+    rules: [],
+    raw_rules: '',
+    dns_mode: 'form',
+    dns,
+    raw_dns: renderDNSYAML(dns),
+    access_secret: '',
+    access_window_start: '',
+    access_window_end: '',
+    access_expires_at: '',
+  }
 }
+const form = reactive(emptyForm())
 const sections = [
   { key: 'basic', label: '基础信息', hint: '名称 · 代理分组 · 规则供应商' },
   { key: 'rules', label: '访问规则', hint: '决定流量走哪个分组' },
@@ -147,7 +127,15 @@ const rulesValid = computed(() => {
   return Boolean(form.rules.length && form.rules.at(-1)?.type === 'MATCH' && form.rules.every((rule) => rule.action && (rule.type === 'MATCH' || (rule.value.trim() && (rule.type !== 'RULE-SET' || providerNames.value.has(rule.value))))))
 })
 // Mihomo refuses to start without these two lists once dns is enabled.
-const dnsValid = computed(() => !(form.dns_mode === 'form' && form.dns.enable) || Boolean(form.dns.nameserver.length && form.dns.default_nameserver.length))
+const dnsValid = computed(() => {
+  if (form.dns_mode === 'form') {
+    return !form.dns.enable || Boolean(form.dns.nameserver?.length && form.dns.default_nameserver?.length)
+  }
+  if (!form.raw_dns.trim()) return true
+  const res = parseDNSYAML(form.raw_dns, form.dns)
+  if (!res.success) return false
+  return !res.dns.enable || Boolean(res.dns.nameserver?.length && res.dns.default_nameserver?.length)
+})
 // 订阅限制整节都是可选项，留空即不限制，所以没有「待填」这一说。
 const sectionValid = computed(() => ({ basic: basicValid.value, rules: rulesValid.value, dns: dnsValid.value, access: true }))
 const formValid = computed(() => basicValid.value && rulesValid.value && dnsValid.value)
@@ -209,26 +197,43 @@ function searchAccess() {
 function openForm(config = null) {
   editing.value = config
   activeSection.value = 'basic'
-  Object.assign(form, config ? {
-    name: config.name,
-    proxy_group_ids: [...(config.proxy_group_ids || [])],
-    rule_provider_ids: [...(config.rule_provider_ids || [])],
-    rule_mode: config.rule_mode || 'table',
-    rules: (config.rules || []).map((rule) => ({
-      type: rule.type,
-      value: rule.value || '',
-      action: rule.action,
-      no_resolve: Boolean(rule.no_resolve),
-    })),
-    raw_rules: config.raw_rules || '',
-    dns_mode: config.dns_mode || 'form',
-    dns: cloneDNS(config.dns),
-    raw_dns: config.raw_dns || '',
-    access_secret: config.access_secret || '',
-    access_window_start: config.access_window_start || '',
-    access_window_end: config.access_window_end || '',
-    access_expires_at: config.access_expires_at || '',
-  } : emptyForm())
+  if (config) {
+    const dnsMode = config.dns_mode || 'form'
+    let initialDNS = cloneDNS(config.dns)
+    let initialRaw = config.raw_dns || ''
+
+    if (initialRaw.trim()) {
+      const parsed = parseDNSYAML(initialRaw, initialDNS)
+      if (parsed.success) {
+        initialDNS = parsed.dns
+      }
+    } else if (initialDNS.enable) {
+      initialRaw = renderDNSYAML(initialDNS)
+    }
+
+    Object.assign(form, {
+      name: config.name,
+      proxy_group_ids: [...(config.proxy_group_ids || [])],
+      rule_provider_ids: [...(config.rule_provider_ids || [])],
+      rule_mode: config.rule_mode || 'table',
+      rules: (config.rules || []).map((rule) => ({
+        type: rule.type,
+        value: rule.value || '',
+        action: rule.action,
+        no_resolve: Boolean(rule.no_resolve),
+      })),
+      raw_rules: config.raw_rules || '',
+      dns_mode: dnsMode,
+      dns: initialDNS,
+      raw_dns: initialRaw,
+      access_secret: config.access_secret || '',
+      access_window_start: config.access_window_start || '',
+      access_window_end: config.access_window_end || '',
+      access_expires_at: config.access_expires_at || '',
+    })
+  } else {
+    Object.assign(form, emptyForm())
+  }
   mode.value = 'form'
 }
 
@@ -238,23 +243,25 @@ function selectSection(key) {
   if (formBody.value) formBody.value.scrollTop = 0
 }
 
-// Switching to the text editor starts from what the form currently says, so
-// the advanced mode is an extension of the form rather than a blank page.
-function setDNSMode(mode) {
-  if (mode === 'text' && !form.raw_dns.trim()) form.raw_dns = renderDNSYAML(form.dns)
-  form.dns_mode = mode
-}
-
-function renderDNSYAML(dns) {
-  const list = (key, values) => (values.length ? [`${key}:`, ...values.map((value) => `  - ${value}`)] : [])
-  const lines = [`enable: ${dns.enable}`, `ipv6: ${dns.ipv6}`, `enhanced-mode: ${dns.enhanced_mode}`]
-  if (dns.enhanced_mode === 'fake-ip') {
-    lines.push(`fake-ip-range: ${dns.fake_ip_range}`, `fake-ip-filter-mode: ${dns.fake_ip_filter_mode}`, ...list('fake-ip-filter', dns.fake_ip_filter))
+function setDNSMode(targetMode) {
+  if (form.dns_mode === targetMode) return
+  if (targetMode === 'text') {
+    form.raw_dns = renderDNSYAML(form.dns, form.raw_dns)
+    form.dns_mode = 'text'
+  } else if (targetMode === 'form') {
+    if (!form.raw_dns.trim()) {
+      form.dns.enable = false
+      form.dns_mode = 'form'
+      return
+    }
+    const result = parseDNSYAML(form.raw_dns, form.dns)
+    if (!result.success) {
+      ElMessage.error(`DNS 纯文本格式错误，无法切换至表单：${result.error}`)
+      return
+    }
+    Object.assign(form.dns, result.dns)
+    form.dns_mode = 'form'
   }
-  lines.push(`respect-rules: ${dns.respect_rules}`)
-  for (const field of nameserverFields) lines.push(...list(field.key.replace(/_/g, '-'), dns[field.key]))
-  lines.push(`direct-nameserver-follow-policy: ${dns.direct_nameserver_follow_policy}`)
-  return lines.join('\n')
 }
 
 function addRule() {
@@ -276,6 +283,26 @@ function moveRule(index, offset) {
 }
 
 async function save() {
+  if (form.dns_mode === 'text') {
+    if (form.raw_dns.trim()) {
+      const res = parseDNSYAML(form.raw_dns, form.dns)
+      if (!res.success) {
+        ElMessage.error(`DNS 纯文本格式错误：${res.error}`)
+        return
+      }
+      Object.assign(form.dns, res.dns)
+    } else {
+      form.dns.enable = false
+    }
+  } else {
+    form.raw_dns = renderDNSYAML(form.dns, form.raw_dns)
+  }
+
+  if (!formValid.value) {
+    ElMessage.error('请完善必填配置项')
+    return
+  }
+
   saving.value = true
   try {
     const payload = {

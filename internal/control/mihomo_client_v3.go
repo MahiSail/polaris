@@ -441,6 +441,15 @@ func scanMihomoClientConfig(scanner interface{ Scan(...any) error }, masterKey [
 		return MihomoClientConfig{}, err
 	}
 	config.DNSMode, config.DNS, config.RawDNS = dns.Mode, dns.DNS, dns.Raw
+	if strings.TrimSpace(config.RawDNS) != "" {
+		if parsed, err := parseMihomoClientRawDNS(config.RawDNS); err == nil {
+			config.DNS = parsed
+		}
+	} else if config.DNS.Enable {
+		if raw, err := renderMihomoDNSYAML(config.DNS, ""); err == nil {
+			config.RawDNS = raw
+		}
+	}
 	var rules mihomoClientRulesV3
 	if err := json.Unmarshal([]byte(rulesJSON), &rules); err != nil {
 		return MihomoClientConfig{}, err
