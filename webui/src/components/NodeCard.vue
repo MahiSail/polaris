@@ -42,6 +42,7 @@
             <el-dropdown-menu>
               <el-dropdown-item command="detail"><el-icon><InfoFilled /></el-icon>详情</el-dropdown-item>
               <el-dropdown-item command="edit"><el-icon><Edit /></el-icon>配置</el-dropdown-item>
+              <el-dropdown-item command="probes"><el-icon><Connection /></el-icon>探针配置</el-dropdown-item>
               <el-dropdown-item v-if="node.online" command="networkProbe"><el-icon><Connection /></el-icon>线路排查</el-dropdown-item>
               <el-dropdown-item v-if="node.ddns_enabled" command="syncDDNS"><el-icon><Refresh /></el-icon>同步 DDNS</el-dropdown-item>
               <el-dropdown-item v-if="node.ddns_enabled" command="ddnsHistory"><el-icon><Clock /></el-icon>DDNS 变更记录</el-dropdown-item>

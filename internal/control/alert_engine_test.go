@@ -641,3 +641,25 @@ func TestNotifyChainedDNSCompletedFormat(t *testing.T) {
 		t.Errorf("expected clean Bark body without technical noise, got: %s", bark.Body)
 	}
 }
+
+func TestRouteIssueTrafficType(t *testing.T) {
+	stunIssue := &routeIssue{ports: []string{"3478"}, networks: []string{"udp"}}
+	if !strings.Contains(stunIssue.trafficType(), "STUN") {
+		t.Errorf("expected STUN description, got: %s", stunIssue.trafficType())
+	}
+
+	quicIssue := &routeIssue{ports: []string{"443"}, networks: []string{"udp"}}
+	if !strings.Contains(quicIssue.trafficType(), "QUIC") {
+		t.Errorf("expected QUIC description, got: %s", quicIssue.trafficType())
+	}
+
+	httpsIssue := &routeIssue{ports: []string{"443"}, networks: []string{"tcp"}}
+	if !strings.Contains(httpsIssue.trafficType(), "HTTPS") {
+		t.Errorf("expected HTTPS description, got: %s", httpsIssue.trafficType())
+	}
+
+	dnsIssue := &routeIssue{ports: []string{"53"}, networks: []string{"udp"}}
+	if !strings.Contains(dnsIssue.trafficType(), "DNS") {
+		t.Errorf("expected DNS description, got: %s", dnsIssue.trafficType())
+	}
+}

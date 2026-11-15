@@ -106,8 +106,44 @@ const agentPort = ref(19994)
 
 const editSheet = ref(false)
 const editNode = ref(null)
-const editForm = ref({ name: '', client_address: '', ddns_enabled: false, ddns_record_id: '', ddns_domain: '', ddns_record_ids: [], ddns_domains: [], ddns_bind_ip: '', ddns_record_ips: {}, ip_aliases: {}, expires_on: '', price: '', price_period: '', currency: 'USD', provider: '', provider_url: '', traffic_plan: '', bandwidth: '' })
+const pingTasks = ref([])
+const editForm = ref({ name: '', client_address: '', ddns_enabled: false, ddns_record_id: '', ddns_domain: '', ddns_record_ids: [], ddns_domains: [], ddns_bind_ip: '', ddns_record_ips: {}, ip_aliases: {}, expires_on: '', price: '', price_period: '', currency: 'USD', provider: '', provider_url: '', traffic_plan: '', bandwidth: '', custom_probes: [] })
 const newCustomEgressIP = ref('')
+const publicProbes = computed(() => pingTasks.value.filter((t) => t.auto_join !== false))
+
+async function loadPingTasks() {
+  try {
+    const res = await api('/ping-tasks').catch(() => ({ tasks: [] }))
+    pingTasks.value = res.tasks || []
+  } catch {
+    pingTasks.value = []
+  }
+}
+
+function getCustomProbesForNode(nodeId) {
+  if (!nodeId) return []
+  return pingTasks.value
+    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
+    .map((t) => ({
+      id: t.id,
+      name: t.name || '',
+      target: t.target || '',
+      interval: t.interval || 60,
+    }))
+}
+
+function addCustomProbe() {
+  if (!Array.isArray(editForm.value.custom_probes)) {
+    editForm.value.custom_probes = []
+  }
+  editForm.value.custom_probes.push({ id: 0, name: '', target: '', interval: 60 })
+}
+
+function removeCustomProbe(idx) {
+  if (Array.isArray(editForm.value.custom_probes)) {
+    editForm.value.custom_probes.splice(idx, 1)
+  }
+}
 
 const editDDNSIPOptions = computed(() =>
   buildDDNSIPOptions(editNode.value, editForm.value.ip_aliases, {
@@ -485,12 +521,37 @@ async function openEdit(node) {
     ddns_record_ips: { ...(node.ddns_record_ips || {}) },
     ip_aliases: { ...(node.ip_aliases || {}) },
     expires_on: node.expires_on || '', price: node.price || '', price_period: node.price_period || '', currency: node.currency || 'USD', provider: node.provider || '', provider_url: node.provider_url || '', traffic_plan: node.traffic_plan || '', bandwidth: node.bandwidth || '',
+    custom_probes: getCustomProbesForNode(node.id),
   }
   loadCloudflareRecords()
+  loadPingTasks().then(() => {
+    if (editNode.value?.id === node.id) {
+      editForm.value.custom_probes = getCustomProbesForNode(node.id)
+    }
+  })
   editSheet.value = true
 }
 
 async function saveNode() {
+  const customProbes = []
+  for (const p of editForm.value.custom_probes || []) {
+    const name = (p.name || '').trim()
+    const target = (p.target || '').trim()
+    if (!name && !target) continue
+    if (!name || !target) {
+      ElMessage.warning('请完整填写独立探针的名称和目标地址')
+      return
+    }
+    const interval = Number(p.interval) >= 5 && Number(p.interval) <= 3600 ? Math.round(Number(p.interval)) : 60
+    customProbes.push({
+      id: Number(p.id) || 0,
+      name,
+      target,
+      interval,
+      auto_join: false,
+      node_ids: [editNode.value.id],
+    })
+  }
   editSaving.value = true
   try {
     await put(`/nodes/${editNode.value.id}`, {
@@ -506,6 +567,7 @@ async function saveNode() {
       ip_aliases: editForm.value.ip_aliases || {},
       expires_on: editForm.value.expires_on, price: editForm.value.price, price_period: editForm.value.price_period, currency: editForm.value.currency,
       provider: editForm.value.provider, provider_url: editForm.value.provider_url, traffic_plan: editForm.value.traffic_plan, bandwidth: editForm.value.bandwidth,
+      custom_probes: customProbes,
     })
     ElMessage.success('服务器信息已保存')
     editSheet.value = false
@@ -881,6 +943,33 @@ onBeforeUnmount(() => {
                 <el-option v-for="opt in editDDNSRecordIPOptions(recId)" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="m-field">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <label class="m-field__label" style="margin: 0">探针配置（公共 + 本机独立）</label>
+          <el-button size="small" :icon="Plus" @click="addCustomProbe">添加独立探针</el-button>
+        </div>
+        <div class="m-field__hint">当前服务器除自动继承公共探针外，还可单独配置专属探针。</div>
+        <div v-if="publicProbes.length" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+          <span style="font-size: 12px; color: var(--sb-muted)">公共探针：</span>
+          <el-tag v-for="p in publicProbes" :key="p.id" size="small" type="success" effect="plain">
+            {{ p.name }} ({{ p.target }})
+          </el-tag>
+        </div>
+        <div v-if="(editForm.custom_probes || []).length" style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+          <div
+            v-for="(probe, idx) in editForm.custom_probes"
+            :key="probe.id || `m-new-${idx}`"
+            style="background: var(--sb-surface-2); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px;"
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+              <el-input v-model="probe.name" size="small" placeholder="探针名称（如：广州电信）" style="flex: 1" />
+              <el-input-number v-model="probe.interval" size="small" :min="5" :max="3600" :step="5" controls-position="right" style="width: 96px" />
+              <el-button text type="danger" size="small" :icon="Delete" @click="removeCustomProbe(idx)" />
+            </div>
+            <el-input v-model="probe.target" size="small" placeholder="目标地址 host:port（如 1.1.1.1:443）" />
           </div>
         </div>
       </div>

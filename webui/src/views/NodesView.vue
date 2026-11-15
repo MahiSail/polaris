@@ -154,6 +154,7 @@ const agentPort = ref(19994)
 
 const editDialog = ref(false)
 const editNode = ref(null)
+const pingTasks = ref([])
 const editForm = ref({
   name: '',
   client_address: '',
@@ -166,14 +167,56 @@ const editForm = ref({
   ddns_record_ips: {},
   ip_aliases: {},
   expires_on: '', price: '', price_period: '', currency: 'USD', provider: '', provider_url: '', traffic_value: '', traffic_unit: 'MB', bandwidth: '', bandwidth_value: '', bandwidth_unit: 'Gbps',
+  custom_probes: [],
 })
+const publicProbes = computed(() => pingTasks.value.filter((t) => t.auto_join !== false))
 const editTab = ref('basic')
 const editTabs = computed(() => [
   { key: 'basic', label: '基本信息' },
   { key: 'plan', label: '套餐与到期' },
   { key: 'network', label: '网络与 DDNS', badge: editNodeAllIPs.value.length || '' },
+  { key: 'probes', label: '探针配置', badge: (editForm.value.custom_probes || []).filter((p) => p.name || p.target).length || '' },
 ])
 const editHeader = computed(() => buildDialogHeader(editNode.value, editForm.value.name))
+
+async function loadPingTasks() {
+  try {
+    const res = await api('/ping-tasks').catch(() => ({ tasks: [] }))
+    pingTasks.value = res.tasks || []
+  } catch {
+    pingTasks.value = []
+  }
+}
+
+function getCustomProbesForNode(nodeId) {
+  if (!nodeId) return []
+  return pingTasks.value
+    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
+    .map((t) => ({
+      id: t.id,
+      name: t.name || '',
+      target: t.target || '',
+      interval: t.interval || 60,
+    }))
+}
+
+function addCustomProbe() {
+  if (!Array.isArray(editForm.value.custom_probes)) {
+    editForm.value.custom_probes = []
+  }
+  editForm.value.custom_probes.push({
+    id: 0,
+    name: '',
+    target: '',
+    interval: 60,
+  })
+}
+
+function removeCustomProbe(idx) {
+  if (Array.isArray(editForm.value.custom_probes)) {
+    editForm.value.custom_probes.splice(idx, 1)
+  }
+}
 
 const editNodeAllIPs = computed(() => {
   const ips = []
@@ -466,6 +509,7 @@ async function load(silent = false) {
   }
   if (loadSystemUpdate) loadSystemUpdate().catch(() => {})
   loadSingBoxLatest().catch(() => {})
+  loadPingTasks().catch(() => {})
 }
 
 function getResourcePercent(used, total) {
@@ -772,7 +816,7 @@ async function triggerManualDDNS(node) {
   }
 }
 
-async function openEdit(node) {
+async function openEdit(node, initialTab = 'basic') {
   editNode.value = node
 
   const recordIds = (node.ddns_record_ids && node.ddns_record_ids.length)
@@ -798,14 +842,40 @@ async function openEdit(node) {
     ...parseTrafficPlan(node.traffic_plan),
     ...parseBandwidth(node.bandwidth),
     bandwidth: node.bandwidth || '',
+    custom_probes: getCustomProbesForNode(node.id),
   }
-  editTab.value = 'basic'
+  editTab.value = typeof initialTab === 'string' && initialTab ? initialTab : 'basic'
   loadCloudflareRecords()
+  loadPingTasks().then(() => {
+    if (editNode.value?.id === node.id) {
+      editForm.value.custom_probes = getCustomProbesForNode(node.id)
+    }
+  })
   editDialog.value = true
 }
 
 async function saveEdit() {
   if (!editNode.value) return
+  const customProbes = []
+  for (const p of editForm.value.custom_probes || []) {
+    const name = (p.name || '').trim()
+    const target = (p.target || '').trim()
+    if (!name && !target) continue
+    if (!name || !target) {
+      editTab.value = 'probes'
+      ElMessage.warning('请完整填写独立探针的名称和目标地址')
+      return
+    }
+    const interval = Number(p.interval) >= 5 && Number(p.interval) <= 3600 ? Math.round(Number(p.interval)) : 60
+    customProbes.push({
+      id: Number(p.id) || 0,
+      name,
+      target,
+      interval,
+      auto_join: false,
+      node_ids: [editNode.value.id],
+    })
+  }
   editSaving.value = true
   try {
     await put(`/nodes/${editNode.value.id}`, {
@@ -823,6 +893,7 @@ async function saveEdit() {
       provider: editForm.value.provider, provider_url: editForm.value.provider_url,
       traffic_plan: [editForm.value.traffic_value, editForm.value.traffic_unit].filter(Boolean).join(' '),
       bandwidth: editForm.value.bandwidth_value ? `${editForm.value.bandwidth_value} ${editForm.value.bandwidth_unit}` : '',
+      custom_probes: customProbes,
     })
     ElMessage.success('服务器信息已保存')
     editDialog.value = false
@@ -939,6 +1010,7 @@ function openDDNSHistory(node) {
 
 function handleCardCommand(node, command) {
   if (command === 'edit') openEdit(node)
+  else if (command === 'probes') openEdit(node, 'probes')
   else if (command === 'networkProbe') openNetworkProbe(node)
   else if (command === 'upgradeAgent') upgradeAgent(node)
   else if (command === 'upgradeSingBox') upgradeSingBox(node)
@@ -1004,13 +1076,13 @@ onBeforeUnmount(() => {
   <div class="page-shell">
     <PageHeader title="服务器">
       <el-button
-        v-if="isAdmin"
-        :type="upgradableAgentNodes.length > 0 ? 'warning' : 'default'"
+        v-if="isAdmin && upgradableAgentNodes.length > 0"
+        type="warning"
         :icon="Top"
         :loading="upgradingAllAgents"
         @click="upgradeAllAgents"
       >
-        一键升级所有 Agent{{ upgradableAgentNodes.length > 0 ? ` (${upgradableAgentNodes.length})` : '' }}
+        一键升级所有 Agent ({{ upgradableAgentNodes.length }})
       </el-button>
       <el-button v-if="canWrite" :icon="Connection" @click="probesDialog = true">探针</el-button>
       <el-button :icon="Refresh" :loading="refreshing" @click="load">刷新</el-button>
@@ -1021,7 +1093,7 @@ onBeforeUnmount(() => {
     <ShareDialog v-model="shareOpen" page="nodes" />
 
     <el-dialog v-model="probesDialog" title="探针" width="960px" destroy-on-close>
-      <ProbeManager v-if="probesDialog" />
+      <ProbeManager v-if="probesDialog" @change="loadPingTasks" />
     </el-dialog>
 
     <main v-loading.lock="loading" class="page-content page-content--tight">
@@ -1477,6 +1549,73 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </template>
+          </div>
+        </section>
+
+        <section v-show="editTab === 'probes'" class="dlg-pane">
+          <div class="dlg-block">
+            <div class="dlg-block-head">
+              <div>
+                <div class="dlg-block-title">公共探针（全局共享）</div>
+                <div class="dlg-help">所有服务器默认继承并执行以下公共探针，无需重复添加。</div>
+              </div>
+              <el-button size="small" :icon="Connection" @click="probesDialog = true">管理公共探针</el-button>
+            </div>
+            <div v-if="publicProbes.length" class="dlg-ip-list">
+              <div v-for="p in publicProbes" :key="p.id" class="dlg-ip-row">
+                <span class="dlg-ip-kind is-v4">公共</span>
+                <span class="dlg-probe-name">{{ p.name }}</span>
+                <span class="dlg-ip-addr font-mono">{{ p.target }}</span>
+                <span class="dlg-probe-interval font-mono">{{ p.interval }}s</span>
+              </div>
+            </div>
+            <div v-else class="dlg-empty">当前未配置公共探针，可点击右上角「管理公共探针」添加。</div>
+          </div>
+
+          <div class="dlg-block" :class="{ 'is-on': (editForm.custom_probes || []).length > 0 }">
+            <div class="dlg-block-head">
+              <div>
+                <div class="dlg-block-title">本机独立探针（单独配置）</div>
+                <div class="dlg-help">除公共探针外，为当前服务器单独增加专属探测目标（如特定运营商回程、落地目标等）。</div>
+              </div>
+              <el-button size="small" :icon="Plus" @click="addCustomProbe">添加独立探针</el-button>
+            </div>
+            <div v-if="(editForm.custom_probes || []).length" class="dlg-ip-list">
+              <div v-for="(probe, idx) in editForm.custom_probes" :key="probe.id || `new-${idx}`" class="dlg-ip-row dlg-probe-edit-row">
+                <span class="dlg-ip-kind is-v6">独立</span>
+                <el-input
+                  v-model="probe.name"
+                  size="small"
+                  placeholder="探针名称（如：广州电信）"
+                  class="dlg-probe-input-name"
+                />
+                <el-input
+                  v-model="probe.target"
+                  size="small"
+                  placeholder="目标 host:port（如 1.1.1.1:443）"
+                  class="dlg-probe-input-target font-mono"
+                />
+                <el-input-number
+                  v-model="probe.interval"
+                  size="small"
+                  :min="5"
+                  :max="3600"
+                  :step="5"
+                  controls-position="right"
+                  class="dlg-probe-input-interval"
+                  title="探测间隔（秒）"
+                />
+                <el-button
+                  text
+                  type="danger"
+                  size="small"
+                  :icon="Delete"
+                  title="删除该独立探针"
+                  @click="removeCustomProbe(idx)"
+                />
+              </div>
+            </div>
+            <div v-else class="dlg-empty">暂未配置本机独立探针，点击右上角「添加独立探针」即可为该服务器单独配置。</div>
           </div>
         </section>
       </el-form>
@@ -2909,6 +3048,32 @@ onBeforeUnmount(() => {
   word-break: break-all;
 }
 .dlg-ip-alias { flex: 1; }
+.dlg-probe-name {
+  min-width: 110px;
+  color: var(--sb-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.dlg-probe-interval {
+  margin-left: auto;
+  color: var(--sb-muted);
+  font-size: 12px;
+}
+.dlg-probe-edit-row {
+  flex-wrap: nowrap;
+}
+.dlg-probe-input-name {
+  width: 150px;
+  flex-shrink: 0;
+}
+.dlg-probe-input-target {
+  flex: 1;
+  min-width: 160px;
+}
+.dlg-probe-input-interval {
+  width: 96px;
+  flex-shrink: 0;
+}
 .dlg-empty {
   padding: 14px;
   border-radius: 8px;

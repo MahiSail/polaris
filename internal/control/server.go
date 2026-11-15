@@ -513,6 +513,8 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/ping-tasks/{id}", s.updatePingTask)
 	mux.HandleFunc("DELETE /api/v1/ping-tasks/{id}", s.deletePingTask)
 	mux.HandleFunc("PUT /api/v1/ping-tasks/order", s.reorderPingTasks)
+	mux.HandleFunc("POST /api/v1/ping-tasks/reorder", s.reorderPingTasks)
+	mux.HandleFunc("PUT /api/v1/nodes/{id}/ping-tasks", s.updateNodePingTasks)
 	mux.HandleFunc("GET /api/v1/ping", s.handlePing)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/probe-peers", s.handleProbeNodePeers)
 	mux.HandleFunc("GET /api/v1/ip/lookup", s.handleIPLookup)
@@ -1976,6 +1978,7 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		ProviderURL   string            `json:"provider_url"`
 		TrafficPlan   string            `json:"traffic_plan"`
 		Bandwidth     string            `json:"bandwidth"`
+		CustomProbes  *[]PingTask       `json:"custom_probes"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -2000,6 +2003,13 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.UpdateNodeHosting(r.Context(), nodeID, input.ExpiresOn, input.Price, input.PricePeriod, input.Currency, input.Provider, input.ProviderURL, input.TrafficPlan, input.Bandwidth); err != nil {
 		writeError(w, err)
 		return
+	}
+	if input.CustomProbes != nil {
+		if err := s.store.SyncNodePingTasks(r.Context(), nodeID, *input.CustomProbes); err != nil {
+			writeError(w, err)
+			return
+		}
+		_ = s.reconcilePingTasks(r.Context(), operator.ID)
 	}
 	if err := s.store.AppendAudit(r.Context(), operator.ID, "node.updated", "node", nodeID, "node name, client address, and DDNS settings updated"); err != nil {
 		writeError(w, err)

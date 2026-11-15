@@ -1449,7 +1449,15 @@ func (s *Store) UpdateNodeWithDDNS(ctx context.Context, nodeID, name, address st
 		return errors.New("node name is required and must be at most 128 characters")
 	}
 	address = strings.TrimSpace(address)
-	if address != "" && (len(address) > 253 || strings.ContainsAny(address, "\r\n,:")) {
+	if !strings.Contains(address, "://") {
+		if host, _, err := net.SplitHostPort(address); err == nil && host != "" {
+			address = host
+		}
+	}
+	if address != "" && (len(address) > 253 || strings.ContainsAny(address, "\r\n,/")) {
+		return errors.New("client address must be a hostname or IP address without scheme or port")
+	}
+	if strings.Contains(address, ":") && net.ParseIP(address) == nil {
 		return errors.New("client address must be a hostname or IP address without scheme or port")
 	}
 	existing, err := s.GetNode(ctx, nodeID)

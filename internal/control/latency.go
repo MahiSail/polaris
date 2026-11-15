@@ -66,6 +66,16 @@ var (
 	nodeRawHistory = make(map[string]*probeHistory)
 )
 
+func clearNodeLatencyCache(nodeID string) {
+	latencyMu.Lock()
+	defer latencyMu.Unlock()
+	if nodeID == "" {
+		nodeRawHistory = make(map[string]*probeHistory)
+		return
+	}
+	delete(nodeRawHistory, nodeID)
+}
+
 func hourSlots(count int) []int64 {
 	nowHour := (time.Now().Unix() / hourSeconds) * hourSeconds
 	slots := make([]int64, count)

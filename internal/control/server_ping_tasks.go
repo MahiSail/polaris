@@ -110,6 +110,37 @@ func (s *Server) reorderPingTasks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reordered": true})
 }
 
+func (s *Server) updateNodePingTasks(w http.ResponseWriter, r *http.Request) {
+	op, err := s.writer(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		writeError(w, errInvalidPingRequest)
+		return
+	}
+	var req struct {
+		Tasks []PingTask `json:"tasks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, errInvalidPingRequest)
+		return
+	}
+	if err := s.store.SyncNodePingTasks(r.Context(), nodeID, req.Tasks); err != nil {
+		writeError(w, err)
+		return
+	}
+	_ = s.reconcilePingTasks(r.Context(), op.ID)
+	tasks, err := s.store.ListPingTasks(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
+}
+
 // reconcilePingTasks turns the ref model (one selected probe set per node) into
 // durable agent tasks. The master never probes; it only sends the current set.
 func (s *Server) reconcilePingTasks(ctx context.Context, operatorID string) error {

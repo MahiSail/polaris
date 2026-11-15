@@ -1050,6 +1050,68 @@ type routeIssue struct {
 	users     []string
 	sourceIPs []string
 	listeners []string
+	networks  []string
+}
+
+func (issue *routeIssue) trafficType() string {
+	hasPort := func(p string) bool {
+		for _, port := range issue.ports {
+			if port == p {
+				return true
+			}
+		}
+		return false
+	}
+	hasNet := func(n string) bool {
+		for _, netw := range issue.networks {
+			if strings.EqualFold(netw, n) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if hasPort("3478") || hasPort("5349") || strings.Contains(strings.ToLower(issue.host), "stun") || strings.Contains(strings.ToLower(issue.host), "turn") {
+		return "STUN / WebRTC 音视频通话打洞（命中防真实 IP 泄露规则）"
+	}
+	if hasPort("53") {
+		return "DNS 域名解析 (UDP/53)"
+	}
+	if hasPort("853") {
+		return "DoT 加密 DNS (TCP/853)"
+	}
+	if hasPort("123") {
+		return "NTP 网络授时 (UDP/123)"
+	}
+	if hasPort("443") && (hasNet("udp") || len(issue.networks) == 0) {
+		if hasNet("udp") {
+			return "QUIC / HTTP3（国内应用 UDP/443 直连 IP）"
+		}
+	}
+	if hasPort("443") {
+		return "HTTPS Web 流量"
+	}
+	if hasPort("80") {
+		return "HTTP Web 流量"
+	}
+	if hasPort("22") {
+		return "SSH 远程管理"
+	}
+	if hasPort("5223") {
+		return "Apple APNs 苹果推送服务"
+	}
+	if hasPort("5228") || hasPort("5229") || hasPort("5230") {
+		return "Android / FCM 消息推送"
+	}
+	netStr := strings.ToUpper(strings.Join(issue.networks, "/"))
+	portStr := strings.Join(issue.ports, ",")
+	if netStr != "" && portStr != "" {
+		return fmt.Sprintf("%s / 端口 %s", netStr, portStr)
+	}
+	if portStr != "" {
+		return fmt.Sprintf("端口 %s", portStr)
+	}
+	return "普通网络流量"
 }
 
 func appendDistinctLimit(list []string, item string, limit int) []string {
@@ -1179,6 +1241,9 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 		if issue.host == "" && host != "" {
 			issue.host = host
 		}
+		if connection.Network != "" {
+			issue.networks = appendDistinctLimit(issue.networks, strings.ToLower(connection.Network), 2)
+		}
 		if destPort != "" {
 			issue.ports = appendDistinctLimit(issue.ports, destPort, 3)
 		}
@@ -1239,7 +1304,13 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 	barkBlocks := make([]string, 0, 3)
 	for index, issue := range list {
 		addrLabel := issue.destIP
-		if len(issue.ports) == 1 {
+		portDesc := strings.Join(issue.ports, ", ")
+		if len(issue.networks) > 0 {
+			netDesc := strings.ToUpper(strings.Join(issue.networks, "/"))
+			if portDesc != "" {
+				addrLabel += fmt.Sprintf(":%s (%s)", portDesc, netDesc)
+			}
+		} else if len(issue.ports) == 1 {
 			addrLabel += ":" + issue.ports[0]
 		} else if len(issue.ports) > 1 {
 			addrLabel += fmt.Sprintf(" (端口 %s)", strings.Join(issue.ports, ", "))
@@ -1263,6 +1334,7 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 				itemHeader = "\n" + itemHeader
 			}
 			lines = append(lines, itemHeader)
+			lines = append(lines, tgLine("类型", issue.trafficType()))
 			if nodeDesc != "" {
 				lines = append(lines, tgLine("节点", nodeDesc))
 			}
@@ -1279,6 +1351,7 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 			}
 			var itemLines []string
 			itemLines = append(itemLines, fmt.Sprintf("%d. %s [%s · %d条]", index+1, barkTarget, issue.location, issue.count))
+			itemLines = append(itemLines, "   类型："+issue.trafficType())
 			if nodeDesc != "" {
 				itemLines = append(itemLines, "   节点："+nodeDesc)
 			}
