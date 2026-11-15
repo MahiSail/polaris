@@ -1093,21 +1093,50 @@ func (s *Server) dispatchNodeConfigurations(ctx context.Context, nodeIDs []strin
 	return tasks, nil
 }
 
+// DNSMappingItem represents a single target IP to domain mapping within a batch DNS update instruction.
+type DNSMappingItem struct {
+	IP      string   `json:"ip"`
+	Domains []string `json:"domains"`
+}
+
 // dispatchNodeDNSUpdate dispatches a "dns.update" task instruction to the given nodes,
 // instructing them to update their local DNS resolution for the specified domains to the target IP,
 // without recompiling or changing the sing-box configurations on those nodes.
 func (s *Server) dispatchNodeDNSUpdate(ctx context.Context, nodeIDs []string, domains []string, ip, operatorID string) ([]Task, error) {
-	domains = deduplicateStrings(domains)
-	sort.Strings(domains)
-	if len(nodeIDs) == 0 || len(domains) == 0 || ip == "" {
+	return s.dispatchNodeBatchDNSUpdate(ctx, nodeIDs, []DNSMappingItem{{IP: ip, Domains: domains}}, operatorID)
+}
+
+// dispatchNodeBatchDNSUpdate dispatches a consolidated "dns.update" task instruction to the given nodes,
+// instructing them to update local DNS resolutions for multiple target mappings in a single atomic task.
+func (s *Server) dispatchNodeBatchDNSUpdate(ctx context.Context, nodeIDs []string, mappings []DNSMappingItem, operatorID string) ([]Task, error) {
+	if len(nodeIDs) == 0 || len(mappings) == 0 {
 		return nil, nil
 	}
-	payloadBytes, err := json.Marshal(map[string]any{
-		"ip":      ip,
-		"domains": domains,
-	})
+	// Normalize mappings: deduplicate and sort domains within each mapping
+	normalized := make([]DNSMappingItem, 0, len(mappings))
+	for _, m := range mappings {
+		ip := strings.TrimSpace(m.IP)
+		domains := deduplicateStrings(m.Domains)
+		sort.Strings(domains)
+		if ip != "" && len(domains) > 0 {
+			normalized = append(normalized, DNSMappingItem{
+				IP:      ip,
+				Domains: domains,
+			})
+		}
+	}
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+
+	payloadMap := map[string]any{
+		"mappings": normalized,
+		"ip":       normalized[0].IP,
+		"domains":  normalized[0].Domains,
+	}
+	payloadBytes, err := json.Marshal(payloadMap)
 	if err != nil {
-		return nil, fmt.Errorf("marshal dns update payload: %w", err)
+		return nil, fmt.Errorf("marshal batch dns update payload: %w", err)
 	}
 	payload := string(payloadBytes)
 	digest := sha256.Sum256(payloadBytes)
@@ -1124,12 +1153,17 @@ func (s *Server) dispatchNodeDNSUpdate(ctx context.Context, nodeIDs []string, do
 			ExpectedHash:   hash,
 		})
 		if err != nil {
-			log.Printf("ddns: dispatch dns.update for node %s failed: %v", nodeID, err)
+			log.Printf("ddns: dispatch batch dns.update for node %s failed: %v", nodeID, err)
 			continue
 		}
 		tasks = append(tasks, task)
 		if operatorID != "" {
-			auditSummary := fmt.Sprintf("NAT 出口 IP 变更，已向前置服务器「%s」下发 DNS 刷新与链路自愈指令（目标 IP: %s，域名: %s）", nodeID, ip, strings.Join(domains, ", "))
+			var auditSummary string
+			if len(normalized) == 1 {
+				auditSummary = fmt.Sprintf("NAT 出口 IP 变更，已向前置服务器「%s」下发 DNS 刷新与链路自愈指令（目标 IP: %s，域名: %s）", nodeID, normalized[0].IP, strings.Join(normalized[0].Domains, ", "))
+			} else {
+				auditSummary = fmt.Sprintf("已向前置服务器「%s」下发合并的 DNS 刷新与链路自愈指令（合并包含 %d 个目标节点）", nodeID, len(normalized))
+			}
 			_ = s.store.AppendAudit(ctx, operatorID, "node.dns_update_dispatched", "node", nodeID, auditSummary)
 		}
 	}

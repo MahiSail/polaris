@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -154,7 +155,10 @@ func configurePingProbes(task Task, dataDir string) TaskResult {
 	for _, probe := range payload {
 		targets = append(targets, PingTargetConfig{ID: probe.ID, Name: probe.Name, Addr: probe.Target})
 	}
-	ConfigurePingTargets(targets, dataDir)
+	changed := ConfigurePingTargets(targets, dataDir)
+	if !changed {
+		return TaskResult{Status: "succeeded", Summary: "延迟监控目标已是最新，无需修改"}
+	}
 	return TaskResult{Status: "succeeded", Summary: "延迟监控已下发"}
 }
 
@@ -582,6 +586,32 @@ func mutateFail2Ban(ctx context.Context, task Task) TaskResult {
 	if !strings.EqualFold(hex.EncodeToString(digest[:]), task.ExpectedHash) {
 		return TaskResult{Status: "failed", Summary: "自动封禁操作校验失败"}
 	}
+	if mutation.Operation == "save" {
+		if current, err := readManagedJails(); err == nil {
+			for _, j := range current {
+				if fail2BanJailsEqual(j, mutation.Jail) && fail2banServiceActive(ctx) {
+					live := CollectLiveFail2Ban(ctx)
+					encoded, _ := json.Marshal(live)
+					return TaskResult{Status: "succeeded", Summary: "自动封禁规则已是最新，无需修改", Data: string(encoded)}
+				}
+			}
+		}
+	} else if mutation.Operation == "delete" {
+		if current, err := readManagedJails(); err == nil {
+			found := false
+			for _, j := range current {
+				if j.Name == mutation.Jail.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				live := CollectLiveFail2Ban(ctx)
+				encoded, _ := json.Marshal(live)
+				return TaskResult{Status: "succeeded", Summary: "目标封禁规则已不存在，无需修改", Data: string(encoded)}
+			}
+		}
+	}
 	live, err := ApplyFail2BanMutation(ctx, mutation)
 	if err != nil {
 		return TaskResult{Status: "failed", Summary: err.Error()}
@@ -591,6 +621,21 @@ func mutateFail2Ban(ctx context.Context, task Task) TaskResult {
 		return TaskResult{Status: "failed", Summary: "编码自动封禁规则失败：" + err.Error()}
 	}
 	return TaskResult{Status: "succeeded", Summary: "自动封禁规则已在服务器上生效", Data: string(encoded)}
+}
+
+func fail2BanJailsEqual(a, b LiveFail2BanJail) bool {
+	return a.Name == b.Name &&
+		a.FilterName == b.FilterName &&
+		a.LogPath == b.LogPath &&
+		strings.TrimSpace(a.Ports) == strings.TrimSpace(b.Ports) &&
+		a.MaxRetry == b.MaxRetry &&
+		a.FindTimeSeconds == b.FindTimeSeconds &&
+		a.BanTimeSeconds == b.BanTimeSeconds &&
+		a.FailRegex == b.FailRegex
+}
+
+func fail2banServiceActive(ctx context.Context) bool {
+	return exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "fail2ban.service").Run() == nil
 }
 
 // mutateFirewall changes the host's firewall and answers with what it enforces
@@ -604,15 +649,54 @@ func mutateFirewall(ctx context.Context, task Task) TaskResult {
 	if !strings.EqualFold(hex.EncodeToString(digest[:]), task.ExpectedHash) {
 		return TaskResult{Status: "failed", Summary: "访问限制操作校验失败"}
 	}
-	live, err := ApplyFirewallMutation(ctx, mutation)
+	live := CollectLiveFirewall(ctx)
+	if mutation.Operation == "add" {
+		for _, rule := range live.Rules {
+			if firewallRuleMatches(rule, mutation.Rule) {
+				encoded, _ := json.Marshal(live)
+				return TaskResult{Status: "succeeded", Summary: "访问限制规则已存在，无需重复添加", Data: string(encoded)}
+			}
+		}
+	} else if mutation.Operation == "delete" {
+		found := false
+		for _, rule := range live.Rules {
+			if firewallRuleMatches(rule, mutation.Rule) || (mutation.Rule.Handle != "" && rule.Handle == mutation.Rule.Handle) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			encoded, _ := json.Marshal(live)
+			return TaskResult{Status: "succeeded", Summary: "目标规则已不存在，无需修改", Data: string(encoded)}
+		}
+	}
+	newLive, err := ApplyFirewallMutation(ctx, mutation)
 	if err != nil {
 		return TaskResult{Status: "failed", Summary: err.Error()}
 	}
-	encoded, err := json.Marshal(live)
+	encoded, err := json.Marshal(newLive)
 	if err != nil {
 		return TaskResult{Status: "failed", Summary: "编码防火墙规则失败：" + err.Error()}
 	}
 	return TaskResult{Status: "succeeded", Summary: "访问限制已在服务器防火墙上生效", Data: string(encoded)}
+}
+
+func firewallRuleMatches(a, b LiveFirewallRule) bool {
+	if a.Action != b.Action || a.Protocol != b.Protocol || a.Port != b.Port {
+		return false
+	}
+	if a.CIDR == "" && b.CIDR == "" {
+		return true
+	}
+	if a.CIDR == "" || b.CIDR == "" {
+		return false
+	}
+	normA, okA := normalizeCIDR(a.CIDR)
+	normB, okB := normalizeCIDR(b.CIDR)
+	if !okA || !okB {
+		return a.CIDR == b.CIDR
+	}
+	return normA == normB
 }
 
 // ensureIptablesReady makes sure the command this agent writes rules with is
@@ -695,6 +779,9 @@ func applyNginxConfiguration(ctx context.Context, configuration, dataDir string,
 	if current, err := os.ReadFile(managedNginxConfig); err == nil {
 		currentDigest := sha256.Sum256(current)
 		if currentDigest == effectiveDigest && nginxServiceActive(ctx) {
+			if len(edits) == 0 {
+				return nginxApplySucceeded(dataDir, edits)
+			}
 			if testOutput, testErr := exec.CommandContext(ctx, "nginx", "-t").CombinedOutput(); testErr != nil {
 				return TaskResult{Status: "failed", Summary: commandSummary("nginx -t", testOutput, testErr)}
 			}
@@ -1091,7 +1178,7 @@ func applySingBoxConfig(ctx context.Context, task Task, dataDir string, passthro
 	}
 	dropInUpdated, _ := ensureSingBoxPriorityDropIn(ctx)
 	currentConfig, err := os.ReadFile(managedSingBoxConfig)
-	if !dropInUpdated && err == nil && strings.TrimSpace(string(currentConfig)) == strings.TrimSpace(plan.configuration) && singBoxServiceActive(ctx) {
+	if !dropInUpdated && err == nil && singBoxConfigsSemanticallyMatch(currentConfig, plan.configuration) && singBoxServiceActive(ctx) {
 		router := applyNginxConfiguration(ctx, routerConfiguration, dataDir, passthrough)
 		if router.Status == "failed" {
 			return TaskResult{Status: "failed", Summary: "Nginx 分流未能应用：" + router.Summary}
@@ -1120,7 +1207,8 @@ func applySingBoxConfig(ctx context.Context, task Task, dataDir string, passthro
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if _, err := temporary.WriteString(plan.configuration); err != nil {
+	effectiveConfig := preserveDynamicPredefinedDNSRules(currentConfig, plan.configuration)
+	if _, err := temporary.WriteString(effectiveConfig); err != nil {
 		temporary.Close()
 		return TaskResult{Status: "failed", Summary: "write temporary configuration: " + err.Error()}
 	}
@@ -1205,6 +1293,128 @@ func applySingBoxConfig(ctx context.Context, task Task, dataDir string, passthro
 	// message an operator sees, and it is often their very first deploy with
 	// no prior backup to roll back to.
 	return TaskResult{Status: "failed", Summary: "new configuration failed and automatic rollback did not complete: " + result.Summary}
+}
+
+func singBoxConfigsSemanticallyMatch(currentBytes []byte, desiredStr string) bool {
+	if strings.TrimSpace(string(currentBytes)) == strings.TrimSpace(desiredStr) {
+		return true
+	}
+	var currentMap, desiredMap map[string]any
+	if err := json.Unmarshal(currentBytes, &currentMap); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(desiredStr), &desiredMap); err != nil {
+		return false
+	}
+	stripDynamicPredefinedDNSRules(currentMap)
+	stripDynamicPredefinedDNSRules(desiredMap)
+	return reflect.DeepEqual(currentMap, desiredMap)
+}
+
+func stripDynamicPredefinedDNSRules(cfg map[string]any) {
+	dnsMap, ok := cfg["dns"].(map[string]any)
+	if !ok || dnsMap == nil {
+		return
+	}
+	rules, ok := dnsMap["rules"].([]any)
+	if !ok || len(rules) == 0 {
+		return
+	}
+	var kept []any
+	for _, r := range rules {
+		rMap, ok := r.(map[string]any)
+		if !ok {
+			kept = append(kept, r)
+			continue
+		}
+		if rMap["action"] == "predefined" {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if len(kept) == 0 {
+		delete(dnsMap, "rules")
+	} else {
+		dnsMap["rules"] = kept
+	}
+	if len(dnsMap) == 0 {
+		delete(cfg, "dns")
+	}
+}
+
+func preserveDynamicPredefinedDNSRules(currentBytes []byte, desiredConfig string) string {
+	if len(currentBytes) == 0 {
+		return desiredConfig
+	}
+	var currentMap map[string]any
+	if err := json.Unmarshal(currentBytes, &currentMap); err != nil {
+		return desiredConfig
+	}
+	dnsMap, ok := currentMap["dns"].(map[string]any)
+	if !ok || dnsMap == nil {
+		return desiredConfig
+	}
+	rules, ok := dnsMap["rules"].([]any)
+	if !ok || len(rules) == 0 {
+		return desiredConfig
+	}
+	var predefined []any
+	for _, r := range rules {
+		if rMap, ok := r.(map[string]any); ok && rMap["action"] == "predefined" {
+			predefined = append(predefined, r)
+		}
+	}
+	if len(predefined) == 0 {
+		return desiredConfig
+	}
+
+	var desiredMap map[string]any
+	if err := json.Unmarshal([]byte(desiredConfig), &desiredMap); err != nil {
+		return desiredConfig
+	}
+	desDNS, ok := desiredMap["dns"].(map[string]any)
+	if !ok || desDNS == nil {
+		desDNS = make(map[string]any)
+		desiredMap["dns"] = desDNS
+	}
+	var desRules []any
+	if existing, ok := desDNS["rules"].([]any); ok {
+		desRules = existing
+	}
+	domainSeen := make(map[string]bool)
+	for _, r := range desRules {
+		if rMap, ok := r.(map[string]any); ok {
+			if dList, ok := rMap["domain"].([]any); ok {
+				for _, d := range dList {
+					if dStr, ok := d.(string); ok {
+						domainSeen[strings.ToLower(strings.TrimSuffix(dStr, "."))] = true
+					}
+				}
+			}
+		}
+	}
+	for _, r := range predefined {
+		if rMap, ok := r.(map[string]any); ok {
+			hasOverlap := false
+			if dList, ok := rMap["domain"].([]any); ok {
+				for _, d := range dList {
+					if dStr, ok := d.(string); ok && domainSeen[strings.ToLower(strings.TrimSuffix(dStr, "."))] {
+						hasOverlap = true
+						break
+					}
+				}
+			}
+			if !hasOverlap {
+				desRules = append(desRules, r)
+			}
+		}
+	}
+	desDNS["rules"] = desRules
+	encoded, err := json.MarshalIndent(desiredMap, "", "  ")
+	if err != nil {
+		return desiredConfig
+	}
+	return string(encoded)
 }
 
 // currentlySingBoxHeldPorts are the TCP ports sing-box binds right now. The
@@ -1376,6 +1586,7 @@ func restartSingBox(ctx context.Context) TaskResult {
 	if err := ensureSingBoxService(ctx); err != nil {
 		return TaskResult{Status: "failed", Summary: "prepare sing-box service: " + err.Error()}
 	}
+	_ = exec.CommandContext(ctx, "systemctl", "reset-failed", "sing-box.service").Run()
 	if output, err := exec.CommandContext(ctx, "systemctl", "restart", "sing-box.service").CombinedOutput(); err != nil {
 		return TaskResult{Status: "failed", Summary: commandSummary("systemctl restart sing-box.service", output, err)}
 	}

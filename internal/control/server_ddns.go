@@ -685,42 +685,76 @@ func (s *Server) clearDDNSHistory(w http.ResponseWriter, r *http.Request) {
 
 // reconcileNodeChainedDDNS ensures any DDNS-enabled target nodes chained by the given node
 // have their latest IP and DNS resolution properly synchronized to this node.
-// If the node missed a previous dns.update (e.g. was offline during IP change, or task was interrupted),
-// this reconciles and dispatches the update immediately upon reconnect.
+// All chained targets are consolidated into a single batch dns.update task to prevent
+// multiple bursts of tasks and redundant service restarts.
 func (s *Server) reconcileNodeChainedDDNS(ctx context.Context, nodeID string) {
 	targets, err := s.store.NodeChainedDDNSTargets(ctx, nodeID)
 	if err != nil || len(targets) == 0 {
 		return
 	}
 	operatorID := s.store.SystemOperatorID(ctx)
-	for _, tgt := range targets {
-		domains := deduplicateStrings(tgt.Domains)
-		sort.Strings(domains)
-		if len(domains) == 0 || tgt.TargetIP == "" {
-			continue
-		}
-		payloadBytes, err := json.Marshal(map[string]any{
-			"domains": domains,
-			"ip":      tgt.TargetIP,
-		})
-		if err != nil {
-			continue
-		}
-		digest := sha256.Sum256(payloadBytes)
-		hash := hex.EncodeToString(digest[:])
 
-		hasActiveOrSucceeded, err := s.store.HasActiveOrSucceededDNSTask(ctx, nodeID, hash)
-		if err != nil {
-			log.Printf("reconcileNodeChainedDDNS error checking task for node %s: %v", nodeID, err)
+	// Consolidate target domains by IP
+	mappingMap := make(map[string][]string)
+	for _, tgt := range targets {
+		if tgt.TargetIP == "" {
 			continue
 		}
-		if hasActiveOrSucceeded {
-			continue
+		for _, d := range tgt.Domains {
+			d = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(d, ".")))
+			if d != "" {
+				mappingMap[tgt.TargetIP] = append(mappingMap[tgt.TargetIP], d)
+			}
 		}
-		log.Printf("reconcileNodeChainedDDNS: dispatching missing/interrupted dns.update to node %s (target IP: %s, domains: %v)", nodeID, tgt.TargetIP, domains)
-		if _, err := s.dispatchNodeDNSUpdate(ctx, []string{nodeID}, domains, tgt.TargetIP, operatorID); err != nil {
-			log.Printf("reconcileNodeChainedDDNS: dispatch dns.update for node %s failed: %v", nodeID, err)
+	}
+	if len(mappingMap) == 0 {
+		return
+	}
+
+	ips := make([]string, 0, len(mappingMap))
+	for ip := range mappingMap {
+		ips = append(ips, ip)
+	}
+	sort.Strings(ips)
+
+	var mappings []DNSMappingItem
+	for _, ip := range ips {
+		domains := deduplicateStrings(mappingMap[ip])
+		sort.Strings(domains)
+		if len(domains) > 0 {
+			mappings = append(mappings, DNSMappingItem{
+				IP:      ip,
+				Domains: domains,
+			})
 		}
+	}
+	if len(mappings) == 0 {
+		return
+	}
+
+	payloadMap := map[string]any{
+		"mappings": mappings,
+		"ip":       mappings[0].IP,
+		"domains":  mappings[0].Domains,
+	}
+	payloadBytes, err := json.Marshal(payloadMap)
+	if err != nil {
+		return
+	}
+	digest := sha256.Sum256(payloadBytes)
+	hash := hex.EncodeToString(digest[:])
+
+	hasActiveOrSucceeded, err := s.store.HasActiveOrSucceededDNSTask(ctx, nodeID, hash)
+	if err != nil {
+		log.Printf("reconcileNodeChainedDDNS error checking task for node %s: %v", nodeID, err)
+		return
+	}
+	if hasActiveOrSucceeded {
+		return
+	}
+	log.Printf("reconcileNodeChainedDDNS: dispatching consolidated dns.update to node %s (%d target mappings)", nodeID, len(mappings))
+	if _, err := s.dispatchNodeBatchDNSUpdate(ctx, []string{nodeID}, mappings, operatorID); err != nil {
+		log.Printf("reconcileNodeChainedDDNS: dispatch consolidated dns.update for node %s failed: %v", nodeID, err)
 	}
 }
 

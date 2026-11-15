@@ -77,7 +77,19 @@ func defaultPingTargetList() []pingTarget {
 	return []pingTarget{}
 }
 
-func ConfigurePingTargets(targets []PingTargetConfig, dataDir ...string) {
+func pingTargetsEqual(a, b []pingTarget) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Addr != b[i].Addr {
+			return false
+		}
+	}
+	return true
+}
+
+func ConfigurePingTargets(targets []PingTargetConfig, dataDir ...string) bool {
 	list := make([]pingTarget, 0, len(targets))
 	for _, target := range targets {
 		if target.ID != "" && target.Addr != "" {
@@ -89,13 +101,17 @@ func ConfigurePingTargets(targets []PingTargetConfig, dataDir ...string) {
 		globalPingRunner.dataDir = dataDir[0]
 		globalPingRunner.mu.Unlock()
 	}
-	globalPingRunner.configure(list)
+	return globalPingRunner.configure(list)
 }
 
 type PingTargetConfig struct{ ID, Name, Addr string }
 
-func (r *PingProbeRunner) configure(targets []pingTarget) {
+func (r *PingProbeRunner) configure(targets []pingTarget) bool {
 	r.mu.Lock()
+	if pingTargetsEqual(r.targets, targets) {
+		r.mu.Unlock()
+		return false
+	}
 	r.targets = targets
 	dataDir := r.dataDir
 	r.mu.Unlock()
@@ -106,6 +122,7 @@ func (r *PingProbeRunner) configure(targets []pingTarget) {
 		}
 	}
 	r.runProbe()
+	return true
 }
 
 func (r *PingProbeRunner) addTarget(target pingTarget) {

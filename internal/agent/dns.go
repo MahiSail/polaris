@@ -12,14 +12,22 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
-type DNSUpdatePayload struct {
+type DNSMappingItem struct {
 	IP      string   `json:"ip"`
-	Domain  string   `json:"domain,omitempty"`
-	Domains []string `json:"domains,omitempty"`
+	Domains []string `json:"domains"`
+}
+
+type DNSUpdatePayload struct {
+	IP       string           `json:"ip,omitempty"`
+	Domain   string           `json:"domain,omitempty"`
+	Domains  []string         `json:"domains,omitempty"`
+	Mappings []DNSMappingItem `json:"mappings,omitempty"`
 }
 
 // flushSystemDNSCache attempts to flush system resolver caches on a best-effort basis.
@@ -35,20 +43,31 @@ func flushSystemDNSCache(ctx context.Context) {
 }
 
 // syncHostsFile best-effort updates /etc/hosts with a managed polaris block.
-// Returns true if successfully updated, or false if non-root lacking write permission (or error).
-func syncHostsFile(domains []string, targetIP string) bool {
+// Returns changed=true if /etc/hosts was rewritten, alreadyUpToDate=true if already identical.
+// Returns ok=true if /etc/hosts matches desired state or was written successfully.
+func syncHostsFile(mappings []DNSMappingItem) (changed bool, alreadyUpToDate bool, ok bool) {
 	if runtime.GOOS == "windows" {
-		return false
+		return false, false, false
 	}
-	targetIP = strings.TrimSpace(targetIP)
-	if targetIP == "" || len(domains) == 0 {
-		return false
+	if len(mappings) == 0 {
+		return false, true, true
 	}
 	hostsPath := "/etc/hosts"
 	content, err := os.ReadFile(hostsPath)
 	if err != nil {
-		return false
+		return false, false, false
 	}
+
+	managedDomainMap := make(map[string]bool)
+	for _, m := range mappings {
+		for _, d := range m.Domains {
+			d = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(d, ".")))
+			if d != "" {
+				managedDomainMap[d] = true
+			}
+		}
+	}
+
 	lines := strings.Split(string(content), "\n")
 	var newLines []string
 	inPolarisBlock := false
@@ -66,10 +85,13 @@ func syncHostsFile(domains []string, targetIP string) bool {
 			continue
 		}
 		hasDomain := false
-		for _, d := range domains {
-			if strings.Contains(line, d) {
-				hasDomain = true
-				break
+		fields := strings.Fields(line)
+		if len(fields) > 1 {
+			for _, f := range fields[1:] {
+				if managedDomainMap[strings.ToLower(strings.TrimSuffix(f, "."))] {
+					hasDomain = true
+					break
+				}
 			}
 		}
 		if !hasDomain {
@@ -79,37 +101,43 @@ func syncHostsFile(domains []string, targetIP string) bool {
 
 	var managedBlock []string
 	managedBlock = append(managedBlock, "# BEGIN POLARIS DDNS")
-	for _, d := range domains {
-		d = strings.TrimSpace(d)
-		if d != "" {
-			managedBlock = append(managedBlock, fmt.Sprintf("%s %s", targetIP, d))
+	for _, m := range mappings {
+		ip := strings.TrimSpace(m.IP)
+		for _, d := range m.Domains {
+			d = strings.TrimSpace(d)
+			if d != "" && ip != "" {
+				managedBlock = append(managedBlock, fmt.Sprintf("%s %s", ip, d))
+			}
 		}
 	}
 	managedBlock = append(managedBlock, "# END POLARIS DDNS")
 
 	newContent := strings.TrimRight(strings.Join(newLines, "\n"), "\n") + "\n" + strings.Join(managedBlock, "\n") + "\n"
-	if err := os.WriteFile(hostsPath, []byte(newContent), 0o644); err != nil {
-		return false
+	if newContent == string(content) {
+		return false, true, true
 	}
-	return true
+	if err := os.WriteFile(hostsPath, []byte(newContent), 0o644); err != nil {
+		return false, false, false
+	}
+	return true, false, true
 }
 
 // updateSingBoxDNSOverride updates sing-box's configuration file (managed by agent)
-// with a predefined DNS rule mapping domain -> targetIP.
-// This works under both root and non-root agent executions without requiring /etc/hosts.
-func updateSingBoxDNSOverride(domains []string, targetIP, dataDir string) (bool, error) {
+// with predefined DNS rules mapping domain -> targetIP for all mappings.
+// Returns changed=true if config was written, alreadyUpToDate=true if already up to date.
+func updateSingBoxDNSOverride(mappings []DNSMappingItem, dataDir string) (bool, bool, error) {
 	configPath := managedSingBoxConfig
 	if _, err := os.Stat(configPath); err != nil {
-		return false, nil
+		return false, false, nil
 	}
 	configBytes, err := os.ReadFile(configPath)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	var configMap map[string]any
 	if err := json.Unmarshal(configBytes, &configMap); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	dnsMap, ok := configMap["dns"].(map[string]any)
@@ -118,25 +146,78 @@ func updateSingBoxDNSOverride(domains []string, targetIP, dataDir string) (bool,
 		configMap["dns"] = dnsMap
 	}
 
-	rtype := "A"
-	if parsed := net.ParseIP(targetIP); parsed != nil && parsed.To4() == nil {
-		rtype = "AAAA"
-	}
-
 	var rules []any
 	if existingRules, ok := dnsMap["rules"].([]any); ok {
 		rules = existingRules
 	}
 
-	domainSet := make(map[string]bool)
-	for _, d := range domains {
-		d = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(d, ".")))
-		if d != "" {
-			domainSet[d] = true
+	type domainRule struct {
+		rtype  string
+		ip     string
+		answer string
+	}
+	desiredRules := make(map[string]domainRule)
+	for _, m := range mappings {
+		ip := strings.TrimSpace(m.IP)
+		if ip == "" {
+			continue
+		}
+		rtype := "A"
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() == nil {
+			rtype = "AAAA"
+		}
+		for _, d := range m.Domains {
+			d = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(d, ".")))
+			if d != "" {
+				desiredRules[d] = domainRule{
+					rtype:  rtype,
+					ip:     ip,
+					answer: fmt.Sprintf("%s. 60 IN %s %s", d, rtype, ip),
+				}
+			}
 		}
 	}
 
-	// Filter out any existing predefined rules for these domains
+	if len(desiredRules) == 0 {
+		return false, false, nil
+	}
+
+	// Check if all desired domains already have exact predefined rules matching desired answer
+	allUpToDate := true
+	for d, want := range desiredRules {
+		found := false
+		for _, r := range rules {
+			rMap, ok := r.(map[string]any)
+			if !ok || rMap["action"] != "predefined" {
+				continue
+			}
+			if dList, ok := rMap["domain"].([]any); ok {
+				for _, dItem := range dList {
+					if dStr, ok := dItem.(string); ok && strings.ToLower(strings.TrimSuffix(dStr, ".")) == d {
+						if aList, ok := rMap["answer"].([]any); ok && len(aList) == 1 {
+							if aStr, ok := aList[0].(string); ok && aStr == want.answer {
+								found = true
+							}
+						}
+						break
+					}
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			allUpToDate = false
+			break
+		}
+	}
+
+	if allUpToDate {
+		return false, true, nil
+	}
+
+	// Filter out existing predefined rules for all desired domains
 	var filteredRules []any
 	for _, r := range rules {
 		rMap, ok := r.(map[string]any)
@@ -148,7 +229,7 @@ func updateSingBoxDNSOverride(domains []string, targetIP, dataDir string) (bool,
 			match := false
 			if dList, ok := rMap["domain"].([]any); ok {
 				for _, dItem := range dList {
-					if dStr, ok := dItem.(string); ok && domainSet[strings.ToLower(strings.TrimSuffix(dStr, "."))] {
+					if dStr, ok := dItem.(string); ok && desiredRules[strings.ToLower(strings.TrimSuffix(dStr, "."))].answer != "" {
 						match = true
 						break
 					}
@@ -161,49 +242,56 @@ func updateSingBoxDNSOverride(domains []string, targetIP, dataDir string) (bool,
 		filteredRules = append(filteredRules, r)
 	}
 
-	// Append updated predefined rules
-	for d := range domainSet {
+	// Append updated predefined rules (sort domains for deterministic output)
+	sortedDomains := make([]string, 0, len(desiredRules))
+	for d := range desiredRules {
+		sortedDomains = append(sortedDomains, d)
+	}
+	sort.Strings(sortedDomains)
+
+	for _, d := range sortedDomains {
+		rule := desiredRules[d]
 		filteredRules = append(filteredRules, map[string]any{
 			"domain": []any{d},
 			"action": "predefined",
-			"answer": []any{fmt.Sprintf("%s. 60 IN %s %s", d, rtype, targetIP)},
+			"answer": []any{rule.answer},
 		})
 	}
 	dnsMap["rules"] = filteredRules
 
 	encoded, err := json.MarshalIndent(configMap, "", "  ")
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	configDir := filepath.Dir(configPath)
 	tempFile, err := os.CreateTemp(configDir, ".singbox-ddns-*.json")
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	tempPath := tempFile.Name()
 	defer os.Remove(tempPath)
 
 	if _, err := tempFile.Write(encoded); err != nil {
 		tempFile.Close()
-		return false, err
+		return false, false, err
 	}
 	if err := tempFile.Chmod(0o640); err != nil {
 		tempFile.Close()
-		return false, err
+		return false, false, err
 	}
 	if err := tempFile.Close(); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	if err := os.Rename(tempPath, configPath); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	if dataDir != "" {
 		_ = updateEffectiveSingBoxConfigurationState(dataDir)
 	}
-	return true, nil
+	return true, false, nil
 }
 
 // closeStaleClashConnections selectively terminates only the active connections targeting
@@ -359,61 +447,150 @@ func verifyDomainResolution(ctx context.Context, domain, expectedIP string, time
 	return nil, false
 }
 
+var (
+	dnsRestartMu       sync.Mutex
+	lastDNSRestartAt   time.Time
+	dnsPendingTimer    *time.Timer
+	dnsRestartCooldown = 5 * time.Second
+)
+
 func updateDNS(ctx context.Context, task Task, dataDirOpts ...string) TaskResult {
 	var payload DNSUpdatePayload
 	if err := json.Unmarshal([]byte(task.Payload), &payload); err != nil {
 		return TaskResult{Status: "failed", Summary: "invalid dns.update payload: " + err.Error()}
 	}
-	var domains []string
-	if payload.Domain != "" {
-		domains = append(domains, payload.Domain)
+
+	var mappings []DNSMappingItem
+	if len(payload.Mappings) > 0 {
+		mappings = append(mappings, payload.Mappings...)
 	}
-	domains = append(domains, payload.Domains...)
-	domains = deduplicateStrings(domains)
-	if len(domains) == 0 {
-		return TaskResult{Status: "failed", Summary: "missing target domains in dns.update payload"}
+	if payload.IP != "" {
+		var singleDomains []string
+		if payload.Domain != "" {
+			singleDomains = append(singleDomains, payload.Domain)
+		}
+		singleDomains = append(singleDomains, payload.Domains...)
+		singleDomains = deduplicateStrings(singleDomains)
+		if len(singleDomains) > 0 {
+			exists := false
+			for _, m := range mappings {
+				if m.IP == payload.IP {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				mappings = append(mappings, DNSMappingItem{
+					IP:      payload.IP,
+					Domains: singleDomains,
+				})
+			}
+		}
 	}
-	expectedIP := strings.TrimSpace(payload.IP)
-	if expectedIP == "" {
-		return TaskResult{Status: "failed", Summary: "missing target IP in dns.update payload"}
+
+	var cleanMappings []DNSMappingItem
+	var allDomains []string
+	for _, m := range mappings {
+		ip := strings.TrimSpace(m.IP)
+		domains := deduplicateStrings(m.Domains)
+		if ip != "" && len(domains) > 0 {
+			cleanMappings = append(cleanMappings, DNSMappingItem{
+				IP:      ip,
+				Domains: domains,
+			})
+			allDomains = append(allDomains, domains...)
+		}
 	}
+	if len(cleanMappings) == 0 {
+		return TaskResult{Status: "failed", Summary: "missing target domains/mappings in dns.update payload"}
+	}
+	allDomains = deduplicateStrings(allDomains)
 
 	var dataDir string
 	if len(dataDirOpts) > 0 && dataDirOpts[0] != "" {
 		dataDir = dataDirOpts[0]
 	}
 
-	var notes []string
+	// 1. Best-effort /etc/hosts update
+	hostsChanged, hostsUpToDate, hostsOK := syncHostsFile(cleanMappings)
 
-	// 1. Best-effort /etc/hosts update (0ms resolution, works when running as root)
-	if syncHostsFile(domains, expectedIP) {
+	// 2. Update sing-box configuration with predefined DNS rules
+	singboxChanged, singboxUpToDate, singboxErr := updateSingBoxDNSOverride(cleanMappings, dataDir)
+	if singboxErr != nil {
+		return TaskResult{Status: "failed", Summary: "更新 sing-box 静态解析失败: " + singboxErr.Error()}
+	}
+
+	// ZERO-OP IDEMPOTENCY CHECK:
+	// If at least one target was verified to already contain the desired records and neither needed modifications,
+	// execute zero commands, write zero files, flush zero caches, restart zero services.
+	if !hostsChanged && !singboxChanged && (hostsUpToDate || singboxUpToDate) {
+		return TaskResult{
+			Status:  "succeeded",
+			Summary: "所有域名解析与静态规则均已是最新，无需修改",
+		}
+	}
+
+	var notes []string
+	if hostsChanged && hostsOK {
 		notes = append(notes, "已同步 /etc/hosts")
 	}
 
-	// 2. Best-effort system DNS cache flush
+	// Flush system DNS cache only when actual updates occurred
 	flushSystemDNSCache(ctx)
 
-	// 3. Update sing-box configuration with predefined DNS rules
-	// This guarantees 0ms local DNS resolution inside sing-box without requiring root access to /etc/hosts.
-	if updated, err := updateSingBoxDNSOverride(domains, expectedIP, dataDir); err == nil && updated {
+	if singboxChanged {
 		notes = append(notes, "已写入 sing-box 静态解析规则")
 	}
 
-	// 4. Selectively terminate stale connections targeting the affected NAT domain/IP/chain
-	_ = closeStaleClashConnections(ctx, domains, expectedIP)
+	// Selectively terminate stale connections targeting the affected NAT domains/IPs
+	_ = closeStaleClashConnections(ctx, allDomains, "")
 
-	// 5. Restart sing-box to flush persistent QUIC/Hysteria2/TCP pools and re-dial immediately
-	if singBoxServiceActive(ctx) {
-		if res := restartSingBox(ctx); res.Status == "succeeded" {
-			notes = append(notes, "已重启 sing-box 重置出站连接池")
+	// Restart sing-box to flush persistent pools only if configuration actually changed
+	if singboxChanged && singBoxServiceActive(ctx) {
+		dnsRestartMu.Lock()
+		now := time.Now()
+		shouldRestart := now.Sub(lastDNSRestartAt) >= dnsRestartCooldown
+		if shouldRestart {
+			lastDNSRestartAt = now
+			if dnsPendingTimer != nil {
+				dnsPendingTimer.Stop()
+				dnsPendingTimer = nil
+			}
 		} else {
-			notes = append(notes, "sing-box 重启提示: "+res.Summary)
+			if dnsPendingTimer != nil {
+				dnsPendingTimer.Stop()
+			}
+			dnsPendingTimer = time.AfterFunc(dnsRestartCooldown, func() {
+				dnsRestartMu.Lock()
+				dnsPendingTimer = nil
+				lastDNSRestartAt = time.Now()
+				dnsRestartMu.Unlock()
+				if singBoxServiceActive(context.Background()) {
+					_ = restartSingBox(context.Background())
+				}
+			})
 		}
-	} else if commandExists("pkill") {
+		dnsRestartMu.Unlock()
+
+		if shouldRestart {
+			if res := restartSingBox(ctx); res.Status == "succeeded" {
+				notes = append(notes, "已重启 sing-box 重置出站连接池")
+			} else {
+				notes = append(notes, "sing-box 重启提示: "+res.Summary)
+			}
+		} else {
+			notes = append(notes, "静态解析已更新，处于冷却期内延迟合并重启")
+		}
+	} else if !singBoxServiceActive(ctx) && commandExists("pkill") {
 		_ = exec.CommandContext(ctx, "pkill", "-HUP", "-f", "sing-box").Run()
 	}
 
-	summary := fmt.Sprintf("%s → %s", strings.Join(domains, ", "), expectedIP)
+	var summary string
+	if len(cleanMappings) == 1 {
+		summary = fmt.Sprintf("%s → %s", strings.Join(cleanMappings[0].Domains, ", "), cleanMappings[0].IP)
+	} else {
+		summary = fmt.Sprintf("已合并更新 %d 个节点的域名解析与静态规则", len(cleanMappings))
+	}
 	if len(notes) > 0 {
 		summary += "（" + strings.Join(notes, "，") + "）"
 	}

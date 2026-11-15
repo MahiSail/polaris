@@ -1480,3 +1480,112 @@ func TestReconcileNodeChainedDDNS(t *testing.T) {
 	}
 }
 
+func TestReconcileNodeChainedDDNS_ConsolidatesMultipleTargets(t *testing.T) {
+	ctx := t.Context()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	server, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node1ID := createTestNode(t, store, "Entry Node 1", "198.51.100.1")
+	node2ID := createTestNode(t, store, "NAT Node 2", "198.51.100.10")
+	node3ID := createTestNode(t, store, "NAT Node 3", "198.51.100.20")
+
+	enabled := true
+	recID2 := "rec-nat-2"
+	domain2 := "nat2.target.com"
+	if err := store.UpdateNodeWithDDNS(ctx, node2ID, "NAT Node 2", domain2, &enabled, &recID2, &domain2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetNodeLastObservedIP(ctx, node2ID, "198.51.100.202"); err != nil {
+		t.Fatal(err)
+	}
+
+	recID3 := "rec-nat-3"
+	domain3 := "nat3.target.com"
+	if err := store.UpdateNodeWithDDNS(ctx, node3ID, "NAT Node 3", domain3, &enabled, &recID3, &domain3); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetNodeLastObservedIP(ctx, node3ID, "198.51.100.203"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Listener and endpoint for node2
+	l2, err := store.CreateListener(ctx, Listener{
+		NodeID: node2ID, Name: "node2-svc", Domain: domain2, Port: 10443, ListenAddr: "0.0.0.0", Enabled: true,
+		Spec: ProtocolSpec{Protocol: "vless", Network: "tcp", Transport: TransportOptions{Type: "httpupgrade", Path: "/ws"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep2, err := store.CreateEndpoint(ctx, Endpoint{ListenerID: l2.ID, Name: "u2", Enabled: true}, EndpointCredentials{UUID: "22222222-2222-2222-2222-222222222222"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Listener and endpoint for node3
+	l3, err := store.CreateListener(ctx, Listener{
+		NodeID: node3ID, Name: "node3-svc", Domain: domain3, Port: 10444, ListenAddr: "0.0.0.0", Enabled: true,
+		Spec: ProtocolSpec{Protocol: "vless", Network: "tcp", Transport: TransportOptions{Type: "httpupgrade", Path: "/ws"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep3, err := store.CreateEndpoint(ctx, Endpoint{ListenerID: l3.ID, Name: "u3", Enabled: true}, EndpointCredentials{UUID: "33333333-3333-3333-3333-333333333333"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Node 1 chains to both node2 and node3 via two endpoints
+	l1, err := store.CreateListener(ctx, Listener{
+		NodeID: node1ID, Name: "node1-in", Domain: "entry.test.com", Port: 8443, ListenAddr: "0.0.0.0", Enabled: true,
+		Spec: ProtocolSpec{Protocol: "vless", Network: "tcp", Transport: TransportOptions{Type: "httpupgrade", Path: "/ws"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: l1.ID, Name: "u1-to-2", Enabled: true, OutboundID: "chain:" + ep2.ID,
+	}, EndpointCredentials{UUID: "11111111-1111-1111-1111-111111111111"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: l1.ID, Name: "u1-to-3", Enabled: true, OutboundID: "chain:" + ep3.ID,
+	}, EndpointCredentials{UUID: "11111111-1111-1111-1111-111111111112"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile node 1: MUST create exactly 1 consolidated task, not 2 separate tasks!
+	server.reconcileNodeChainedDDNS(ctx, node1ID)
+
+	tasks, _, err := store.ListTasks(ctx, node1ID, "", 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected exactly 1 consolidated dns.update task for multiple chained targets, got %d", len(tasks))
+	}
+
+	task, err := store.TaskByID(ctx, tasks[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Kind != "dns.update" {
+		t.Fatalf("expected dns.update task, got %s", task.Kind)
+	}
+	if !strings.Contains(task.Payload, "nat2.target.com") || !strings.Contains(task.Payload, "nat3.target.com") {
+		t.Fatalf("expected payload to contain both domains, got: %s", task.Payload)
+	}
+	if !strings.Contains(task.Payload, "198.51.100.202") || !strings.Contains(task.Payload, "198.51.100.203") {
+		t.Fatalf("expected payload to contain both target IPs, got: %s", task.Payload)
+	}
+}
+

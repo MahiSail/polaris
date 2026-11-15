@@ -238,3 +238,117 @@ func TestSingBoxDropInContentsWithMemLimit(t *testing.T) {
 	}
 }
 
+func TestSingBoxConfigsSemanticallyMatch(t *testing.T) {
+	baseConfig := `{
+		"inbounds": [{"type": "vless", "listen_port": 443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}],
+		"dns": {
+			"servers": [{"tag": "dns-remote", "address": "tls://1.1.1.1"}]
+		}
+	}`
+
+	// With DDNS predefined rules injected
+	withDDNSRules := `{
+		"inbounds": [{"type": "vless", "listen_port": 443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}],
+		"dns": {
+			"servers": [{"tag": "dns-remote", "address": "tls://1.1.1.1"}],
+			"rules": [
+				{
+					"action": "predefined",
+					"domain": ["twla.example.com"],
+					"answer": ["twla.example.com. 60 IN A 198.51.100.1"]
+				}
+			]
+		}
+	}`
+
+	// Different inbounds config
+	differentConfig := `{
+		"inbounds": [{"type": "vless", "listen_port": 8443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}]
+	}`
+
+	if !singBoxConfigsSemanticallyMatch([]byte(withDDNSRules), baseConfig) {
+		t.Fatalf("expected withDDNSRules to semantically match baseConfig")
+	}
+
+	// Config with NO dns block at all vs config with only dynamic predefined DNS rules
+	noDNSBaseConfig := `{
+		"inbounds": [{"type": "vless", "listen_port": 443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}]
+	}`
+	onlyPredefinedDNS := `{
+		"inbounds": [{"type": "vless", "listen_port": 443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}],
+		"dns": {
+			"rules": [
+				{
+					"action": "predefined",
+					"domain": ["twla.example.com"],
+					"answer": ["twla.example.com. 60 IN A 198.51.100.1"]
+				}
+			]
+		}
+	}`
+	if !singBoxConfigsSemanticallyMatch([]byte(onlyPredefinedDNS), noDNSBaseConfig) {
+		t.Fatalf("expected onlyPredefinedDNS to semantically match noDNSBaseConfig")
+	}
+
+	if singBoxConfigsSemanticallyMatch([]byte(differentConfig), baseConfig) {
+		t.Fatalf("expected differentConfig to NOT match baseConfig")
+	}
+}
+
+func TestPreserveDynamicPredefinedDNSRules(t *testing.T) {
+	currentConfig := `{
+		"inbounds": [{"type": "vless", "listen_port": 443}],
+		"dns": {
+			"rules": [
+				{
+					"action": "predefined",
+					"domain": ["nat.example.com"],
+					"answer": ["nat.example.com. 60 IN A 198.51.100.10"]
+				}
+			]
+		}
+	}`
+
+	newDesired := `{
+		"inbounds": [{"type": "vless", "listen_port": 8443}],
+		"outbounds": [{"type": "direct", "tag": "direct"}]
+	}`
+
+	preserved := preserveDynamicPredefinedDNSRules([]byte(currentConfig), newDesired)
+	if !strings.Contains(preserved, "nat.example.com") || !strings.Contains(preserved, "198.51.100.10") {
+		t.Fatalf("expected preserved config to retain predefined rules: %s", preserved)
+	}
+	if !strings.Contains(preserved, "8443") {
+		t.Fatalf("expected preserved config to have new inbound port: %s", preserved)
+	}
+}
+
+func TestConfigurePingProbesIdempotency(t *testing.T) {
+	tempDir := t.TempDir()
+	task := Task{
+		ID:   "task-probe-1",
+		Kind: "probe.configure",
+		Payload: `[
+			{"id": "p1", "name": "Target 1", "target": "1.1.1.1"},
+			{"id": "p2", "name": "Target 2", "target": "8.8.8.8"}
+		]`,
+	}
+
+	// First execution applies targets
+	res1 := configurePingProbes(task, tempDir)
+	if res1.Status != "succeeded" || res1.Summary != "延迟监控已下发" {
+		t.Fatalf("unexpected res1: %+v", res1)
+	}
+
+	// Second execution with identical targets MUST be pure no-op
+	res2 := configurePingProbes(task, tempDir)
+	if res2.Status != "succeeded" || res2.Summary != "延迟监控目标已是最新，无需修改" {
+		t.Fatalf("unexpected res2: %+v", res2)
+	}
+}
+
