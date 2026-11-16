@@ -155,9 +155,9 @@ function chosen(option) {
   padding: 0 12px;
   border-radius: 10px;
   font-size: 13px;
-  background: var(--neu-inset-bg);
-  border: 1px solid var(--sb-line);
-  box-shadow: var(--sh-inset);
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-line-strong);
+  box-shadow: none;
   color: var(--sb-muted);
   display: inline-flex;
   align-items: center;

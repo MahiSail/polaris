@@ -344,7 +344,7 @@ onMounted(load)
     <article
       v-for="row in shown"
       :key="row.id"
-      class="m-inbound-card neu rise"
+      class="m-inbound-card"
       :class="{ 'is-off': !row.enabled }"
       role="button"
       tabindex="0"
@@ -361,17 +361,15 @@ onMounted(load)
         </span>
       </div>
 
-      <div class="m-inbound-stats neu-inset">
+      <div class="m-inbound-stats">
         <div class="inbound-stat-col">
           <span class="stat-lbl">加密</span>
           <span class="stat-val font-mono">{{ securityLabel(row) }}</span>
         </div>
-        <div class="stat-sep" />
         <div class="inbound-stat-col">
           <span class="stat-lbl">传输协议</span>
           <span class="stat-val font-mono">{{ transportLabel(row) }}</span>
         </div>
-        <div class="stat-sep" />
         <div class="inbound-stat-col">
           <span class="stat-lbl">节点数</span>
           <span class="stat-val font-mono">{{ row.endpoint_count ?? 0 }} 个</span>
@@ -486,21 +484,23 @@ onMounted(load)
 }
 
 .m-inbound-stats {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 10px;
-  padding: 8px 10px;
+  padding: 8px 4px;
   border-radius: 10px;
-  background: var(--neu-inset-bg);
+  background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
-  box-shadow: var(--sh-inset);
 }
 .inbound-stat-col {
-  flex: 1;
   min-width: 0;
+  padding: 0 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.inbound-stat-col + .inbound-stat-col {
+  border-left: 1px solid var(--sb-line);
 }
 .stat-lbl {
   font-size: 10.5px;
@@ -513,13 +513,6 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.stat-sep {
-  width: 1px;
-  height: 22px;
-  background: var(--sb-line);
-  margin: 0 8px;
-  flex-shrink: 0;
 }
 
 .m-inbound-footer {

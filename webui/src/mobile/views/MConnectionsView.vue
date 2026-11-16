@@ -38,6 +38,14 @@ function entryLabel(connection) {
   return connection.user || connection.listener_name || '—'
 }
 
+function startedClock(startedAt) {
+  if (!startedAt) return ''
+  const text = formatDateTime(startedAt, '')
+  if (!text || text === '—') return ''
+  const parts = text.split(/\s+/)
+  return parts.at(-1) || text
+}
+
 // 卡上的脚注：从哪个入站节点进来、从哪个地址来的。服务器名不在这里 ——
 // 一条连接落在哪台机器上是筛选用的条件，不是认出这条连接靠的东西。
 function sourceLine(row) {
@@ -165,7 +173,7 @@ onBeforeUnmount(() => {
     <article
       v-for="row in shown"
       :key="`${row.node_id}/${row.id}`"
-      class="m-conn-card neu rise"
+      class="m-conn-card"
       role="button"
       tabindex="0"
       @click="openDetail(row)"
@@ -181,46 +189,50 @@ onBeforeUnmount(() => {
         </div>
         <div class="m-conn-badges">
           <span class="m-conn-tag font-mono">{{ (row.network || 'TCP').toUpperCase() }}</span>
-          <span class="m-conn-tag m-conn-tag--exit" :title="row.exit">{{ row.exit }}</span>
+          <span
+            class="m-conn-tag"
+            :class="isDirect(row.exit) ? 'm-conn-tag--direct' : 'm-conn-tag--exit'"
+            :title="row.exit"
+          >
+            {{ row.exit }}
+          </span>
         </div>
       </div>
 
-      <!-- Middle: Micro-neomorphic Inset Rates Grid -->
-      <div class="m-conn-rates neu-inset">
+      <!-- Middle: Symmetric 3-column metrics -->
+      <div class="m-conn-rates">
         <div class="rate-col">
           <span class="rate-lbl">实时下行</span>
-          <div class="rate-val font-mono">
+          <div class="rate-val font-mono" :class="{ 'is-down-active': row.has_rates && Number(row.download_rate) > 0 }">
             ↓ {{ row.has_rates ? formatBytes(row.download_rate, '/s') : '—' }}
           </div>
         </div>
-        <div class="rate-divider" />
         <div class="rate-col">
           <span class="rate-lbl">实时上行</span>
-          <div class="rate-val font-mono">
+          <div class="rate-val font-mono" :class="{ 'is-up-active': row.has_rates && Number(row.upload_rate) > 0 }">
             ↑ {{ row.has_rates ? formatBytes(row.upload_rate, '/s') : '—' }}
           </div>
         </div>
-        <div class="rate-divider" />
         <div class="rate-col">
-          <span class="rate-lbl">累计传输</span>
+          <span class="rate-lbl">累计流量</span>
           <div class="rate-val font-mono">
             {{ formatBytes((row.download || 0) + (row.upload || 0)) }}
           </div>
         </div>
       </div>
 
-      <!-- Bottom: Client source & Node -->
+      <!-- Bottom: 2 structured rows (entry + node, source IP/geo + start time) -->
       <div class="m-conn-footer">
-        <div class="m-conn-footer__top">
-          <div class="source-client-group">
-            <span class="source-client">{{ row.entry !== '—' ? row.entry : '未知客户端' }}</span>
-            <span class="source-sep">·</span>
-            <span class="source-ip font-mono">{{ row.source_ip || row.source }}</span>
-          </div>
-          <span class="m-conn-node-tag">{{ row.node_name }}</span>
+        <div class="m-conn-footer__row">
+          <span class="source-client truncate">{{ row.entry !== '—' ? row.entry : '未知客户端' }}</span>
+          <span class="m-conn-node-tag truncate" :title="row.node_name">{{ row.node_name }}</span>
         </div>
-        <div v-if="row.source_location" class="m-conn-footer__geo">
-          <span class="source-loc">{{ row.source_location }}</span>
+        <div class="m-conn-footer__row m-conn-footer__sub">
+          <span class="source-ip-geo truncate">
+            <span class="font-mono">{{ row.source_ip || row.source || '—' }}</span>
+            <template v-if="row.source_location"> · {{ row.source_location }}</template>
+          </span>
+          <span v-if="startedClock(row.started_at)" class="source-time font-mono">{{ startedClock(row.started_at) }}</span>
         </div>
       </div>
     </article>
@@ -237,7 +249,7 @@ onBeforeUnmount(() => {
 .m-conn-card {
   display: block;
   width: 100%;
-  padding: 13px 14px 11px;
+  padding: 13px 14px 12px;
   margin-bottom: 10px;
   background: var(--sb-panel-solid);
   border: 1px solid var(--sb-line);
@@ -246,7 +258,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
   user-select: none;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.12s ease, border-color 0.15s ease;
 }
 .m-conn-card:active {
   transform: scale(0.992);
@@ -255,7 +267,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 .m-conn-target {
   flex: 1;
@@ -290,126 +302,128 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 5px;
   flex-shrink: 0;
-  max-width: 58%;
+  max-width: 56%;
 }
 .m-conn-tag {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 2px 7px;
-  border-radius: var(--sb-radius-sm);
+  border-radius: 7px;
   font-size: 11px;
-  font-weight: 550;
-  line-height: 18px;
+  font-weight: 600;
+  line-height: 17px;
   background: var(--sb-surface-2);
   color: var(--sb-text-2);
-  border: 1px solid var(--sb-line-strong);
+  border: 1px solid var(--sb-line);
   white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.m-conn-tag--direct {
+  background: color-mix(in oklab, var(--sb-success) 10%, transparent);
+  color: var(--sb-success);
+  border-color: color-mix(in oklab, var(--sb-success) 24%, transparent);
+}
 .m-conn-tag--exit {
   background: var(--sb-accent-soft);
   color: var(--sb-text);
   border-color: var(--sb-line-strong);
-  font-weight: 600;
 }
 
-/* Inset rates row */
+/* Symmetric 3-column metrics bar */
 .m-conn-rates {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 10px;
-  padding: 8px 10px;
+  padding: 8px 4px;
   border-radius: 10px;
-  background: var(--neu-inset-bg);
+  background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
-  box-shadow: var(--sh-inset);
 }
 .rate-col {
-  flex: 1;
   min-width: 0;
+  padding: 0 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+.rate-col + .rate-col {
+  border-left: 1px solid var(--sb-line);
+}
 .rate-lbl {
   font-size: 10.5px;
   color: var(--sb-muted);
+  line-height: 1.3;
 }
 .rate-val {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
   color: var(--sb-text);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
 }
-.rate-divider {
-  width: 1px;
-  height: 22px;
-  background: var(--sb-line);
-  margin: 0 6px;
-  flex-shrink: 0;
+.rate-val.is-down-active {
+  color: var(--sb-chart-2);
+}
+.rate-val.is-up-active {
+  color: var(--sb-chart-4);
 }
 
-/* Footer row */
+/* Structured 2-row footer */
 .m-conn-footer {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 9px;
-  padding-top: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
   border-top: 1px solid var(--sb-line);
-  font-size: 12px;
 }
-.m-conn-footer__top {
+.m-conn-footer__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-}
-.source-client-group {
-  flex: 1 1 auto;
+  gap: 8px;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 3px 5px;
 }
 .source-client {
-  color: var(--sb-text-2);
-  font-weight: 600;
-}
-.source-ip {
-  color: var(--sb-muted);
-  font-size: 11.5px;
-}
-.source-sep {
-  opacity: 0.5;
-}
-.m-conn-node-tag {
-  flex-shrink: 0;
-  padding: 1px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--sb-muted);
-  background: var(--sb-surface-2);
-  border: 1px solid var(--sb-line);
-}
-.m-conn-footer__geo {
-  display: flex;
-  align-items: flex-start;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--sb-muted);
-  word-break: break-all;
-  white-space: normal;
-}
-.source-loc {
   flex: 1;
   min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sb-text-2);
+  line-height: 1.35;
+}
+.m-conn-node-tag {
+  flex: 0 1 auto;
+  max-width: 48%;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--sb-text-2);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line);
+  line-height: 1.35;
+}
+.m-conn-footer__sub {
+  font-size: 11.5px;
+  color: var(--sb-muted);
+  line-height: 1.35;
+}
+.source-ip-geo {
+  flex: 1;
+  min-width: 0;
+}
+.source-time {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sb-muted);
 }
 </style>
