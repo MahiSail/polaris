@@ -5,6 +5,8 @@
 import { computed, ref, watch } from 'vue'
 import MSheet from './MSheet.vue'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps({
   // 单选是字符串，多选是数组
   modelValue: { type: [String, Number, Array], default: '' },
@@ -14,6 +16,7 @@ const props = defineProps({
   placeholder: { type: String, default: '请选择' },
   multiple: { type: Boolean, default: false },
   clearable: { type: Boolean, default: false },
+  allowCustom: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   // 筛选条里用的窄版触发器：按内容宽度排在一行，不再独占整行。
   chip: { type: Boolean, default: false },
@@ -29,6 +32,13 @@ const labels = computed(() => selected.value.map((value) => {
   const option = props.options.find((item) => item.value === value)
   return option ? option.label : String(value)
 }))
+const customCandidate = computed(() => {
+  if (!props.allowCustom) return ''
+  const raw = keyword.value.trim()
+  if (!raw) return ''
+  const exists = props.options.some((item) => String(item.value) === raw || String(item.label) === raw)
+  return exists ? '' : raw
+})
 // 分组保持传入顺序，没有 group 的都归到最前面的空组。
 const groups = computed(() => {
   const text = keyword.value.trim().toLocaleLowerCase()
@@ -79,10 +89,23 @@ function clear() {
 function chosen(option) {
   return props.multiple ? draft.value.includes(option.value) : selected.value.includes(option.value)
 }
+
+function chooseCustom() {
+  const value = customCandidate.value
+  if (!value) return
+  if (!props.multiple) {
+    emit('update:modelValue', value)
+    open.value = false
+    return
+  }
+  if (!draft.value.includes(value)) draft.value = [...draft.value, value]
+  keyword.value = ''
+}
 </script>
 
 <template>
   <button
+    v-bind="$attrs"
     type="button"
     class="m-picker"
     :class="{ 'is-empty': !labels.length, 'is-disabled': disabled, 'is-chip': chip }"
@@ -99,8 +122,17 @@ function chosen(option) {
   <!-- 底部只有「清空 / 确定」，两个都不是放弃：右上角的 ✕ 是唯一的退路。 -->
   <MSheet v-model="open" :title="title" full keep-close>
     <div class="m-picker__search">
-      <el-input v-model="keyword" clearable placeholder="搜索" />
+      <el-input v-model="keyword" clearable :placeholder="allowCustom ? '搜索或输入自定义值' : '搜索'" />
     </div>
+    <button
+      v-if="customCandidate"
+      type="button"
+      class="m-picker__option m-picker__custom"
+      @click="chooseCustom"
+    >
+      <span class="m-picker__label">+ 使用自定义值：{{ customCandidate }}</span>
+      <small>直接使用当前输入内容</small>
+    </button>
     <template v-for="group in groups" :key="group.name">
       <div v-if="group.name" class="m-section">{{ group.name }}</div>
       <button
@@ -117,7 +149,7 @@ function chosen(option) {
         <i v-if="chosen(option)" class="m-picker__tick" aria-hidden="true">✓</i>
       </button>
     </template>
-    <div v-if="!groups.length" class="m-empty">没有匹配的选项</div>
+    <div v-if="!groups.length && !customCandidate" class="m-empty">没有匹配的选项</div>
 
     <template v-if="multiple || clearable" #footer>
       <el-button v-if="clearable" @click="clear">清空</el-button>
@@ -149,8 +181,8 @@ function chosen(option) {
 .m-picker.is-chip {
   width: auto;
   max-width: 100%;
-  min-height: 38px;
-  height: 38px;
+  min-height: 40px;
+  height: 40px;
   box-sizing: border-box;
   padding: 0 12px;
   border-radius: 10px;
@@ -236,6 +268,11 @@ html:not(.dark) .m-picker__count {
   transition: all 0.15s ease;
 }
 .m-picker__option + .m-picker__option { margin-top: 7px; }
+.m-picker__custom {
+  border-style: dashed;
+  border-color: var(--sb-line-strong);
+  margin-bottom: 8px;
+}
 .m-picker__option.is-chosen {
   background: var(--sb-accent-soft);
   border-color: var(--sb-line-strong);

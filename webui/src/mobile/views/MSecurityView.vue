@@ -329,11 +329,12 @@ onMounted(load)
         <el-icon><Refresh /></el-icon>
       </button>
     </template>
-    <MSegmented v-model="tab" :options="tabs" />
-
-    <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务器、地址或规则" />
-    <div class="m-filters">
-      <MPicker v-model="selectedNode" chip :options="nodeFilterOptions" title="按服务器筛选" placeholder="全部服务器" />
+    <div class="m-stack" style="gap: 10px; margin-bottom: 12px;">
+      <MSegmented v-model="tab" :options="tabs" />
+      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务器、地址或规则" />
+      <div class="m-filters" style="margin: 0;">
+        <MPicker v-model="selectedNode" chip :options="nodeFilterOptions" title="按服务器筛选" placeholder="全部服务器" />
+      </div>
     </div>
 
     <template v-if="tab === 'ports'">

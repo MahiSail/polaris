@@ -124,9 +124,10 @@ function onDragEnd() {
 }
 .m-sheet__head strong { flex: 1; min-width: 0; color: var(--sb-text); font-size: 16px; font-weight: 650; letter-spacing: .2px; }
 .m-sheet__close {
+  position: relative;
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   color: var(--sb-text-2);
@@ -136,6 +137,11 @@ function onDragEnd() {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+.m-sheet__close::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 .m-sheet__close:active {
   background: var(--sb-surface-3);

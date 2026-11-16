@@ -101,11 +101,17 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await page.getByRole('button', { name: '撤销', exact: true }).last().click()
   await shareSheet.locator('.m-sheet__close').click()
 
-  // 2. 服务器页：汇总卡片、单一地图、1:1 NodeCard / NodeRow 对齐、只读分享指标、排序/视图切换、探针管理 CRUD、编辑四标签页
+  // 2. 服务器页：汇总卡片、单一地图、移动端原生 MNodeCard / MNodeRow、只读分享指标、排序底部抽屉、探针管理 CRUD、编辑四标签页
   await page.goto(targetURL('/nodes'))
   await expect(page.getByRole('heading', { name: '服务器', exact: true })).toBeVisible()
   await expect(page.locator('.node-map-card')).toHaveCount(1)
-  await expect(page.getByRole('combobox', { name: '排序方式' })).toBeVisible()
+  const sortPickerBtn = page.getByRole('button', { name: '排序方式' })
+  await expect(sortPickerBtn).toBeVisible()
+  await sortPickerBtn.click()
+  const sortSheet = page.locator('.m-sheet').filter({ hasText: '排序方式' })
+  await expect(sortSheet).toBeVisible()
+  await sortSheet.getByRole('button', { name: '按 CPU 占用' }).click()
+  await expect(sortSheet).toHaveCount(0)
   await expect(page.getByRole('button', { name: '卡片视图' })).toBeVisible()
   await expect(page.getByRole('button', { name: '列表视图' })).toBeVisible()
   await expectNoSideways('服务器页(含地图与统计卡)')
@@ -117,8 +123,19 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await expect(nodeCards.first().getByText('厂商', { exact: true })).toBeVisible()
   await expect(nodeCards.first().getByText('续费', { exact: true })).toBeVisible()
 
+  // 触控交互：点流量卡展开明细；点「···」弹出底部操作面板与详情分页
+  await nodeCards.first().locator('.m-traffic-meter').click()
+  await expect(nodeCards.first().locator('.m-traffic-drawer')).toBeVisible()
+  await nodeCards.first().locator('.m-traffic-meter').click()
+  await nodeCards.first().getByRole('button', { name: '服务器操作' }).click()
+  const nodeActionSheet = page.locator('.m-sheet').last()
+  await expect(nodeActionSheet.getByRole('tab', { name: '操作', exact: true })).toBeVisible()
+  await nodeActionSheet.getByRole('tab', { name: '详情', exact: true }).click()
+  await expect(nodeActionSheet.getByText('本月流量')).toBeVisible()
+  await nodeActionSheet.getByRole('button', { name: '关闭', exact: true }).click()
+
   await page.getByRole('button', { name: '列表视图' }).click()
-  await expect(page.locator('.openlat-node-row').first()).toBeVisible()
+  await expect(page.locator('.m-node-row').first()).toBeVisible()
   await expectNoSideways('服务器列表视图')
   await page.getByRole('button', { name: '卡片视图' }).click()
 
@@ -141,9 +158,9 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
     }
   })
   await nodeGuestPage.goto(nodeShareURL)
-  await expect(nodeGuestPage.locator('.openlat-node-card').first()).toBeVisible({ timeout: 8000 })
-  await expect(nodeGuestPage.locator('.openlat-node-card').first().getByText(/^\d+(\.\d+)?%$/).first()).toBeVisible({ timeout: 8000 })
-  await expect(nodeGuestPage.locator('.openlat-node-card').first().getByText(/^\d+ms$/).first()).toBeVisible({ timeout: 8000 })
+  await expect(nodeGuestPage.locator('.m-node-card').first()).toBeVisible({ timeout: 8000 })
+  await expect(nodeGuestPage.locator('.m-node-card').first().getByText(/^\d+(\.\d+)?%$/).first()).toBeVisible({ timeout: 8000 })
+  await expect(nodeGuestPage.locator('.m-node-card').first().getByText(/^\d+ms$/).first()).toBeVisible({ timeout: 8000 })
   await nodeGuestCtx.close()
   expect(nodeShareErrors, `服务器分享页接口报错：${nodeShareErrors.join(' | ')}`).toEqual([])
 
@@ -206,6 +223,11 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await page.goto(targetURL('/rule-providers'))
   await page.getByRole('button', { name: '新建规则供应商' }).click()
   await expect(page.getByText('支持直接输入自定义节点名')).toBeVisible()
+  await page.getByRole('button', { name: /DIRECT/ }).click()
+  const proxySheet = page.locator('.m-sheet').filter({ hasText: '选择或输入下载代理' })
+  await expect(proxySheet).toBeVisible()
+  await proxySheet.getByPlaceholder('搜索或输入自定义值').fill('CustomProxyNode')
+  await proxySheet.getByRole('button', { name: /使用自定义值：CustomProxyNode/ }).click()
   await expectNoSideways('规则供应商表单')
   await page.getByRole('button', { name: '取消', exact: true }).click()
 
@@ -276,9 +298,17 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await expect(page.locator('.m-mono-wrap').getByText('8.8.8.8')).toBeVisible()
   await expectNoSideways('系统设置-IP库')
 
-  // 7. 实时节点状态 & 6 个 admin-* 管理路由
+  // 7. 实时节点状态（移动端分组/排序/列表/详情） & 6 个 admin-* 管理路由
   await page.goto(targetURL('/status'))
   await expect(page.getByRole('heading', { name: '实时节点状态' })).toBeVisible()
+  await expect(page.locator('.m-node-card').first()).toBeVisible({ timeout: 5000 })
+  await page.getByRole('button', { name: '分组方式' }).click()
+  const grpSheet = page.locator('.m-sheet').filter({ hasText: '分组方式' })
+  await grpSheet.getByRole('button', { name: '按地区分组' }).click()
+  await expectNoSideways('实时节点状态看板-分组')
+  await page.getByRole('button', { name: '列表视图' }).click()
+  await expect(page.locator('.m-node-row').first()).toBeVisible()
+  await page.getByRole('button', { name: '卡片视图' }).click()
   await expectNoSideways('实时节点状态看板')
 
   for (const [path, headingText] of [

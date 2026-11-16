@@ -197,17 +197,20 @@ onMounted(load)
         <el-icon><Refresh /></el-icon>
       </button>
     </template>
-    <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" />
-    <div class="m-filters" style="flex-direction: column; align-items: stretch; gap: 6px;">
-      <MSegmented
-        v-model="selectedType"
-        :options="[{ value: '', label: '全部类型' }, { value: 'socks', label: 'SOCKS5' }, { value: 'http', label: 'HTTP' }, { value: 'direct', label: '直连' }]"
-      />
-      <MSegmented
-        v-model="selectedStatus"
-        :options="[{ value: '', label: '全部状态' }, { value: 'true', label: '启用' }, { value: 'false', label: '停用' }]"
-      />
+    <div class="m-listbar">
+      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" />
+      <div class="m-filters" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <MSegmented
+          v-model="selectedType"
+          :options="[{ value: '', label: '全部类型' }, { value: 'socks', label: 'SOCKS5' }, { value: 'http', label: 'HTTP' }, { value: 'direct', label: '直连' }]"
+        />
+        <MSegmented
+          v-model="selectedStatus"
+          :options="[{ value: '', label: '全部状态' }, { value: 'true', label: '启用' }, { value: 'false', label: '停用' }]"
+        />
+      </div>
     </div>
+    <div class="m-count">共 {{ filteredRows.length }} 个出口</div>
 
     <article v-for="row in filteredRows" :key="row.id" class="m-item" :class="{ 'is-off': !row.enabled }">
       <button type="button" class="m-item__hit" @click="openActions(row)">

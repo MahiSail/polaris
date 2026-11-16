@@ -455,7 +455,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else-if="tab === 'alerts' && isAdmin">
-      <div class="m-sticky-bar" style="position: sticky; top: 0; bottom: auto; margin-bottom: 12px;">
+      <div class="m-sticky-bar m-sticky-bar--top">
         <div class="m-sticky-bar__row">
           <div style="font-size: 12px; color: var(--sb-text-2);">
             <span>{{ channelSummary }}</span>
@@ -464,9 +464,9 @@ onBeforeUnmount(() => {
           <el-tag v-if="isAlertDirty" type="warning" size="small" effect="light">未保存</el-tag>
         </div>
         <div class="m-filter-row" style="justify-content: flex-end;">
-          <el-button v-if="isAlertDirty" size="small" @click="revertAlertSettings">撤销</el-button>
-          <el-button size="small" :loading="testSending" :disabled="!notifierReady" @click="sendTestAlert">发送测试</el-button>
-          <el-button size="small" type="primary" :loading="alertSaving" :disabled="!isAlertDirty" @click="saveAlertSettings">保存</el-button>
+          <el-button v-if="isAlertDirty" @click="revertAlertSettings">撤销</el-button>
+          <el-button :loading="testSending" :disabled="!notifierReady" @click="sendTestAlert">发送测试</el-button>
+          <el-button type="primary" :loading="alertSaving" :disabled="!isAlertDirty" @click="saveAlertSettings">保存</el-button>
         </div>
       </div>
       <!-- Bark 推送配置 -->

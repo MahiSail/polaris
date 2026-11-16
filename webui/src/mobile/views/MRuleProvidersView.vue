@@ -147,7 +147,9 @@ onMounted(load)
         @click="load()"
       />
     </template>
-    <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或类型" />
+    <div class="m-listbar">
+      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或类型" />
+    </div>
     <div class="m-count">共 {{ filtered.length }} 个供应商</div>
 
     <article v-for="row in filtered" :key="row.id" class="m-item">
@@ -195,21 +197,13 @@ onMounted(load)
       </div>
       <div class="m-field">
         <label class="m-field__label">下载代理 <em>*</em></label>
-        <el-select
+        <MPicker
           v-model="form.proxy"
-          filterable
-          allow-create
-          default-first-option
+          allow-custom
+          :options="proxyOptions"
+          title="选择或输入下载代理"
           placeholder="选择或输入下载代理"
-          style="width: 100%;"
-        >
-          <el-option
-            v-for="opt in proxyOptions"
-            :key="opt.value"
-            :label="opt.label"
-            :value="opt.value"
-          />
-        </el-select>
+        />
         <div class="m-field__hint">需为 DIRECT，或客户端配置中已存在的代理分组 / 节点名称（支持直接输入自定义节点名）。</div>
       </div>
       <template #footer>

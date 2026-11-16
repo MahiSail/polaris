@@ -165,6 +165,33 @@ const formValid = computed(() => basicValid.value && rulesValid.value && dnsVali
 const sectionOptions = computed(() => sections.map((section) => ({ ...section, badge: sectionValid.value[section.value] ? '' : '待填' })))
 const editingRule = computed(() => form.rules[ruleIndex.value] || null)
 
+const accessExpiresLocal = computed({
+  get() {
+    const dt = parseServerTime(form.access_expires_at)
+    if (!dt) return ''
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+  },
+  set(val) {
+    if (!val) {
+      form.access_expires_at = ''
+      return
+    }
+    const dt = new Date(val)
+    form.access_expires_at = Number.isNaN(dt.getTime()) ? '' : dt.toISOString()
+  },
+})
+
+function setExpiryPreset(days) {
+  if (!days) {
+    form.access_expires_at = ''
+    return
+  }
+  const dt = new Date(Date.now() + days * 86400000)
+  dt.setSeconds(0, 0)
+  form.access_expires_at = dt.toISOString()
+}
+
 function resolveGroups(ids) {
   const result = []
   const seen = new Set()
@@ -624,7 +651,7 @@ onMounted(() => { load(); loadAccess() })
     <MSegmented v-model="tab" :options="[{ value: 'configs', label: '客户端配置' }, { value: 'access', label: '访问记录' }]" />
 
     <template v-if="tab === 'configs'">
-      <div class="m-listbar">
+      <div class="m-listbar m-listbar--sub">
         <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索配置或分组" />
         <div class="m-filters">
           <MSegmented
@@ -664,10 +691,10 @@ onMounted(() => { load(); loadAccess() })
       <div class="access-bar">
         <span class="m-count">共 {{ accessQuery.total }} 条 · 第 {{ accessQuery.page }} 页</span>
         <div style="display: flex; align-items: center; gap: 6px;">
-          <el-button v-if="hasAccessFilter" size="small" text @click="resetAccessFilter">重置</el-button>
-          <el-button size="small" :type="hasAccessFilter ? 'primary' : ''" plain @click="accessFilterOpen = true">
+          <button v-if="hasAccessFilter" type="button" class="m-pill" @click="resetAccessFilter">重置</button>
+          <button type="button" class="m-pill" :class="{ 'is-active': hasAccessFilter }" @click="accessFilterOpen = true">
             {{ hasAccessFilter ? '已筛选' : '筛选' }}
-          </el-button>
+          </button>
         </div>
       </div>
       <div v-loading="accessLoading">
@@ -780,8 +807,8 @@ onMounted(() => { load(); loadAccess() })
         <label class="m-field__label">访问密钥</label>
         <el-input v-model="form.access_secret" maxlength="64" aria-label="访问密钥" placeholder="留空表示不校验" />
         <div class="access-actions">
-          <el-button size="small" @click="generateAccessSecret">随机生成</el-button>
-          <el-button size="small" :disabled="!form.access_secret.trim()" @click="copyAccessUserAgent">复制 UA</el-button>
+          <el-button @click="generateAccessSecret">随机生成</el-button>
+          <el-button :disabled="!form.access_secret.trim()" @click="copyAccessUserAgent">复制 UA</el-button>
         </div>
         <div class="m-field__hint">
           填写后，客户端订阅设置里的 User-Agent 必须包含 polaris/{{ form.access_secret.trim() || '密钥' }} 才能拉到配置。
@@ -791,9 +818,9 @@ onMounted(() => { load(); loadAccess() })
       <div class="m-field">
         <label class="m-field__label">允许访问的时间段</label>
         <div class="access-actions" style="flex-wrap: wrap;">
-          <el-time-select v-model="form.access_window_start" start="00:00" step="00:30" end="23:30" placeholder="开始" aria-label="时间段开始" style="flex: 1 1 110px; min-width: 0;" />
-          <el-time-select v-model="form.access_window_end" start="00:00" step="00:30" end="23:30" placeholder="结束" aria-label="时间段结束" style="flex: 1 1 110px; min-width: 0;" />
-          <el-button size="small" @click="form.access_window_start = ''; form.access_window_end = ''">清除</el-button>
+          <input v-model="form.access_window_start" type="time" aria-label="时间段开始" class="m-native-input" style="flex: 1 1 110px; min-width: 0;" />
+          <input v-model="form.access_window_end" type="time" aria-label="时间段结束" class="m-native-input" style="flex: 1 1 110px; min-width: 0;" />
+          <el-button @click="form.access_window_start = ''; form.access_window_end = ''">清除</el-button>
         </div>
         <div class="m-field__hint">
           按控制台所在服务器的本地时间判断。两端都留空表示任意时间都能拉；
@@ -802,8 +829,14 @@ onMounted(() => { load(); loadAccess() })
       </div>
       <div class="m-field">
         <label class="m-field__label">有效期</label>
-        <el-date-picker v-model="form.access_expires_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ssZ" aria-label="有效期" placeholder="留空表示长期有效" style="width: 100%" />
-        <div class="m-field__hint">到期后这个更新地址不再返回配置。需要续期就回来往后调，或者清空。</div>
+        <input v-model="accessExpiresLocal" type="datetime-local" aria-label="有效期" class="m-native-input" />
+        <div class="m-filter-row" style="margin-top: 8px; gap: 6px;">
+          <button type="button" class="m-pill" @click="setExpiryPreset(7)">+7 天</button>
+          <button type="button" class="m-pill" @click="setExpiryPreset(30)">+30 天</button>
+          <button type="button" class="m-pill" @click="setExpiryPreset(365)">+1 年</button>
+          <button v-if="form.access_expires_at" type="button" class="m-pill" @click="setExpiryPreset(0)">永久</button>
+        </div>
+        <div class="m-field__hint">到期后这个更新地址不再返回配置。留空表示长期有效。</div>
       </div>
     </template>
 

@@ -39,6 +39,13 @@ const actionKind = ref('record')
 const recordTypes = ['A', 'AAAA', 'CNAME', 'TXT']
 const nodeAddresses = computed(() => appState.nodes.filter((node) => node.client_address))
 const zones = computed(() => settings.value.zones || [])
+const nodeFilterOptions = computed(() => [
+  { value: '', label: '全部服务器' },
+  ...(appState.nodes || []).map((n) => ({ value: n.name, label: n.name })),
+])
+const zoneOptions = computed(() =>
+  zones.value.map((z) => ({ value: z.zone_name, label: z.zone_name }))
+)
 const connectedLabel = computed(() => {
   if (!settings.value.connected) return settings.value.configured ? '连接异常' : '未连接 Cloudflare'
   const names = zones.value.length
@@ -305,21 +312,27 @@ onMounted(load)
       <span class="conn__text">
         {{ connectedLabel }}
       </span>
-      <el-button v-if="isAdmin" size="small" :icon="Setting" @click="openSettings">设置</el-button>
+      <el-button v-if="isAdmin" :icon="Setting" @click="openSettings">设置</el-button>
     </div>
     <div v-if="tab === 'records' && remoteError" class="m-notice m-notice--danger">
       读取 Cloudflare 失败：{{ remoteError }}。请点上面的「设置」检查区域编号与访问令牌，并确认这台控制机可以访问 api.cloudflare.com。
     </div>
 
-    <MSegmented v-model="tab" :options="[{ value: 'records', label: '域名记录' }, { value: 'certificates', label: '源证书', badge: certificates.length }, { value: 'ddns-history', label: 'DDNS记录' }]" />
+    <div class="m-stack" style="gap: 10px; margin-bottom: 12px;">
+      <MSegmented v-model="tab" :options="[{ value: 'records', label: '域名记录' }, { value: 'certificates', label: '源证书', badge: certificates.length }, { value: 'ddns-history', label: 'DDNS记录' }]" />
 
-    <el-input v-if="tab !== 'ddns-history'" v-model="keyword" clearable :prefix-icon="Search" :placeholder="tab === 'records' ? '搜索域名、内容或服务器' : '搜索域名或证书'" />
-    <div v-if="tab === 'records'" class="m-filters" style="flex-direction: column; align-items: stretch; gap: 6px;">
-      <MSegmented v-model="selectedType" :options="[{ value: '', label: '全部类型' }, ...recordTypes.map((type) => ({ value: type, label: type }))]" />
-      <el-select v-if="(appState.nodes || []).length" v-model="selectedNode" clearable placeholder="全部服务器" style="width: 100%;">
-        <el-option label="全部服务器" value="" />
-        <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.name" />
-      </el-select>
+      <el-input v-if="tab !== 'ddns-history'" v-model="keyword" clearable :prefix-icon="Search" :placeholder="tab === 'records' ? '搜索域名、内容或服务器' : '搜索域名或证书'" />
+      <div v-if="tab === 'records'" class="m-filters" style="flex-direction: column; align-items: stretch; gap: 8px; margin: 0;">
+        <MSegmented v-model="selectedType" :options="[{ value: '', label: '全部类型' }, ...recordTypes.map((type) => ({ value: type, label: type }))]" />
+        <MPicker
+          v-if="(appState.nodes || []).length"
+          v-model="selectedNode"
+          clearable
+          :options="nodeFilterOptions"
+          title="按服务器筛选"
+          placeholder="全部服务器"
+        />
+      </div>
     </div>
 
     <template v-if="tab === 'records'">
@@ -421,9 +434,7 @@ onMounted(load)
       </div>
       <div class="m-field">
         <label class="m-field__label">所属区域</label>
-        <el-select v-model="record.zone_name" placeholder="选择区域" aria-label="所属区域" style="width: 100%">
-          <el-option v-for="zone in zones" :key="zone.zone_id" :label="zone.zone_name" :value="zone.zone_name" />
-        </el-select>
+        <MPicker v-model="record.zone_name" :options="zoneOptions" title="选择区域" placeholder="选择区域" aria-label="所属区域" />
       </div>
       <div class="m-field">
         <label class="m-field__label">域名</label>

@@ -272,13 +272,15 @@ onMounted(load)
         <el-icon><Refresh /></el-icon>
       </button>
     </template>
-    <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索匹配条件或处理方式" />
-    <div class="m-filters">
-      <MPicker v-model="selectedNode" chip :options="nodeFilterOptions" title="按服务器筛选" placeholder="全部服务器" />
-      <MSegmented
-        v-model="selectedAction"
-        :options="[{ value: '', label: '全部' }, { value: 'direct', label: '直连' }, { value: 'outbound', label: '出口' }, { value: 'reject', label: '阻断' }]"
-      />
+    <div class="m-listbar">
+      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索匹配条件或处理方式" />
+      <div class="m-filters">
+        <MPicker v-model="selectedNode" chip :options="nodeFilterOptions" title="按服务器筛选" placeholder="全部服务器" />
+        <MSegmented
+          v-model="selectedAction"
+          :options="[{ value: '', label: '全部' }, { value: 'direct', label: '直连' }, { value: 'outbound', label: '出口' }, { value: 'reject', label: '阻断' }]"
+        />
+      </div>
     </div>
     <div class="m-count">共 {{ filteredRows.length }} 条规则</div>
 
@@ -309,7 +311,7 @@ onMounted(load)
           <label class="m-field__label" style="margin: 0;">服务器 <em>*</em></label>
           <button
             type="button"
-            style="background: none; border: none; color: var(--sb-accent); font-size: 12px; cursor: pointer; padding: 0;"
+            class="m-pill"
             @click="toggleAllNodesMobile"
           >
             {{ form.node_ids.length === appState.nodes.length ? '清空' : `全选 (${appState.nodes.length})` }}

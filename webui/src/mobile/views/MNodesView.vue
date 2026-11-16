@@ -8,35 +8,7 @@
     <template #actions>
       <template v-if="!detailNode && !isShareMode">
         <el-button
-          v-if="isAdmin && upgradableAgentNodes.length > 0"
-          size="small"
-          type="warning"
-          plain
-          @click="upgradeAllAgents"
-        >
-          升级 Agent ({{ upgradableAgentNodes.length }})
-        </el-button>
-        <button
-          v-if="canWrite"
-          type="button"
-          class="m-header__btn"
-          aria-label="探针管理"
-          @click="probeManagerOpen = true"
-        >
-          探针
-        </button>
-        <button
-          v-if="canWrite"
-          type="button"
-          class="m-header__btn"
-          aria-label="分享服务器"
-          @click="shareOpen = true"
-        >
-          <el-icon><Share /></el-icon>
-        </button>
-        <el-button
           circle
-          size="small"
           :icon="Refresh"
           :loading="refreshing"
           aria-label="刷新"
@@ -67,6 +39,59 @@
     <div v-else class="m-stack">
       <SummaryCards v-if="appState.nodes.length" :nodes="appState.nodes" :metrics="metrics" :live="live" />
 
+      <!-- Compact Admin Utility Bar & View Switcher -->
+      <div class="m-filter-bar" style="flex-wrap: wrap;">
+        <div v-if="canWrite && !isShareMode" class="m-filter-row" style="gap: 6px;">
+          <button
+            type="button"
+            class="m-pill"
+            aria-label="探针管理"
+            @click="probeManagerOpen = true"
+          >
+            探针管理
+          </button>
+          <button
+            type="button"
+            class="m-pill"
+            aria-label="分享服务器"
+            @click="shareOpen = true"
+          >
+            分享服务器
+          </button>
+        </div>
+        <div class="m-filter-row" style="gap: 6px; margin-left: auto;">
+          <button
+            type="button"
+            class="m-pill"
+            :class="{ 'is-active': viewMode === 'card' }"
+            aria-label="卡片视图"
+            @click="viewMode = 'card'"
+          >
+            卡片
+          </button>
+          <button
+            type="button"
+            class="m-pill"
+            :class="{ 'is-active': viewMode === 'list' }"
+            aria-label="列表视图"
+            @click="viewMode = 'list'"
+          >
+            列表
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="isAdmin && upgradableAgentNodes.length > 0 && !isShareMode"
+        class="m-notice m-notice--warning m-filter-bar"
+        style="margin-bottom: 0;"
+      >
+        <span style="font-size: 12.5px;">发现 {{ upgradableAgentNodes.length }} 台在线节点可升级 Agent</span>
+        <el-button type="warning" plain @click="upgradeAllAgents">
+          升级 Agent ({{ upgradableAgentNodes.length }})
+        </el-button>
+      </div>
+
       <div class="m-stack" style="gap: 8px;">
         <el-input
           v-model="keyword"
@@ -84,33 +109,14 @@
         />
 
         <div class="m-sort-row">
-          <el-select v-model="sortBy" size="small" style="flex: 1;" aria-label="排序方式">
-            <el-option label="按名称排序" value="name" />
-            <el-option label="按活跃时间" value="last_seen" />
-            <el-option label="按实时连接数" value="conn" />
-            <el-option label="按 CPU 占用" value="cpu" />
-            <el-option label="按内存占用" value="mem" />
-          </el-select>
-          <div class="m-filter-row" style="gap: 4px; flex: none;">
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': viewMode === 'card' }"
-              aria-label="卡片视图"
-              @click="viewMode = 'card'"
-            >
-              卡片
-            </button>
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': viewMode === 'list' }"
-              aria-label="列表视图"
-              @click="viewMode = 'list'"
-            >
-              列表
-            </button>
-          </div>
+          <MPicker
+            v-model="sortBy"
+            chip
+            :options="sortOptions"
+            title="排序方式"
+            aria-label="排序方式"
+            style="flex: 1;"
+          />
         </div>
       </div>
 
@@ -156,32 +162,34 @@
 
       <div v-if="!filteredNodes.length" class="m-card m-note">尚未匹配到服务器</div>
 
-      <!-- Card View (aligned 1:1 with PC NodeCard) -->
+      <!-- Mobile-Native Card View (100% PC parity without hover tooltips / tiny dropdowns) -->
       <div v-else-if="viewMode === 'card'" class="m-list">
-        <NodeCard
+        <MNodeCard
           v-for="node in filteredNodes"
           :key="node.id"
-          class="m-node-card"
           :node="node"
           :metrics="metrics[node.id] || {}"
           :live="live.get(node.id) || null"
           :can-manage="canWrite && !isShareMode"
           :sing-box-latest="singBoxLatest"
           @open="openDetail"
+          @open-actions="openActions"
           @action="handleCardAction"
         />
       </div>
 
-      <!-- Compact List View (aligned 1:1 with PC NodeRow) -->
+      <!-- Mobile-Native Compact List View -->
       <div v-else class="m-list">
-        <NodeRow
+        <MNodeRow
           v-for="node in filteredNodes"
           :key="node.id"
           :node="node"
           :metrics="metrics[node.id] || {}"
           :live="live.get(node.id) || null"
+          :can-manage="canWrite && !isShareMode"
           :sing-box-latest="singBoxLatest"
           @open="openDetail"
+          @open-actions="openActions"
         />
       </div>
     </div>
@@ -240,81 +248,80 @@
         <template v-else-if="editTab === 'plan'">
           <div class="m-field">
             <label class="m-field__label">计价周期与费用</label>
-            <el-select v-model="editForm.price_period" placeholder="计价周期" style="width: 100%; margin-bottom: 8px;">
-              <el-option label="未设置" value="" />
-              <el-option label="免费" value="free" />
-              <el-option label="按天" value="day" />
-              <el-option label="按月" value="month" />
-              <el-option label="按季" value="quarter" />
-              <el-option label="按年" value="year" />
-            </el-select>
-            <div style="display: flex; gap: 8px;">
+            <MPicker
+              v-model="editForm.price_period"
+              :options="pricePeriodOptions"
+              title="选择计价周期"
+              placeholder="计价周期"
+              style="margin-bottom: 10px;"
+            />
+            <div class="m-stack" style="gap: 8px;">
               <el-input
                 v-model="editForm.price"
                 :disabled="editForm.price_period === 'free'"
                 placeholder="价格"
-                style="flex: 1;"
               />
-              <el-select v-model="editForm.currency" style="width: 105px;">
-                <el-option label="USD" value="USD" />
-                <el-option label="CNY" value="CNY" />
-                <el-option label="EUR" value="EUR" />
-                <el-option label="CAD" value="CAD" />
-              </el-select>
+              <MSegmented v-model="editForm.currency" :options="currencyOptions" style="margin-bottom: 0;" />
             </div>
           </div>
 
           <div class="m-field">
-            <div class="m-filter-bar" style="margin-bottom: 4px;">
+            <div class="m-filter-bar" style="margin-bottom: 6px;">
               <label class="m-field__label" style="margin: 0;">到期时间</label>
-              <el-button
-                size="small"
-                text
+              <button
+                v-if="editForm.expires_on !== 'permanent'"
+                type="button"
+                class="m-pill"
                 @click="editForm.expires_on = 'permanent'"
               >
                 设为永久
-              </el-button>
+              </button>
+              <button
+                v-else
+                type="button"
+                class="m-pill is-active"
+                @click="editForm.expires_on = ''"
+              >
+                改回日期
+              </button>
             </div>
             <el-input
               v-if="editForm.expires_on === 'permanent'"
               model-value="永久有效 (permanent)"
               readonly
-            >
-              <template #append>
-                <el-button @click="editForm.expires_on = ''">改回日期</el-button>
-              </template>
-            </el-input>
-            <el-date-picker
+            />
+            <input
               v-else
               v-model="editForm.expires_on"
               type="date"
-              value-format="YYYY-MM-DD"
-              placeholder="选择到期日期"
-              clearable
-              style="width: 100%;"
+              aria-label="到期时间"
+              class="m-native-input"
             />
           </div>
 
           <div class="m-field">
             <label class="m-field__label">月流量配额</label>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
               <el-input v-model="editForm.traffic_value" placeholder="例如 1000" style="flex: 1;" />
-              <el-select v-model="editForm.traffic_unit" style="width: 100px;">
-                <el-option label="MB" value="MB" />
-                <el-option label="GB" value="GB" />
-                <el-option label="TB" value="TB" />
-              </el-select>
+              <MPicker
+                v-model="editForm.traffic_unit"
+                chip
+                :options="trafficUnitOptions"
+                title="选择流量单位"
+              />
             </div>
           </div>
 
           <div class="m-field">
             <label class="m-field__label">端口带宽上限</label>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
               <el-input v-model="editForm.bandwidth_value" placeholder="例如 1" style="flex: 1;" />
-              <el-select v-model="editForm.bandwidth_unit" style="width: 100px;">
-                <el-option label="Mbps" value="Mbps" />
-                <el-option label="Gbps" value="Gbps" />
-              </el-select>
+              <MPicker
+                v-model="editForm.bandwidth_unit"
+                chip
+                :options="bandwidthUnitOptions"
+                title="选择带宽单位"
+              />
             </div>
           </div>
 
@@ -333,7 +340,7 @@
 
             <div class="m-filter-row" style="margin-bottom: 8px;">
               <el-input v-model="newCustomEgressIP" placeholder="手动添加 IPv4/IPv6" style="flex: 1;" />
-              <el-button size="small" @click="addCustomEgressIP">添加</el-button>
+              <el-button @click="addCustomEgressIP">添加</el-button>
             </div>
 
             <div v-if="editNodeAllIPs.length" class="m-list">
@@ -376,23 +383,15 @@
             </div>
 
             <div v-if="editForm.ddns_enabled" class="m-stack" style="gap: 8px;">
-              <el-select
+              <MPicker
                 v-model="editForm.ddns_record_ids"
                 multiple
-                filterable
-                collapse-tags
+                clearable
+                :options="cfRecordOptions"
+                title="选择绑定域名记录"
                 placeholder="选择绑定域名记录"
-                style="width: 100%;"
-                :loading="cfLoading"
-                @change="syncDDNSDomainsFromSelection"
-              >
-                <el-option
-                  v-for="rec in cfRecords"
-                  :key="rec.id"
-                  :label="`${rec.type} · ${rec.name}`"
-                  :value="rec.id"
-                />
-              </el-select>
+                @update:model-value="syncDDNSDomainsFromSelection"
+              />
 
               <div v-if="(editForm.ddns_domains || []).length" class="m-filter-row">
                 <el-tag v-for="d in editForm.ddns_domains" :key="d" size="small" type="info">
@@ -400,22 +399,14 @@
                 </el-tag>
               </div>
 
-              <el-select
+              <MPicker
                 v-model="editForm.ddns_bind_ip"
-                filterable
-                allow-create
-                default-first-option
+                allow-custom
                 clearable
+                :options="editDDNSIPOptions"
+                title="默认同步出口 IP"
                 placeholder="默认同步出口 IP（留空则自动探测）"
-                style="width: 100%;"
-              >
-                <el-option
-                  v-for="opt in editDDNSIPOptions"
-                  :key="opt.value || 'auto'"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
+              />
 
               <div
                 v-if="(editForm.ddns_record_ids || []).length > 1 || Object.keys(editForm.ddns_record_ips || {}).length > 0"
@@ -426,27 +417,19 @@
                 <div
                   v-for="(recId, idx) in editForm.ddns_record_ids"
                   :key="recId"
-                  style="padding: 8px; border-radius: 8px; background: var(--sb-surface-2); display: flex; flex-direction: column; gap: 4px;"
+                  style="padding: 10px; border-radius: 10px; background: var(--sb-surface-2); border: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px;"
                 >
                   <span class="m-mono-wrap" style="font-size: 12px;">
                     {{ cfRecordById(recId)?.type || 'DNS' }} · {{ cfRecordById(recId)?.name || editForm.ddns_domains[idx] || recId }}
                   </span>
-                  <el-select
+                  <MPicker
                     v-model="editForm.ddns_record_ips[recId]"
-                    filterable
-                    allow-create
-                    default-first-option
+                    allow-custom
                     clearable
+                    :options="editDDNSRecordIPOptions(recId)"
+                    title="分记录指定解析 IP"
                     placeholder="继承默认策略"
-                    style="width: 100%;"
-                  >
-                    <el-option
-                      v-for="opt in editDDNSRecordIPOptions(recId)"
-                      :key="opt.value"
-                      :label="opt.label"
-                      :value="opt.value"
-                    />
-                  </el-select>
+                  />
                 </div>
               </div>
             </div>
@@ -458,7 +441,7 @@
           <div class="m-card m-card--flat">
             <div class="m-filter-bar" style="margin-bottom: 6px;">
               <strong style="font-size: 13px;">公共默认探针 ({{ publicProbes.length }})</strong>
-              <el-button size="small" text @click="probeManagerOpen = true">管理全局探针</el-button>
+              <button type="button" class="m-pill" @click="probeManagerOpen = true">管理全局探针</button>
             </div>
             <div v-if="publicProbes.length === 0" class="m-note">暂无全局默认探针</div>
             <div v-else class="m-filter-row">
@@ -471,9 +454,9 @@
           <div class="m-field">
             <div class="m-filter-bar" style="margin-bottom: 8px;">
               <label class="m-field__label" style="margin: 0;">服务器专属探针 ({{ (editForm.custom_probes || []).length }})</label>
-              <el-button size="small" type="primary" plain @click="addCustomProbe">
+              <button type="button" class="m-pill" @click="addCustomProbe">
                 + 添加专属探针
-              </el-button>
+              </button>
             </div>
             <div v-if="!(editForm.custom_probes || []).length" class="m-card m-card--flat m-note">
               暂无专属探针，点击上方按钮添加仅针对该服务器的探测任务。
@@ -486,7 +469,7 @@
               >
                 <div class="m-filter-bar">
                   <strong style="font-size: 12px;">专属探针 #{{ idx + 1 }}</strong>
-                  <el-button size="small" type="danger" text @click="removeCustomProbe(idx)">删除</el-button>
+                  <button type="button" class="m-pill" style="color: var(--sb-danger);" @click="removeCustomProbe(idx)">删除</button>
                 </div>
                 <el-input v-model="probe.name" size="small" placeholder="名称，如：香港联通" />
                 <el-input v-model="probe.target" size="small" placeholder="目标 IP/域名:端口" />
@@ -562,17 +545,19 @@ import { api, post, put } from '../../api'
 import { writeClipboard } from '../../clipboard'
 import { connectionSnapshots, subscribeConnections } from '../../connections'
 import { buildDDNSIPOptions } from '../../ddns'
-import { formatDateTime, includesText } from '../../format'
+import { formatBytes, formatDateTime, includesText } from '../../format'
 import { subscribeLive } from '../../live'
 import { isShareMode } from '../../share'
 import { isNewerVersion } from '../../version'
-import NodeCard from '../../components/NodeCard.vue'
-import NodeRow from '../../components/NodeRow.vue'
 import OsIcon from '../../components/OsIcon.vue'
 import SummaryCards from '../../components/SummaryCards.vue'
 import MDDNSHistoryList from '../components/MDDNSHistoryList.vue'
+import MActionSheet from '../components/MActionSheet.vue'
+import MNodeCard from '../components/MNodeCard.vue'
+import MNodeRow from '../components/MNodeRow.vue'
 import MPage from '../components/MPage.vue'
 import MPeerProbeSheet from '../components/MPeerProbeSheet.vue'
+import MPicker from '../components/MPicker.vue'
 import MProbeManager from '../components/MProbeManager.vue'
 import MSegmented from '../components/MSegmented.vue'
 import MShareSheet from '../components/MShareSheet.vue'
@@ -601,6 +586,49 @@ const keyword = ref('')
 const statusFilter = ref(getInitialStatusFilter())
 const sortBy = ref('name')
 const viewMode = ref(window.localStorage.getItem(VIEW_MODE_KEY) || 'card')
+
+const sortOptions = [
+  { value: 'name', label: '按名称排序' },
+  { value: 'last_seen', label: '按活跃时间' },
+  { value: 'conn', label: '按实时连接数' },
+  { value: 'cpu', label: '按 CPU 占用' },
+  { value: 'mem', label: '按内存占用' },
+]
+
+const pricePeriodOptions = [
+  { value: '', label: '未设置' },
+  { value: 'free', label: '免费' },
+  { value: 'day', label: '按天' },
+  { value: 'month', label: '按月' },
+  { value: 'quarter', label: '按季' },
+  { value: 'year', label: '按年' },
+]
+
+const currencyOptions = [
+  { value: 'USD', label: 'USD' },
+  { value: 'CNY', label: 'CNY' },
+  { value: 'EUR', label: 'EUR' },
+  { value: 'CAD', label: 'CAD' },
+]
+
+const trafficUnitOptions = [
+  { value: 'MB', label: 'MB' },
+  { value: 'GB', label: 'GB' },
+  { value: 'TB', label: 'TB' },
+]
+
+const bandwidthUnitOptions = [
+  { value: 'Mbps', label: 'Mbps' },
+  { value: 'Gbps', label: 'Gbps' },
+]
+
+const cfRecordOptions = computed(() =>
+  cfRecords.value.map((rec) => ({
+    value: rec.id,
+    label: `${rec.type} · ${rec.name}`,
+    desc: rec.content || '',
+  }))
+)
 
 const detailNodeId = ref('')
 const pending = ref([])
@@ -912,13 +940,32 @@ const actionDetails = computed(() => {
   const n = actionTarget.value
   if (!n) return []
   const exp = nodeExpiryInfo(n)
-  return [
+  const tr = trafficOf(n)
+  const host = metrics.value[n.id]?.host || {}
+  const list = [
     { label: '状态', value: n.online ? '在线' : '离线' },
-    { label: '连接地址', value: n.client_address || n.last_observed_ip || '未设置' },
+    { label: '连接地址', value: n.client_address || n.last_observed_ip || '未设置', mono: true },
     { label: '地区 / 系统', value: [nodeLocationLabel(n), n.os_name || n.os].filter(Boolean).join(' · ') || '—' },
-    { label: '本月流量', value: `${formatBytes(trafficOf(n).monthlyTotal)}${n.traffic_plan ? ` / ${n.traffic_plan}` : ''}` },
-    ...(exp ? [{ label: '到期状态', value: exp.label }] : []),
+    { label: '本月流量', value: `${formatBytes(tr.monthlyTotal)}${n.traffic_plan ? ` / ${n.traffic_plan}` : ''} (↓ ${formatBytes(tr.monthlyRx)} · ↑ ${formatBytes(tr.monthlyTx)})` },
+    { label: '累计流量', value: `${formatBytes(tr.lifetimeTotal)} (↓ ${formatBytes(tr.lifetimeRx)} · ↑ ${formatBytes(tr.lifetimeTx)})` },
   ]
+  if (tr.proxyMonthlyTotal > 0) {
+    list.push({ label: '代理月转发', value: `${formatBytes(tr.proxyMonthlyTotal)} (↓ ${formatBytes(tr.proxyMonthlyRx)} · ↑ ${formatBytes(tr.proxyMonthlyTx)})` })
+  }
+  if (host.tcp || host.udp) {
+    list.push({ label: '底层套接字', value: `TCP ${host.tcp || 0} · UDP ${host.udp || 0}` })
+  }
+  if (n.agent_version) {
+    const latestAgent = appState.systemUpdate?.latest_version
+    list.push({ label: 'Agent 版本', value: agentUpdateAvailable(n) && latestAgent ? `${n.agent_version} (可升 v${latestAgent})` : n.agent_version, mono: true })
+  }
+  if (n.sing_box_version) {
+    const latestSB = singBoxLatest.value[n.architecture]
+    list.push({ label: 'sing-box', value: singBoxUpdateAvailable(n) && latestSB ? `${n.sing_box_version} (可升 ${latestSB})` : n.sing_box_version, mono: true })
+  }
+  if (n.provider) list.push({ label: '服务厂商', value: n.provider })
+  if (exp) list.push({ label: '到期状态', value: exp.label })
+  return list
 })
 
 const sheetActions = computed(() => {

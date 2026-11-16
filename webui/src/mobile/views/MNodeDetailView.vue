@@ -16,30 +16,28 @@
             </div>
           </div>
         </div>
-        <el-button circle size="small" :icon="Refresh" aria-label="刷新详情" @click="refreshAll" />
+        <el-button circle :icon="Refresh" aria-label="刷新详情" @click="refreshAll" />
       </div>
 
       <div class="m-action-strip">
-        <el-button v-if="canWrite && !isShareMode" size="small" type="primary" plain @click="emit('edit', 'basic')">
+        <el-button v-if="canWrite && !isShareMode" type="primary" plain @click="emit('edit', 'basic')">
           配置
         </el-button>
-        <el-button v-if="!isShareMode" size="small" @click="emit('probe-peers', node)">
+        <el-button v-if="!isShareMode" @click="emit('probe-peers', node)">
           线路排查
         </el-button>
         <el-button
           v-if="!isShareMode && node.ddns_enabled"
-          size="small"
           :loading="syncingDDNS"
           @click="syncDDNS"
         >
           同步 DDNS
         </el-button>
-        <el-button v-if="!isShareMode && node.ddns_enabled" size="small" @click="ddnsHistoryOpen = true">
+        <el-button v-if="!isShareMode && node.ddns_enabled" @click="ddnsHistoryOpen = true">
           DDNS 记录
         </el-button>
         <el-button
           v-if="isAdmin && !isShareMode && agentUpgradable"
-          size="small"
           type="warning"
           @click="emit('upgrade-agent', node)"
         >
@@ -47,7 +45,6 @@
         </el-button>
         <el-button
           v-if="isAdmin && !isShareMode && singBoxUpgradable"
-          size="small"
           type="warning"
           plain
           @click="emit('upgrade-singbox', node)"

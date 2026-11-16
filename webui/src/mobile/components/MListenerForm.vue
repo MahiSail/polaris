@@ -33,9 +33,11 @@ const emit = defineEmits(['update:modelValue', 'save'])
 const model = ref(createListenerModel(null, ''))
 const accounts = ref([])
 const aliasFlags = [['🇭🇰','香港'],['🇹🇼','台湾'],['🇸🇬','新加坡'],['🇯🇵','日本'],['🇰🇷','韩国'],['🇺🇸','美国'],['🇬🇧','英国'],['🇩🇪','德国'],['🇫🇷','法国'],['🇳🇱','荷兰'],['🇨🇦','加拿大'],['🇦🇺','澳大利亚'],['🇪🇪','爱沙尼亚'],['🇮🇳','印度'],['🇹🇷','土耳其']]
+const flagDrawerIndex = ref(-1)
 function addAliasFlag(account, flag) {
   const alias = (account.alias || '').trim()
   account.alias = alias.startsWith(flag) ? alias : `${flag}${alias ? ` ${alias}` : ''}`
+  flagDrawerIndex.value = -1
 }
 const expanded = ref(0)
 
@@ -512,14 +514,28 @@ function save() {
             <label class="m-field__label">客户端节点别名 <em>*</em></label>
             <div class="alias-input">
               <el-input v-model="account.alias" maxlength="128" aria-label="客户端节点别名" placeholder="节点别名" />
-              <el-popover trigger="click" placement="bottom-end" :width="244">
-                <template #reference><el-button class="alias-flag-trigger" aria-label="选择国旗" title="选择国旗">🏳️</el-button></template>
-                <div class="alias-flag-grid">
-                  <el-tooltip v-for="[flag, country] in aliasFlags" :key="flag" :content="country">
-                    <button type="button" class="alias-flag-option" :aria-label="country" @click="addAliasFlag(account, flag)">{{ flag }}</button>
-                  </el-tooltip>
-                </div>
-              </el-popover>
+              <button
+                type="button"
+                class="alias-flag-trigger"
+                :class="{ 'is-open': flagDrawerIndex === index }"
+                aria-label="选择国旗"
+                @click="flagDrawerIndex = flagDrawerIndex === index ? -1 : index"
+              >
+                🏳️ 国旗
+              </button>
+            </div>
+            <div v-if="flagDrawerIndex === index" class="alias-flag-grid">
+              <button
+                v-for="[flag, country] in aliasFlags"
+                :key="flag"
+                type="button"
+                class="alias-flag-option"
+                :aria-label="country"
+                @click="addAliasFlag(account, flag)"
+              >
+                <span>{{ flag }}</span>
+                <small>{{ country }}</small>
+              </button>
             </div>
           </div>
           <div class="m-field">
@@ -529,10 +545,10 @@ function save() {
               :options="accountOutboundOptions(account)"
               title="选择出口或链式节点"
             />
-            <div style="margin-top: 6px">
-              <el-button text size="small" type="primary" :icon="Plus" @click="promptAddCustomIP(account)">
-                手动添加出口 IP
-              </el-button>
+            <div style="margin-top: 8px">
+              <button type="button" class="m-pill" @click="promptAddCustomIP(account)">
+                + 手动添加出口 IP
+              </button>
             </div>
           </div>
           <div class="m-field m-field--inline">
@@ -553,11 +569,46 @@ function save() {
 </template>
 
 <style scoped>
-.alias-input { display: flex; gap: 6px; min-width: 0; }
+.alias-input { display: flex; gap: 6px; min-width: 0; align-items: center; }
 .alias-input :deep(.el-input) { flex: 1; min-width: 0; }
-.alias-flag-trigger { padding: 0 10px; }
-.alias-flag-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-.alias-flag-option { height: 38px; border: 1px solid var(--sb-line); border-radius: 7px; background: var(--sb-surface); font-size: 20px; }
+.alias-flag-trigger {
+  flex: none;
+  min-height: var(--m-tap);
+  padding: 0 12px;
+  border: 1px solid var(--sb-line-strong);
+  border-radius: var(--sb-radius-sm);
+  background: var(--sb-surface-2);
+  color: var(--sb-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.alias-flag-trigger.is-open {
+  border-color: var(--sb-text);
+  background: var(--sb-accent-soft);
+}
+.alias-flag-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.alias-flag-option {
+  min-height: 40px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--sb-line);
+  border-radius: 8px;
+  background: var(--sb-surface-2);
+  color: var(--sb-text);
+  font: inherit;
+  cursor: pointer;
+}
+.alias-flag-option span { font-size: 17px; line-height: 1; }
+.alias-flag-option small { font-size: 12px; color: var(--sb-text-2); }
 .domain { border-style: dashed; cursor: pointer; }
 .domain small { color: var(--sb-muted); font-size: 11px; }
 .accounts { border: 1px solid var(--sb-line); border-radius: var(--m-radius); overflow: hidden; }

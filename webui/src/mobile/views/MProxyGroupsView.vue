@@ -219,12 +219,14 @@ onMounted(load)
         @click="load()"
       />
     </template>
-    <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" />
-    <div class="m-filters">
-      <MSegmented
-        v-model="selectedStrategy"
-        :options="[{ value: '', label: '全部策略' }, { value: 'select', label: '手动选择' }, { value: 'url-test', label: '自动测速' }, { value: 'fallback', label: '故障切换' }]"
-      />
+    <div class="m-listbar">
+      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" />
+      <div class="m-filters">
+        <MSegmented
+          v-model="selectedStrategy"
+          :options="[{ value: '', label: '全部策略' }, { value: 'select', label: '手动选择' }, { value: 'url-test', label: '自动测速' }, { value: 'fallback', label: '故障切换' }]"
+        />
+      </div>
     </div>
     <div class="m-count">共 {{ filteredGroups.length }} 个分组</div>
 

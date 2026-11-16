@@ -198,29 +198,31 @@ onMounted(async () => {
 
     <!-- 1. 系统操作 -->
     <template v-if="tab === 'tasks'">
-      <el-input
-        v-model="taskKeyword"
-        clearable
-        :prefix-icon="Search"
-        placeholder="搜索操作、服务器或结果"
-      />
-      <div class="m-filters">
-        <MPicker
-          :model-value="selectedNodeId"
-          chip
-          :options="nodeFilterOptions"
-          title="按服务器筛选"
-          placeholder="全部服务器"
-          @update:model-value="selectedNodeId = $event"
+      <div class="m-stack" style="gap: 10px; margin-bottom: 12px;">
+        <el-input
+          v-model="taskKeyword"
+          clearable
+          :prefix-icon="Search"
+          placeholder="搜索操作、服务器或结果"
         />
-        <MPicker
-          :model-value="selectedTaskStatus"
-          chip
-          :options="taskStatusOptions"
-          title="按状态筛选"
-          placeholder="全部状态"
-          @update:model-value="selectedTaskStatus = $event"
-        />
+        <div class="m-filters" style="margin: 0;">
+          <MPicker
+            :model-value="selectedNodeId"
+            chip
+            :options="nodeFilterOptions"
+            title="按服务器筛选"
+            placeholder="全部服务器"
+            @update:model-value="selectedNodeId = $event"
+          />
+          <MPicker
+            :model-value="selectedTaskStatus"
+            chip
+            :options="taskStatusOptions"
+            title="按状态筛选"
+            placeholder="全部状态"
+            @update:model-value="selectedTaskStatus = $event"
+          />
+        </div>
       </div>
 
       <article
@@ -270,21 +272,23 @@ onMounted(async () => {
 
     <!-- 3. 管理员修改记录 -->
     <template v-else>
-      <el-input
-        v-model="auditKeyword"
-        clearable
-        :prefix-icon="Search"
-        placeholder="搜索操作人、内容或对象"
-      />
-      <div class="m-filters">
-        <MPicker
-          :model-value="selectedModule"
-          chip
-          :options="auditModuleOptions"
-          title="按业务模块筛选"
-          placeholder="全部模块"
-          @update:model-value="selectedModule = $event"
+      <div class="m-stack" style="gap: 10px; margin-bottom: 12px;">
+        <el-input
+          v-model="auditKeyword"
+          clearable
+          :prefix-icon="Search"
+          placeholder="搜索操作人、内容或对象"
         />
+        <div class="m-filters" style="margin: 0;">
+          <MPicker
+            :model-value="selectedModule"
+            chip
+            :options="auditModuleOptions"
+            title="按业务模块筛选"
+            placeholder="全部模块"
+            @update:model-value="selectedModule = $event"
+          />
+        </div>
       </div>
 
       <article

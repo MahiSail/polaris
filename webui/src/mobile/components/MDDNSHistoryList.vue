@@ -11,10 +11,9 @@
             @keyup.enter="handleFilterChange"
             @clear="handleFilterChange"
           />
-          <el-button size="small" :loading="loading" @click="load(false)">刷新</el-button>
+          <el-button :loading="loading" @click="load(false)">刷新</el-button>
           <el-button
             v-if="canWrite && total > 0"
-            size="small"
             type="danger"
             plain
             @click="clearAll"
@@ -49,17 +48,15 @@
           </button>
         </div>
 
-        <el-select
+        <MPicker
           v-if="!nodeId && nodeOptions.length > 0"
           v-model="selectedNodeId"
-          placeholder="全部服务器"
           clearable
-          style="width: 100%;"
-          @change="handleFilterChange"
-        >
-          <el-option label="全部服务器" value="" />
-          <el-option v-for="n in nodeOptions" :key="n.id" :label="n.name" :value="n.id" />
-        </el-select>
+          :options="pickerNodeOptions"
+          title="筛选服务器"
+          placeholder="全部服务器"
+          @update:model-value="handleFilterChange"
+        />
       </div>
     </div>
 
@@ -113,8 +110,8 @@
     <div v-if="total > pageSize" class="m-pagination">
       <span>共 {{ total }} 条 · 第 {{ page }} / {{ totalPages }} 页</span>
       <div style="display: flex; gap: 6px;">
-        <el-button size="small" :disabled="page <= 1" @click="goPage(page - 1)">上一页</el-button>
-        <el-button size="small" :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</el-button>
+        <el-button :disabled="page <= 1" @click="goPage(page - 1)">上一页</el-button>
+        <el-button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</el-button>
       </div>
     </div>
   </div>
@@ -126,6 +123,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, del } from '../../api'
 import { formatDateTime } from '../../format'
 import { subscribeLive } from '../../live'
+import MPicker from './MPicker.vue'
 
 const props = defineProps({
   nodeId: { type: String, default: '' },
@@ -160,6 +158,10 @@ const fetchedNodes = ref([])
 let unsubLive = null
 
 const nodeOptions = computed(() => (props.nodes !== null ? props.nodes : fetchedNodes.value))
+const pickerNodeOptions = computed(() => [
+  { value: '', label: '全部服务器' },
+  ...nodeOptions.value.map((n) => ({ value: n.id, label: n.name })),
+])
 const totalPages = computed(() => Math.max(1, Math.ceil((total.value || 0) / pageSize)))
 
 async function loadNodesIfNeeded() {

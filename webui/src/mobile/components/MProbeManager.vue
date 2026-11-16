@@ -12,7 +12,7 @@
           clearable
           style="flex: 1; min-width: 0;"
         />
-        <el-button v-if="canWrite" type="primary" size="small" @click="openCreate">
+        <el-button v-if="canWrite" type="primary" @click="openCreate">
           新建探针
         </el-button>
       </div>
@@ -52,7 +52,6 @@
           <div v-if="canWrite" class="m-filter-row" style="justify-content: flex-end;">
             <el-button
               v-if="scopeFilter === 'all' && !keyword.trim()"
-              size="small"
               :disabled="index === 0 || reordering"
               @click="moveTask(task, -1)"
             >
@@ -60,14 +59,13 @@
             </el-button>
             <el-button
               v-if="scopeFilter === 'all' && !keyword.trim()"
-              size="small"
               :disabled="index === filteredTasks.length - 1 || reordering"
               @click="moveTask(task, 1)"
             >
               下移
             </el-button>
-            <el-button size="small" @click="openEdit(task)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="removeTask(task)">删除</el-button>
+            <el-button @click="openEdit(task)">编辑</el-button>
+            <el-button type="danger" plain @click="removeTask(task)">删除</el-button>
           </div>
         </div>
       </div>

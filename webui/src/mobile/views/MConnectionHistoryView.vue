@@ -40,7 +40,7 @@
             @keyup.enter="applySearch"
             @clear="applySearch"
           />
-          <el-button type="primary" size="small" @click="applySearch">搜索</el-button>
+          <el-button type="primary" @click="applySearch">搜索</el-button>
         </div>
 
         <div class="m-filter-bar">
@@ -93,9 +93,9 @@
 
       <div class="m-filter-bar" style="padding: 0 2px;">
         <span class="m-note">共 {{ total }} 条历史连接</span>
-        <el-button size="small" text @click="filterOpen = true">
+        <button type="button" class="m-pill" @click="filterOpen = true">
           排序：{{ sortLabel }} ({{ filters.order_dir === 'asc' ? '升序' : '降序' }})
-        </el-button>
+        </button>
       </div>
 
       <div v-if="!loading && records.length === 0" class="m-card m-note">
@@ -149,8 +149,8 @@
       <div v-if="total > pageSize" class="m-pagination">
         <span>第 {{ page }} / {{ totalPages }} 页</span>
         <div style="display: flex; gap: 6px;">
-          <el-button size="small" :disabled="page <= 1" @click="goPage(page - 1)">上一页</el-button>
-          <el-button size="small" :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</el-button>
+          <el-button :disabled="page <= 1" @click="goPage(page - 1)">上一页</el-button>
+          <el-button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</el-button>
         </div>
       </div>
     </div>
@@ -170,10 +170,13 @@
 
         <div class="m-field">
           <label class="m-field__label">服务器</label>
-          <el-select v-model="filters.node_id" placeholder="全部服务器" clearable style="width: 100%;">
-            <el-option label="全部服务器" value="" />
-            <el-option v-for="n in nodeList" :key="n.id" :label="n.name" :value="n.id" />
-          </el-select>
+          <MPicker
+            v-model="filters.node_id"
+            clearable
+            :options="nodePickerOptions"
+            title="选择服务器"
+            placeholder="全部服务器"
+          />
         </div>
 
         <div class="m-field">
@@ -216,11 +219,11 @@
         <div class="m-kv-grid">
           <div class="m-field">
             <label class="m-field__label">开始时间</label>
-            <input v-model="filters.startLocal" type="datetime-local" class="el-input__inner" style="width: 100%; height: 32px; border: 1px solid var(--sb-line); border-radius: 6px; padding: 0 8px; background: var(--sb-surface); color: var(--sb-text);" />
+            <input v-model="filters.startLocal" type="datetime-local" class="m-native-input" />
           </div>
           <div class="m-field">
             <label class="m-field__label">结束时间</label>
-            <input v-model="filters.endLocal" type="datetime-local" class="el-input__inner" style="width: 100%; height: 32px; border: 1px solid var(--sb-line); border-radius: 6px; padding: 0 8px; background: var(--sb-surface); color: var(--sb-text);" />
+            <input v-model="filters.endLocal" type="datetime-local" class="m-native-input" />
           </div>
         </div>
 
@@ -370,7 +373,13 @@ import { Download, Filter, Refresh } from '@element-plus/icons-vue'
 import { api } from '../../api'
 import { formatBytes, formatDateTime, formatDuration, localTimeZoneLabel } from '../../format'
 import MPage from '../components/MPage.vue'
+import MPicker from '../components/MPicker.vue'
 import MSheet from '../components/MSheet.vue'
+
+const nodePickerOptions = computed(() => [
+  { value: '', label: '全部服务器' },
+  ...nodeList.value.map((n) => ({ value: n.id, label: n.name })),
+])
 
 const networkOptions = [
   { label: '全部', value: '' },

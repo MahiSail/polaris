@@ -82,9 +82,10 @@
   flex: 1;
 }
 .m-header__back {
+  position: relative;
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -94,6 +95,11 @@
   border: 0;
   border-radius: 50%;
   cursor: pointer;
+}
+.m-header__back::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 .m-header__back:active {
   background: var(--sb-hover-bg);
@@ -114,8 +120,63 @@
   gap: 8px;
   flex: none;
 }
+.m-header__right .el-button.is-circle {
+  position: relative;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px;
+  padding: 0 !important;
+}
+.m-header__right .el-button.is-circle::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
 
 /* ── 通用微拟态卡片 (M-Card) ────────────────────────────────── */
+.m-card--flat {
+  background: var(--sb-surface-2);
+  box-shadow: none;
+}
+
+.m-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.m-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.m-stack > .m-card + .m-card,
+.m-list > .m-card + .m-card,
+.m-stack > .m-item + .m-item,
+.m-list > .m-item + .m-item {
+  margin-top: 0;
+}
+
+.m-stack > .m-seg {
+  margin-bottom: 0;
+}
+
+.m-item__mono {
+  font-family: "Cascadia Code", Consolas, monospace;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.m-section__title {
+  color: var(--sb-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .8px;
+}
+
 .m-card {
   padding: 14px 15px;
   background: var(--sb-panel-solid);
@@ -384,6 +445,60 @@
   border: 1px solid var(--sb-line-strong);
 }
 
+/* 可交互筛选胶囊按钮（满足 >=44px 有效触控热区与明确选中态对比） */
+button.m-pill {
+  position: relative;
+  min-height: 36px;
+  padding: 6px 14px;
+  color: var(--sb-text-2);
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-line-strong);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+button.m-pill::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+button.m-pill:active {
+  transform: scale(0.97);
+}
+button.m-pill.is-active {
+  color: var(--sb-bg);
+  background: var(--sb-text);
+  border-color: var(--sb-text);
+  font-weight: 600;
+}
+
+/* 原生移动端日期/时间输入框 */
+.m-native-input {
+  width: 100%;
+  height: var(--m-tap);
+  min-height: var(--m-tap);
+  padding: 0 12px;
+  color: var(--sb-text);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
+  border-radius: var(--sb-radius-sm);
+  font: inherit;
+  font-size: 14px;
+  line-height: var(--m-tap);
+  box-sizing: border-box;
+  outline: none;
+  color-scheme: light;
+}
+html.dark .m-native-input {
+  color-scheme: dark;
+}
+.m-native-input:focus {
+  border-color: var(--sb-text);
+}
+
 .m-mono { font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
 .m-muted { color: var(--sb-muted); }
 .m-danger { color: var(--sb-danger); }
@@ -444,47 +559,64 @@
   --el-input-bg-color: var(--sb-surface);
   --el-fill-color-blank: var(--sb-surface);
 }
+.m-listbar--sub {
+  margin-top: 0;
+}
 .m-listbar .el-input__wrapper {
   background-color: var(--sb-surface) !important;
   box-shadow: 0 0 0 1px var(--sb-line-strong) inset;
 }
 .m-listbar .m-filters {
-  margin-top: 8px;
+  margin: 10px 0 0;
 }
 
-/* 筛选工具条 */
+/* 筛选工具条（非吸顶场景保留完整上下呼吸间距） */
 .m-filters {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  margin-top: 10px;
+  margin: 10px 0 12px;
   width: 100%;
 }
 .m-filters::-webkit-scrollbar { display: none; }
 .m-filters > .m-picker {
   flex: 1 1 0%;
   min-width: 0;
-  height: 38px !important;
-  min-height: 38px !important;
+  height: 40px !important;
+  min-height: 40px !important;
   box-sizing: border-box;
 }
 .m-filters > .m-seg {
   flex: 0 0 auto;
   margin-bottom: 0;
-  height: 38px;
+  height: 40px;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   padding: 3px;
 }
-.m-filters > .m-seg:only-child {
-  flex: 1 1 100%;
+.m-filters > .m-seg:only-child,
+.m-filters[style*="column"] > .m-seg {
+  flex: 1 1 auto;
   width: 100%;
 }
+
+/* 统一页面级表单/分段/提示与列表之间的最小呼吸间距 */
+.m-seg + .el-input,
+.el-input + .m-seg,
+.m-notice + .el-input,
+.m-notice + .m-seg,
+.el-input + .m-card,
+.el-input + .m-item {
+  margin-top: 10px;
+}
+.el-input + .m-count {
+  margin-top: 6px;
+}
 .m-filters .m-seg .m-seg__item {
-  min-height: 30px;
-  height: 30px;
-  line-height: 30px;
+  min-height: 34px;
+  height: 34px;
+  line-height: 34px;
   padding: 0 12px;
   font-size: 13px;
 }
@@ -684,23 +816,37 @@ html.light .m-fab, html:not(.dark) .m-fab {
 }
 
 
+button.m-chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 /* ── Parity Additions & Mobile Layout Containment ─────────────────────── */
 .m-header__btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 8px;
+  gap: 5px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid var(--sb-line);
+  border: 1px solid var(--sb-line-strong);
   background: var(--sb-surface);
-  color: var(--sb-text-2);
-  font-size: 12px;
-  font-weight: 500;
+  color: var(--sb-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.m-header__btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .m-header__btn svg {
@@ -801,6 +947,24 @@ html.light .m-fab, html:not(.dark) .m-fab {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.m-sticky-bar--top {
+  position: sticky;
+  top: -12px;
+  bottom: auto;
+  z-index: 15;
+  margin: 0 -14px 12px;
+  padding: 12px 14px;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 1px solid var(--sb-line);
+  background: var(--sb-bg);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--sb-text) 5%, transparent);
+}
+.m-pagination .el-button,
+.pager .el-button {
+  min-height: 38px;
 }
 
 .m-sticky-bar__row {

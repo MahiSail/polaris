@@ -40,11 +40,11 @@ const emit = defineEmits(['update:modelValue'])
   scrollbar-width: none;
 }
 .m-seg::-webkit-scrollbar { display: none; }
-/* 40×44 是手指按得准的触控尺寸 */
+/* 40px 高 + 外框 3px 内边距 ≈ 46px 拇指热区 */
 .m-seg__item {
   flex: 1 0 auto;
   min-width: 44px;
-  min-height: 38px;
+  min-height: 40px;
   padding: 0 14px;
   color: var(--sb-muted);
   background: transparent;

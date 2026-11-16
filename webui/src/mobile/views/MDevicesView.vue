@@ -23,9 +23,9 @@
         />
         <div class="m-filter-bar" style="margin-top: 8px;">
           <span class="m-note">保留最近 30 天 · {{ timeZoneLabel }}</span>
-          <el-button size="small" type="primary" text @click="navigate('connection-history')">
+          <button type="button" class="m-pill" @click="navigate('connection-history')">
             历史连接明细
-          </el-button>
+          </button>
         </div>
       </div>
 
@@ -73,16 +73,14 @@
 
           <div class="m-filter-bar" style="margin-bottom: 6px;">
             <span class="m-note">{{ row.source_location || '归属地未知' }}</span>
-            <el-button
+            <button
               v-if="row.user"
-              size="small"
-              text
-              type="primary"
-              style="padding: 0; height: auto;"
+              type="button"
+              class="m-pill"
               @click.stop="filterByUser(row.user)"
             >
               接入节点：{{ row.user }}
-            </el-button>
+            </button>
           </div>
 
           <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-text-2); margin-bottom: 4px;">

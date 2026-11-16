@@ -1,6 +1,8 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
+import { writeClipboard } from '../../clipboard'
 import { formatBytes, formatDateTime, includesText } from '../../format'
 import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../../connections'
 import MPage from '../components/MPage.vue'
@@ -117,6 +119,42 @@ function openDetail(row) {
   detailOpen.value = true
 }
 
+const connActions = computed(() => {
+  const row = detailTarget.value
+  if (!row) return []
+  const list = [
+    { key: 'copy-target', label: '复制目标地址', hint: row.target },
+  ]
+  if (row.source_ip || row.source) {
+    const ip = row.source_ip || row.source
+    list.push({ key: 'filter-ip', label: '仅看此来源 IP', hint: ip })
+  }
+  if (row.node_id) {
+    list.push({ key: 'filter-node', label: '仅看此服务器', hint: row.node_name })
+  }
+  if (keyword.value || selectedNode.value || selectedOutbound.value) {
+    list.push({ key: 'clear-filters', label: '清除筛选条件' })
+  }
+  return list
+})
+
+async function runConnAction(key) {
+  const row = detailTarget.value
+  if (!row) return
+  if (key === 'copy-target') {
+    await writeClipboard(row.target || '')
+    ElMessage.success('已复制目标地址')
+  } else if (key === 'filter-ip') {
+    keyword.value = row.source_ip || row.source || ''
+  } else if (key === 'filter-node') {
+    selectedNode.value = row.node_id
+  } else if (key === 'clear-filters') {
+    keyword.value = ''
+    selectedNode.value = ''
+    selectedOutbound.value = ''
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -188,6 +226,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="m-conn-badges">
+          <span v-if="row.chain_hop_count > 1" class="m-conn-tag m-conn-tag--chain">{{ row.chain_hop_count }}跳链路</span>
           <span class="m-conn-tag font-mono">{{ (row.network || 'TCP').toUpperCase() }}</span>
           <span
             class="m-conn-tag"
@@ -242,7 +281,13 @@ onBeforeUnmount(() => {
       加载更多（还有 {{ filteredRows.length - visible }} 条）
     </button>
 
-    <MActionSheet v-model="detailOpen" :title="detailTarget?.target" :details="details" />
+    <MActionSheet
+      v-model="detailOpen"
+      :title="detailTarget?.target"
+      :details="details"
+      :actions="connActions"
+      @select="runConnAction"
+    />
   </MPage>
 </template>
 <style scoped>
@@ -330,6 +375,11 @@ onBeforeUnmount(() => {
   background: var(--sb-accent-soft);
   color: var(--sb-text);
   border-color: var(--sb-line-strong);
+}
+.m-conn-tag--chain {
+  background: color-mix(in oklab, var(--sb-warning) 14%, transparent);
+  color: var(--sb-warning);
+  border-color: color-mix(in oklab, var(--sb-warning) 30%, transparent);
 }
 
 /* Symmetric 3-column metrics bar */
