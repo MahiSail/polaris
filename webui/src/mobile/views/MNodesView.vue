@@ -65,17 +65,7 @@
 
     <!-- 列表主视图 -->
     <div v-else class="m-stack">
-      <SummaryCards v-if="appState.nodes.length" :nodes="appState.nodes" :metrics="metrics" />
-
-      <div v-if="appState.nodes.length" class="m-card" style="padding: 10px 12px;">
-        <div class="m-filter-bar" :style="showMap ? 'margin-bottom: 8px;' : ''">
-          <span style="font-size: 13px; font-weight: 600;">全球分布视图</span>
-          <el-button size="small" text @click="toggleMap">
-            {{ showMap ? '收起地图' : '展开地图' }}
-          </el-button>
-        </div>
-        <NodeMap v-if="showMap" :nodes="appState.nodes" :live="live" @open="openDetail" />
-      </div>
+      <SummaryCards v-if="appState.nodes.length" :nodes="appState.nodes" :metrics="metrics" :live="live" />
 
       <div class="m-stack" style="gap: 8px;">
         <el-input
@@ -166,193 +156,34 @@
 
       <div v-if="!filteredNodes.length" class="m-card m-note">尚未匹配到服务器</div>
 
-      <!-- Card View -->
+      <!-- Card View (aligned 1:1 with PC NodeCard) -->
       <div v-else-if="viewMode === 'card'" class="m-list">
-        <article
-          v-for="node in shownNodes"
+        <NodeCard
+          v-for="node in filteredNodes"
           :key="node.id"
           class="m-node-card"
-          @click="openDetail(node)"
-        >
-          <div class="m-node-head">
-            <div class="m-node-hero min-w-0 flex-1">
-              <span style="font-size: 18px; line-height: 1;">{{ nodeFlag(node) }}</span>
-              <OsIcon :os="node.os_name || node.os" class="m-node-os" />
-              <div style="min-width: 0; flex: 1;">
-                <h3 class="m-node-title truncate" :title="node.name">{{ node.name }}</h3>
-                <div class="m-note truncate" style="font-size: 11px;">
-                  {{ nodeLocationLabel(node) || node.os_name || node.os || '—' }}
-                  <span v-if="node.architecture"> · {{ node.architecture }}</span>
-                </div>
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px; flex: none;">
-              <StatusDot :online="node.online" />
-              <button
-                v-if="!isShareMode"
-                type="button"
-                class="m-header__btn"
-                aria-label="服务器操作"
-                @click.stop="openActions(node)"
-              >
-                <el-icon><MoreFilled /></el-icon>
-              </button>
-            </div>
-          </div>
-
-          <div class="m-node-sub">
-            <span
-              class="m-mono-wrap"
-              style="cursor: pointer; text-decoration: underline dotted;"
-              @click.stop="copyAddress(node)"
-            >
-              {{ node.client_address || node.last_observed_ip || '未设置地址' }}
-            </span>
-            <span v-if="node.agent_version">v{{ node.agent_version }}</span>
-            <span v-if="node.bandwidth">{{ formatBandwidth(node.bandwidth) }}</span>
-          </div>
-
-          <!-- Tag Strip: expiry, DDNS, upgrades -->
-          <div v-if="!isShareMode" class="m-filter-row" style="gap: 5px;">
-            <el-tag
-              v-if="nodeExpiryInfo(node)"
-              :type="nodeExpiryInfo(node).tone"
-              size="small"
-              effect="light"
-            >
-              {{ nodeExpiryInfo(node).label }}
-            </el-tag>
-            <el-tag v-if="node.ddns_enabled" size="small" type="success" effect="plain">
-              DDNS
-            </el-tag>
-            <el-tag v-if="agentUpdateAvailable(node)" size="small" type="warning" effect="light">
-              Agent 可升级
-            </el-tag>
-            <el-tag v-if="singBoxUpdateAvailable(node)" size="small" type="warning" effect="plain">
-              sing-box 可升级
-            </el-tag>
-          </div>
-
-          <!-- 3 Resource Meters: CPU, Mem, Disk -->
-          <div class="m-node-meters" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
-            <div class="m-node-meter">
-              <div class="m-node-meter-head">
-                <span>CPU</span>
-                <span>{{ statOf(node, (h) => h.cpu_percent != null ? `${Math.round(h.cpu_percent)}%` : '—') }}</span>
-              </div>
-              <div class="m-meter-track">
-                <div
-                  class="m-meter-fill"
-                  style="background: var(--sb-chart-1);"
-                  :style="{ width: `${meterPct(node, 'cpu')}%` }"
-                />
-              </div>
-            </div>
-
-            <div class="m-node-meter">
-              <div class="m-node-meter-head">
-                <span>内存</span>
-                <span>{{ memText(node) }}</span>
-              </div>
-              <div class="m-meter-track">
-                <div
-                  class="m-meter-fill"
-                  style="background: var(--sb-chart-2);"
-                  :style="{ width: `${meterPct(node, 'mem')}%` }"
-                />
-              </div>
-            </div>
-
-            <div class="m-node-meter">
-              <div class="m-node-meter-head">
-                <span>硬盘</span>
-                <span>{{ diskText(node) }}</span>
-              </div>
-              <div class="m-meter-track">
-                <div
-                  class="m-meter-fill"
-                  style="background: var(--sb-chart-3);"
-                  :style="{ width: `${meterPct(node, 'disk')}%` }"
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Monthly Traffic & Quota -->
-          <div v-if="trafficOf(node)" class="m-stack" style="gap: 4px; padding-top: 2px;">
-            <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-text-2);">
-              <span>
-                本月流量 {{ formatBytes(trafficOf(node).monthlyTotal) }}
-                <template v-if="node.traffic_plan"> / {{ node.traffic_plan }}</template>
-              </span>
-              <span>累计 {{ formatBytes(trafficOf(node).lifetimeTotal) }}</span>
-            </div>
-            <div v-if="trafficOf(node).quotaPercent !== null" class="m-meter-track">
-              <div
-                class="m-meter-fill"
-                :style="{
-                  width: `${Math.min(100, trafficOf(node).quotaPercent)}%`,
-                  background: trafficOf(node).quotaPercent >= 90 ? 'var(--sb-danger)' : 'var(--sb-chart-4)',
-                }"
-              />
-            </div>
-          </div>
-
-          <!-- Foot: Speed, Latency, Connections -->
-          <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-muted);">
-            <span class="m-mono-wrap">
-              ↓ {{ speedText(node, 'net_rx_rate') }} · ↑ {{ speedText(node, 'net_tx_rate') }}
-            </span>
-            <span>
-              {{ latencyText(node) }} · 连接 {{ connText(node) }}
-            </span>
-          </div>
-        </article>
+          :node="node"
+          :metrics="metrics[node.id] || {}"
+          :live="live.get(node.id) || null"
+          :can-manage="canWrite && !isShareMode"
+          :sing-box-latest="singBoxLatest"
+          @open="openDetail"
+          @action="handleCardAction"
+        />
       </div>
 
-      <!-- Compact List View -->
+      <!-- Compact List View (aligned 1:1 with PC NodeRow) -->
       <div v-else class="m-list">
-        <div
-          v-for="node in shownNodes"
+        <NodeRow
+          v-for="node in filteredNodes"
           :key="node.id"
-          class="m-card"
-          style="padding: 10px 12px; cursor: pointer;"
-          @click="openDetail(node)"
-        >
-          <div class="m-filter-bar" style="margin-bottom: 4px;">
-            <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
-              <span>{{ nodeFlag(node) }}</span>
-              <StatusDot :online="node.online" />
-              <strong class="truncate" style="font-size: 14px;">{{ node.name }}</strong>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <span class="m-note">{{ latencyText(node) }}</span>
-              <button
-                v-if="!isShareMode"
-                type="button"
-                class="m-header__btn"
-                aria-label="操作"
-                @click.stop="openActions(node)"
-              >
-                <el-icon><MoreFilled /></el-icon>
-              </button>
-            </div>
-          </div>
-          <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted);">
-            <span>CPU {{ statOf(node, (h) => h.cpu_percent != null ? `${Math.round(h.cpu_percent)}%` : '—') }} · 内存 {{ memText(node) }} · 连接 {{ connText(node) }}</span>
-            <span>{{ formatBytes(trafficOf(node).monthlyTotal) }}</span>
-          </div>
-        </div>
+          :node="node"
+          :metrics="metrics[node.id] || {}"
+          :live="live.get(node.id) || null"
+          :sing-box-latest="singBoxLatest"
+          @open="openDetail"
+        />
       </div>
-
-      <button
-        v-if="filteredNodes.length > visible"
-        type="button"
-        class="m-load-more"
-        @click="visible += 20"
-      >
-        加载更多（还有 {{ filteredNodes.length - visible }} 台）
-      </button>
     </div>
 
     <!-- Quick Action Sheet -->
@@ -725,19 +556,19 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
-import { Check, MoreFilled, Plus, Refresh, Share } from '@element-plus/icons-vue'
+import { Check, Plus, Refresh, Share } from '@element-plus/icons-vue'
 import { performAgentUpgrade, performAllAgentsUpgrade } from '../../agent_upgrade'
 import { api, post, put } from '../../api'
 import { writeClipboard } from '../../clipboard'
 import { connectionSnapshots, subscribeConnections } from '../../connections'
 import { buildDDNSIPOptions } from '../../ddns'
-import { formatBandwidth, formatBytes, formatDateTime, includesText } from '../../format'
+import { formatDateTime, includesText } from '../../format'
 import { subscribeLive } from '../../live'
-import { isShareMode, shareAPIPath } from '../../share'
+import { isShareMode } from '../../share'
 import { isNewerVersion } from '../../version'
-import NodeMap from '../../components/NodeMap.vue'
+import NodeCard from '../../components/NodeCard.vue'
+import NodeRow from '../../components/NodeRow.vue'
 import OsIcon from '../../components/OsIcon.vue'
-import StatusDot from '../../components/StatusDot.vue'
 import SummaryCards from '../../components/SummaryCards.vue'
 import MDDNSHistoryList from '../components/MDDNSHistoryList.vue'
 import MPage from '../components/MPage.vue'
@@ -749,7 +580,6 @@ import MSheet from '../components/MSheet.vue'
 import MNodeDetailView from './MNodeDetailView.vue'
 import {
   nodeExpiryInfo,
-  nodeFlag,
   nodeLocationLabel,
   nodeTrafficStats,
   parseBandwidthPlan,
@@ -757,7 +587,6 @@ import {
 } from '../utils/nodeHelpers'
 
 const MASTER_HOST_KEY = 'polaris_master_host'
-const MAP_OPEN_KEY = 'polaris_mobile_nodes_map_open'
 const VIEW_MODE_KEY = 'polaris_mobile_nodes_view_mode'
 
 const appState = inject('appState')
@@ -772,8 +601,6 @@ const keyword = ref('')
 const statusFilter = ref(getInitialStatusFilter())
 const sortBy = ref('name')
 const viewMode = ref(window.localStorage.getItem(VIEW_MODE_KEY) || 'card')
-const showMap = ref(window.localStorage.getItem(MAP_OPEN_KEY) !== '0')
-const visible = ref(20)
 
 const detailNodeId = ref('')
 const pending = ref([])
@@ -815,11 +642,6 @@ let stopLive = null
 let stopConnections = null
 
 watch(viewMode, (v) => window.localStorage.setItem(VIEW_MODE_KEY, v))
-
-function toggleMap() {
-  showMap.value = !showMap.value
-  window.localStorage.setItem(MAP_OPEN_KEY, showMap.value ? '1' : '0')
-}
 
 function createEmptyEditForm() {
   return {
@@ -937,8 +759,6 @@ const filteredNodes = computed(() => {
   })
 })
 
-const shownNodes = computed(() => filteredNodes.value.slice(0, visible.value))
-
 const upgradableAgentNodes = computed(() =>
   (appState.nodes || []).filter((n) => n.online && agentUpdateAvailable(n))
 )
@@ -982,54 +802,6 @@ function cfRecordById(recId) {
   return cfRecords.value.find((r) => r.id === recId) || null
 }
 
-function hostOf(node) {
-  return live.value.get(node.id)?.host || metrics.value[node.id]?.host || null
-}
-
-function statOf(node, picker) {
-  if (!node.online) return '—'
-  const h = hostOf(node)
-  return h ? picker(h) : '—'
-}
-
-function meterPct(node, kind) {
-  if (!node.online) return 0
-  const h = hostOf(node)
-  if (!h) return 0
-  if (kind === 'cpu') return Math.min(100, Math.max(0, Math.round(h.cpu_percent || 0)))
-  if (kind === 'mem') return Math.min(100, Math.round(resourceRatio(h.memory_used, h.memory_total)))
-  if (kind === 'disk') return Math.min(100, Math.round(resourceRatio(h.disk_used, h.disk_total)))
-  return 0
-}
-
-function memText(node) {
-  const pct = meterPct(node, 'mem')
-  return node.online && hostOf(node)?.memory_total ? `${pct}%` : '—'
-}
-
-function diskText(node) {
-  const pct = meterPct(node, 'disk')
-  return node.online && hostOf(node)?.disk_total ? `${pct}%` : '—'
-}
-
-function speedText(node, field) {
-  if (!node.online) return '0 B/s'
-  const h = hostOf(node)
-  return formatBytes(h?.[field] || 0, '/s')
-}
-
-function latencyText(node) {
-  if (!node.online) return '离线'
-  const lat = live.value.get(node.id)?.latency || metrics.value[node.id]?.latency
-  const val = lat?.latency ?? lat?.avgLatency
-  return val != null ? `${Math.round(val)} ms` : '— ms'
-}
-
-function connText(node) {
-  if (!node.online) return '0'
-  return String(live.value.get(node.id)?.connection_count ?? 0)
-}
-
 function trafficOf(node) {
   return nodeTrafficStats(node, metrics.value[node.id])
 }
@@ -1067,10 +839,9 @@ async function load(silent = false) {
   if (!silent && !(appState.nodes || []).length) loading.value = true
   try {
     await loadNodes()
-    const metricsPath = isShareMode ? shareAPIPath('/nodes/metrics') : '/nodes/metrics'
     const [regRes, metricRes] = await Promise.all([
       isAdmin.value && !isShareMode ? api('/registrations').catch(() => ({ registrations: [] })) : Promise.resolve({ registrations: [] }),
-      api(metricsPath).catch(() => ({ nodes: [] })),
+      api('/nodes/metrics').catch(() => ({ nodes: [] })),
     ])
     const regs = regRes.registrations || []
     pending.value = regs
@@ -1195,6 +966,23 @@ async function runAction(key) {
   if (key === 'revoke') return revoke(node)
 }
 
+function handleCardAction({ command, node }) {
+  if (!node) return
+  if (command === 'detail') return openDetail(node)
+  if (command === 'edit') return openEdit(node, 'basic')
+  if (command === 'probes') return openEdit(node, 'probes')
+  if (command === 'networkProbe') return openPeerProbe(node)
+  if (command === 'syncDDNS') return syncNodeDDNS(node)
+  if (command === 'ddnsHistory') {
+    ddnsHistoryNode.value = node
+    ddnsHistorySheet.value = true
+    return
+  }
+  if (command === 'upgradeAgent') return upgradeAgent(node)
+  if (command === 'upgradeSingBox') return upgradeSingBox(node)
+  if (command === 'revoke') return revoke(node)
+}
+
 function openPeerProbe(node) {
   peerProbeTarget.value = node
   peerProbeOpen.value = true
@@ -1207,17 +995,6 @@ async function syncNodeDDNS(node) {
     await load(true)
   } catch (err) {
     ElMessage.error(err.message || 'DDNS 同步失败')
-  }
-}
-
-async function copyAddress(node) {
-  const addr = node.client_address || node.last_observed_ip
-  if (!addr) return
-  try {
-    await writeClipboard(addr)
-    ElMessage.success(`已复制：${addr}`)
-  } catch {
-    ElMessage.error('复制失败')
   }
 }
 
@@ -1539,62 +1316,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.m-node-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  background: var(--sb-surface);
-  border: 1px solid var(--sb-line);
-  border-radius: 14px;
-  cursor: pointer;
-}
-.m-node-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.m-node-hero {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.m-node-os {
-  width: 20px;
-  height: 20px;
-  flex: none;
-}
-.m-node-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--sb-text);
-}
-.m-node-sub {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--sb-text-2);
-}
-.m-node-meters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-.m-node-meter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.m-node-meter-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--sb-muted);
-}
 .m-pending-item {
   border: 1px solid rgba(245, 158, 11, 0.35);
   background: rgba(245, 158, 11, 0.04);

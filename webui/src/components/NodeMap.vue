@@ -1053,7 +1053,7 @@ onUnmounted(() => {
 <style scoped>
 .node-map-card {
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   border-radius: 16px;
   padding: 14px 16px;
   display: flex;
@@ -1071,12 +1071,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .head-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  text-align: right;
 }
 
 .globe-badge {
@@ -1084,6 +1087,7 @@ onUnmounted(() => {
   place-items: center;
   width: 24px;
   height: 24px;
+  flex-shrink: 0;
   border-radius: 8px;
   background: color-mix(in oklab, var(--sb-accent) 15%, transparent);
   color: var(--sb-accent);
@@ -1093,11 +1097,34 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--sb-text);
+  white-space: nowrap;
 }
 
 .head-stat {
   font-size: 11px;
   color: var(--sb-muted);
+}
+
+@media (max-width: 640px) {
+  .node-map-card {
+    padding: 12px;
+  }
+
+  .map-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .head-right {
+    width: 100%;
+    text-align: left;
+  }
+
+  .head-stat {
+    font-size: 11px;
+    line-height: 1.4;
+  }
 }
 
 .map-canvas-wrap {

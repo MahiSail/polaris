@@ -333,13 +333,43 @@ function formatRate(bps) {
 
 .summary-tile {
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   border-radius: 16px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   text-align: center;
+}
+
+@media (max-width: 600px) {
+  .cards-subgrid {
+    gap: 8px;
+  }
+
+  .summary-tile {
+    padding: 12px 10px;
+  }
+
+  .tile-head {
+    gap: 6px;
+    font-size: 11.5px;
+  }
+
+  .main-val {
+    font-size: 17px;
+  }
+
+  .speed-flow {
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12.5px;
+  }
+
+  .sub-text {
+    white-space: normal;
+    line-height: 1.35;
+  }
 }
 
 .tile-blob {

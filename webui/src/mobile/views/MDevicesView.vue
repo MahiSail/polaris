@@ -92,9 +92,9 @@
             <span>{{ row.connection_count || 0 }} 次连接</span>
           </div>
 
-          <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted);">
-            <span class="truncate" style="max-width: 60%;">{{ row.node_names || '—' }}</span>
-            <span>{{ formatDateTime(row.last_seen_at) }}</span>
+          <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted); gap: 8px;">
+            <span class="truncate" style="flex: 1; min-width: 0;">{{ (row.node_names || '—').replace(/,\s*/g, ' · ') }}</span>
+            <span style="flex: none;">{{ formatDateTime(row.last_seen_at) }}</span>
           </div>
         </div>
       </div>

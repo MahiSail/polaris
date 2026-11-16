@@ -2,17 +2,17 @@
   <div class="m-stack">
     <div class="m-card m-card--flat">
       <div class="m-filter-bar" style="margin-bottom: 8px;">
-        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-          <span style="font-size: 20px; line-height: 1;">{{ nodeFlag(node) }}</span>
-          <OsIcon :os="node.os_name || node.os" style="width: 18px; height: 18px; flex: none;" />
-          <div style="min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+          <OsIcon :os="node.os_name || node.os" style="width: 22px; height: 22px; flex: none;" />
+          <div style="min-width: 0; flex: 1;">
             <div class="m-card__title" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span>{{ node.name }}</span>
+              <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ node.name }}</span>
               <StatusDot :online="node.online" />
             </div>
-            <div class="m-note">
-              {{ nodeLocationLabel(node) || node.os_name || node.os || '服务器' }}
-              <span v-if="node.architecture"> · {{ node.architecture }}</span>
+            <div class="m-note" style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+              <span>{{ nodeFlag(node) }}</span>
+              <span>{{ nodeLocationLabel(node) || node.os_name || node.os || '服务器' }}</span>
+              <span v-if="node.architecture">· {{ node.architecture }}</span>
             </div>
           </div>
         </div>
@@ -286,7 +286,7 @@ import { api, post } from '../../api'
 import { writeClipboard } from '../../clipboard'
 import { formatDDNSBindSummary } from '../../ddns'
 import { formatBandwidth, formatBytes, formatDateTime, formatUptime } from '../../format'
-import { isShareMode, shareAPIPath } from '../../share'
+import { isShareMode } from '../../share'
 import { isNewerVersion } from '../../version'
 import LatencyPanel from '../../components/LatencyPanel.vue'
 import OsIcon from '../../components/OsIcon.vue'
@@ -483,15 +483,24 @@ const factGroups = computed(() => {
     },
   ]
 
+  const currencyMap = { USD: '$', CNY: '¥', EUR: '€', CAD: 'C$' }
+  const periodMap = { day: '天', month: '月', quarter: '季', year: '年' }
+  const priceText = n.price_period === 'free' || n.price === '0' || n.price === '0.00'
+    ? '免费'
+    : n.price
+      ? `${currencyMap[n.currency || 'USD'] || `${n.currency} `}${n.price} / ${periodMap[n.price_period || 'month'] || n.price_period}`
+      : '未设置'
+  const quotaText = t.quotaBytes > 0 ? formatBytes(t.quotaBytes) : n.traffic_plan
+
   if (!isShareMode) {
     groups.push({
       label: '服务商与流量套餐',
       facts: [
         { label: '服务商', value: n.provider || '未设置' },
         { label: '到期状态', value: exp ? `${exp.label}${n.expires_on && n.expires_on !== 'permanent' ? ` (${n.expires_on})` : ''}` : '未设置' },
-        { label: '套餐费用', value: n.price_period === 'free' ? '免费' : n.price ? `${n.price} ${n.currency || 'USD'} / ${n.price_period || 'month'}` : '未设置' },
+        { label: '套餐费用', value: priceText },
         { label: '带宽限制', value: n.bandwidth ? formatBandwidth(n.bandwidth) : '不限' },
-        { label: '本月流量 / 配额', value: `${formatBytes(t.monthlyTotal)}${n.traffic_plan ? ` / ${n.traffic_plan}` : ''}` },
+        { label: '本月流量 / 配额', value: `${formatBytes(t.monthlyTotal)}${quotaText ? ` / ${quotaText}` : ''}` },
         { label: '本月明细 (↓/↑)', value: `↓ ${formatBytes(t.monthlyRx)} · ↑ ${formatBytes(t.monthlyTx)}` },
         { label: '历史累计流量', value: formatBytes(t.lifetimeTotal) },
         { label: '代理转发月流量', value: formatBytes(t.proxyMonthlyTotal) },
@@ -557,9 +566,7 @@ async function loadHistory() {
   latencyLoading.value = true
   latencyError.value = ''
   try {
-    const basePath = isShareMode
-      ? shareAPIPath(`/nodes/${props.node.id}/history`)
-      : `/nodes/${props.node.id}/history`
+    const basePath = `/nodes/${props.node.id}/history`
     const [mRes, pRes] = await Promise.all([
       api(`${basePath}?hours=${hours.value}`),
       api(`${basePath}?hours=${hours.value}&series=ping&points=240`),

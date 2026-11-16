@@ -11,7 +11,7 @@
     </template>
 
     <div class="m-stack">
-      <div class="m-filters" style="padding: 2px 0 4px;">
+      <div class="m-filter-row" style="gap: 6px; padding: 2px 0 4px;">
         <button
           v-for="item in sectionList"
           :key="item.route"

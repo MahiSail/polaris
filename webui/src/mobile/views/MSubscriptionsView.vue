@@ -673,9 +673,9 @@ onMounted(() => { load(); loadAccess() })
       <div v-loading="accessLoading">
         <article v-for="(row, index) in accessLogs" :key="`${row.ip}-${row.accessed_at}-${index}`" class="m-item">
           <div class="m-item__hit is-static">
-            <div class="m-item__head">
+            <div class="m-item__head" style="flex-wrap: wrap; gap: 4px 8px;">
               <span class="m-item__title m-item__title--mono">{{ row.ip || '—' }}</span>
-              <span class="m-pill m-pill--info">{{ row.config_name }}</span>
+              <span class="m-pill m-pill--info" style="max-width: 100%; overflow: hidden; text-overflow: ellipsis;">{{ row.config_name }}</span>
             </div>
             <div class="m-item__meta">{{ row.location || '归属地未知' }} · {{ formatDateTime(row.accessed_at) }}</div>
             <div class="m-item__note">{{ row.user_agent || '未上报 User-Agent' }}</div>

@@ -576,4 +576,55 @@ function formatRate(bps) {
   font-size: 18px;
   color: var(--sb-muted);
 }
+
+@media (max-width: 767px) {
+  .openlat-node-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 10px;
+    padding: 12px 13px;
+    align-items: start;
+  }
+
+  .col-name {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .name-line {
+    flex-wrap: wrap;
+  }
+
+  .os-line {
+    padding-left: 13px;
+    flex-wrap: wrap;
+  }
+
+  .col-meters {
+    grid-column: 1 / -1;
+    width: 100%;
+    gap: 5px;
+  }
+
+  .meter-detail {
+    width: auto;
+    max-width: 135px;
+  }
+
+  .col-traffic,
+  .col-rates,
+  .col-conns {
+    width: 100%;
+  }
+
+  .col-latency {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .col-action {
+    display: none;
+  }
+}
 </style>

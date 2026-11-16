@@ -124,7 +124,13 @@ export function nodeTrafficStats(node, report) {
 
 export function nodeExpiryInfo(node) {
   if (!node) return null
-  if (node.price_period === 'free' || node.expires_on === 'permanent') {
+  if (
+    node.price_period === 'free' ||
+    node.expires_on === 'permanent' ||
+    node.expires_on === '2035-01-01' ||
+    node.price === '0.00' ||
+    node.price === '0'
+  ) {
     return { label: '永久免费', tone: 'success', daysLeft: Infinity }
   }
   if (!node.expires_on) return null

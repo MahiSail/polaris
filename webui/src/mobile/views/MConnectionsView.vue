@@ -286,8 +286,11 @@ onBeforeUnmount(() => {
 .m-conn-badges {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
   flex-shrink: 0;
+  max-width: 58%;
 }
 .m-conn-tag {
   display: inline-flex;
@@ -302,7 +305,7 @@ onBeforeUnmount(() => {
   color: var(--sb-text-2);
   border: 1px solid var(--sb-line-strong);
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -364,17 +367,16 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 .source-client-group {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  gap: 3px 5px;
 }
 .source-client {
   color: var(--sb-text-2);

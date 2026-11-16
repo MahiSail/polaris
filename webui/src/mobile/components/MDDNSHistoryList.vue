@@ -23,7 +23,7 @@
           </el-button>
         </div>
 
-        <div class="m-filter-row">
+        <div class="m-filter-row" style="gap: 6px;">
           <button
             v-for="opt in statusOptions"
             :key="opt.value"
@@ -34,6 +34,9 @@
           >
             {{ opt.label }}
           </button>
+        </div>
+
+        <div class="m-filter-row" style="gap: 6px;">
           <button
             v-for="opt in triggerOptions"
             :key="opt.value || 'all-trigger'"

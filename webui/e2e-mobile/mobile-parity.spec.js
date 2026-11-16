@@ -101,20 +101,57 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await page.getByRole('button', { name: '撤销', exact: true }).last().click()
   await shareSheet.locator('.m-sheet__close').click()
 
-  // 2. 服务器页：汇总卡片、地图、排序/视图切换、探针管理 CRUD、编辑四标签页
+  // 2. 服务器页：汇总卡片、单一地图、1:1 NodeCard / NodeRow 对齐、只读分享指标、排序/视图切换、探针管理 CRUD、编辑四标签页
   await page.goto(targetURL('/nodes'))
   await expect(page.getByRole('heading', { name: '服务器', exact: true })).toBeVisible()
+  await expect(page.locator('.node-map-card')).toHaveCount(1)
   await expect(page.getByRole('combobox', { name: '排序方式' })).toBeVisible()
   await expect(page.getByRole('button', { name: '卡片视图' })).toBeVisible()
   await expect(page.getByRole('button', { name: '列表视图' })).toBeVisible()
   await expectNoSideways('服务器页(含地图与统计卡)')
 
+  const nodeCards = page.locator('.m-node-card')
+  await expect(nodeCards.first()).toBeVisible({ timeout: 5000 })
+  await expect(nodeCards.first().getByText('24 小时', { exact: true })).toBeVisible()
+  await expect(nodeCards.first().getByText('到期', { exact: true })).toBeVisible()
+  await expect(nodeCards.first().getByText('厂商', { exact: true })).toBeVisible()
+  await expect(nodeCards.first().getByText('续费', { exact: true })).toBeVisible()
+
   await page.getByRole('button', { name: '列表视图' }).click()
+  await expect(page.locator('.openlat-node-row').first()).toBeVisible()
   await expectNoSideways('服务器列表视图')
   await page.getByRole('button', { name: '卡片视图' }).click()
 
+  // 服务器只读分享页应正常加载监控指标（不得双倍拼接分享 API 前缀）
+  await page.getByRole('button', { name: '分享服务器', exact: true }).click()
+  const nodeShareSheet = page.locator('.m-sheet').filter({ hasText: '分享' })
+  await expect(nodeShareSheet).toBeVisible()
+  await nodeShareSheet.getByRole('button', { name: '生成分享链接', exact: true }).click()
+  const nodeShareURL = (await nodeShareSheet.locator('.m-mono-wrap').first().innerText()).trim()
+  const nodeShareErrors = []
+  const nodeGuestCtx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const nodeGuestPage = await nodeGuestCtx.newPage()
+  nodeGuestPage.on('response', (res) => {
+    if (res.status() >= 400 && !res.url().includes('/sing-box/latest')) {
+      nodeShareErrors.push(`${res.status()} ${res.url()}`)
+    }
+  })
+  await nodeGuestPage.goto(nodeShareURL)
+  await expect(nodeGuestPage.locator('.openlat-node-card').first()).toBeVisible({ timeout: 8000 })
+  await expect(nodeGuestPage.locator('.openlat-node-card').first().getByText(/^\d+(\.\d+)?%$/).first()).toBeVisible({ timeout: 8000 })
+  await expect(nodeGuestPage.locator('.openlat-node-card').first().getByText(/^\d+ms$/).first()).toBeVisible({ timeout: 8000 })
+  await nodeGuestCtx.close()
+  expect(nodeShareErrors, `服务器分享页接口报错：${nodeShareErrors.join(' | ')}`).toEqual([])
+
+  await nodeShareSheet.getByRole('button', { name: '撤销', exact: true }).first().click()
+  await page.getByRole('button', { name: '撤销', exact: true }).last().click()
+  await nodeShareSheet.locator('.m-sheet__close').click()
+
   // 验证详情页 (MNodeDetailView)、4 标签页编辑、线路排查入口
-  const nodeCards = page.locator('.m-node-card')
   await expect(nodeCards.first()).toBeVisible({ timeout: 5000 })
   await nodeCards.first().click()
   await expect(page.getByRole('button', { name: '线路排查' })).toBeVisible()
