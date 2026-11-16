@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -39,25 +40,31 @@ func FormatAlertTime(t time.Time) string {
 }
 
 type AlertEngine struct {
-	store         *Store
-	bark          *BarkClient
-	telegram      *TelegramClient
-	locator       *ipLocator
-	hub           *connectionsHub
-	mu            sync.Mutex
-	cooldowns     map[string]time.Time
-	highRateAt    map[string]time.Time
-	loginFailures map[string]int
-	loginFailAt   map[string]time.Time
+	store                 *Store
+	bark                  *BarkClient
+	telegram              *TelegramClient
+	locator               *ipLocator
+	hub                   *connectionsHub
+	mu                    sync.Mutex
+	cooldowns             map[string]time.Time
+	highRateAt            map[string]time.Time
+	loginFailures         map[string]int
+	loginFailAt           map[string]time.Time
 	offlineNodes          map[string]time.Time
 	latestConns           map[string][]storedConnection
 	nodeNames             map[string]string
 	pendingChainFirstSeen map[string]pendingChainEntry
-	fail2banMu    sync.Mutex
-	fail2banBatch map[string]*fail2banBatch
-	fail2banWait  time.Duration
-	cached        AlertSettings
-	cacheTime     time.Time
+	fail2banMu            sync.Mutex
+	fail2banBatch         map[string]*fail2banBatch
+	fail2banWait          time.Duration
+	ddnsMu                sync.Mutex
+	ddnsBatch             *ddnsAlertBatch
+	ddnsWait              time.Duration
+	proxyRouteMu          sync.Mutex
+	proxyRouteBatch       *proxyRouteAlertBatch
+	proxyRouteWait        time.Duration
+	cached                AlertSettings
+	cacheTime             time.Time
 }
 
 type pendingChainEntry struct {
@@ -76,9 +83,58 @@ type fail2banBatch struct {
 	timer    *time.Timer
 }
 
+type ddnsUpdateEntry struct {
+	nodeID   string
+	nodeName string
+	oldIP    string
+	newIP    string
+	domains  []string
+}
+
+type ddnsHealingEntry struct {
+	targetNodeName string
+	chainedCount   int
+	domains        []string
+	targetIP       string
+}
+
+type ddnsCompletedEntry struct {
+	nodeID    string
+	nodeName  string
+	summaries []string
+}
+
+type ddnsAlertBatch struct {
+	started     time.Time
+	fireAt      time.Time
+	timer       *time.Timer
+	updates     []*ddnsUpdateEntry
+	healings    []*ddnsHealingEntry
+	completions []*ddnsCompletedEntry
+}
+
+type proxyRouteNodeEntry struct {
+	nodeID   string
+	nodeName string
+	cooldown int
+	issues   map[string]*routeIssue
+	seenConn map[string]struct{}
+}
+
+type proxyRouteAlertBatch struct {
+	started time.Time
+	fireAt  time.Time
+	timer   *time.Timer
+	nodes   map[string]*proxyRouteNodeEntry
+}
+
 const (
-	defaultFail2banWindow = 30 * time.Second
-	maxFail2banBatchSize  = 50
+	defaultFail2banWindow   = 30 * time.Second
+	maxFail2banBatchSize    = 50
+	defaultDDNSBatchWindow  = 15 * time.Second
+	maxDDNSBatchSize        = 50
+	defaultProxyRouteWindow = 15 * time.Second
+	maxProxyRouteBatchNodes = 50
 )
 
 func NewAlertEngine(store *Store, locator *ipLocator) *AlertEngine {
@@ -86,20 +142,22 @@ func NewAlertEngine(store *Store, locator *ipLocator) *AlertEngine {
 		locator, _ = newIPLocator()
 	}
 	return &AlertEngine{
-		store:         store,
-		bark:          NewBarkClient(),
-		telegram:      NewTelegramClient(),
-		locator:       locator,
-		cooldowns:     make(map[string]time.Time),
-		highRateAt:    make(map[string]time.Time),
-		loginFailures: make(map[string]int),
-		loginFailAt:   make(map[string]time.Time),
-		offlineNodes:  make(map[string]time.Time),
+		store:                 store,
+		bark:                  NewBarkClient(),
+		telegram:              NewTelegramClient(),
+		locator:               locator,
+		cooldowns:             make(map[string]time.Time),
+		highRateAt:            make(map[string]time.Time),
+		loginFailures:         make(map[string]int),
+		loginFailAt:           make(map[string]time.Time),
+		offlineNodes:          make(map[string]time.Time),
 		latestConns:           make(map[string][]storedConnection),
 		nodeNames:             make(map[string]string),
 		pendingChainFirstSeen: make(map[string]pendingChainEntry),
-		fail2banBatch: make(map[string]*fail2banBatch),
-		fail2banWait:  defaultFail2banWindow,
+		fail2banBatch:         make(map[string]*fail2banBatch),
+		fail2banWait:          defaultFail2banWindow,
+		ddnsWait:              defaultDDNSBatchWindow,
+		proxyRouteWait:        defaultProxyRouteWindow,
 	}
 }
 
@@ -167,6 +225,75 @@ func (e *AlertEngine) formatIP(ipStr string) string {
 		}
 	}
 	return clean
+}
+
+func (e *AlertEngine) formatIPList(raw string) string {
+	parts := splitMultiItems(raw)
+	if len(parts) <= 1 {
+		return e.formatIP(raw)
+	}
+	formatted := make([]string, 0, len(parts))
+	for _, part := range parts {
+		formatted = append(formatted, e.formatIP(part))
+	}
+	return strings.Join(formatted, "、")
+}
+
+func splitMultiItems(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '、' || r == ','
+	})
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func formatLimitedList(items []string, limit int, unit string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if limit <= 0 || len(items) <= limit {
+		return strings.Join(items, "、")
+	}
+	return fmt.Sprintf("%s 等 %d %s", strings.Join(items[:limit], "、"), len(items), unit)
+}
+
+func sortIPStrings(ips []string) {
+	sort.Slice(ips, func(i, j int) bool {
+		ipA := net.ParseIP(ips[i])
+		ipB := net.ParseIP(ips[j])
+		if ipA != nil && ipB != nil {
+			if cmp := bytes.Compare(ipA.To16(), ipB.To16()); cmp != 0 {
+				return cmp < 0
+			}
+		}
+		return ips[i] < ips[j]
+	})
+}
+
+func extendBoundedTimer(timer *time.Timer, started, fireAt, now time.Time, wait time.Duration) time.Time {
+	extend := wait / 3
+	if extend < time.Millisecond {
+		extend = wait
+	}
+	maxDeadline := started.Add(wait * 2)
+	if fireAt.Sub(now) < extend && fireAt.Before(maxDeadline) {
+		newFire := now.Add(extend)
+		if newFire.After(maxDeadline) {
+			newFire = maxDeadline
+		}
+		if newFire.After(fireAt) {
+			if timer != nil {
+				timer.Reset(newFire.Sub(now))
+			}
+			return newFire
+		}
+	}
+	return fireAt
 }
 
 func cleanIPAddress(ipStr string) string {
@@ -516,6 +643,15 @@ func (e *AlertEngine) InvalidateCache() {
 func (e *AlertEngine) notificationsEnabled() bool {
 	settings, err := e.getSettings()
 	return err == nil && settings.HasNotifier()
+}
+
+// inCooldown reports whether the alert key is currently within cooldown without updating it.
+func (e *AlertEngine) inCooldown(key string, cooldownMinutes int) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	last, exists := e.cooldowns[key]
+	return exists && time.Since(last) < time.Duration(cooldownMinutes)*time.Minute
 }
 
 // canAlert checks if the alert key is outside of cooldown. If so, updates the cooldown time and returns true.
@@ -1040,20 +1176,61 @@ func (e *AlertEngine) CheckConnectionsTelemetry(nodeID, nodeName string, downloa
 
 type routeIssue struct {
 	destIP    string
+	destIPs   []string
+	destIPSet map[string]struct{}
+	isLocal   bool
 	location  string
 	outbound  string
 	chainPath string
 	isChained bool
 	host      string
+	hosts     []string
 	count     int
 	ports     []string
 	users     []string
 	sourceIPs []string
 	listeners []string
 	networks  []string
+	servers   []string
+}
+
+func (issue *routeIssue) addDestIP(ip string) {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return
+	}
+	if issue.destIP == "" {
+		issue.destIP = ip
+	}
+	if issue.destIPSet == nil {
+		issue.destIPSet = make(map[string]struct{})
+	}
+	if _, exists := issue.destIPSet[ip]; !exists {
+		issue.destIPSet[ip] = struct{}{}
+		issue.destIPs = append(issue.destIPs, ip)
+	}
+}
+
+func (issue *routeIssue) distinctIPCount() int {
+	if len(issue.destIPs) > 0 {
+		return len(issue.destIPs)
+	}
+	if issue.destIP != "" {
+		return 1
+	}
+	return 0
 }
 
 func (issue *routeIssue) trafficType() string {
+	if issue.isLocal && issue.distinctIPCount() > 1 && len(issue.ports) > 1 {
+		netStr := strings.ToUpper(strings.Join(issue.networks, "/"))
+		portDesc := formatLimitedList(issue.ports, 5, "个端口")
+		if netStr != "" {
+			return fmt.Sprintf("多目标内网访问 (%s · 端口 %s)", netStr, portDesc)
+		}
+		return fmt.Sprintf("多目标内网访问 (端口 %s)", portDesc)
+	}
+
 	hasPort := func(p string) bool {
 		for _, port := range issue.ports {
 			if port == p {
@@ -1153,17 +1330,86 @@ func (e *AlertEngine) confirmChainTargetTimeout(key string, now time.Time) bool 
 	return now.Sub(entry.firstSeen) >= chainRelayConfirmWait
 }
 
+type matchedRouteConn struct {
+	connID    string
+	isLocal   bool
+	destIP    string
+	location  string
+	outbound  string
+	chainPath string
+	isChained bool
+	host      string
+	network   string
+	destPort  string
+	user      string
+	srcDesc   string
+	listener  string
+}
+
+func mergeRouteIssue(dst, src *routeIssue) {
+	dst.count += src.count
+	if len(src.destIPs) > 0 {
+		for _, ip := range src.destIPs {
+			dst.addDestIP(ip)
+		}
+	} else if src.destIP != "" {
+		dst.addDestIP(src.destIP)
+	}
+	if dst.host == "" && src.host != "" {
+		dst.host = src.host
+	}
+	for _, h := range src.hosts {
+		dst.hosts = appendDistinctLimit(dst.hosts, h, 5)
+	}
+	if src.host != "" {
+		dst.hosts = appendDistinctLimit(dst.hosts, src.host, 5)
+	}
+	for _, n := range src.networks {
+		dst.networks = appendDistinctLimit(dst.networks, n, 3)
+	}
+	for _, p := range src.ports {
+		dst.ports = appendDistinctLimit(dst.ports, p, 8)
+	}
+	for _, u := range src.users {
+		dst.users = appendDistinctLimit(dst.users, u, 5)
+	}
+	for _, s := range src.sourceIPs {
+		dst.sourceIPs = appendDistinctLimit(dst.sourceIPs, s, 5)
+	}
+	for _, l := range src.listeners {
+		dst.listeners = appendDistinctLimit(dst.listeners, l, 5)
+	}
+	for _, srv := range src.servers {
+		dst.servers = appendDistinctLimit(dst.servers, srv, 10)
+	}
+}
+
+func (e *AlertEngine) proxyRouteBatchWindow() time.Duration {
+	if e.proxyRouteWait > 0 {
+		return e.proxyRouteWait
+	}
+	return defaultProxyRouteWindow
+}
+
 // checkProxyRouting reports destinations that belong to China or a private
 // network but are currently leaving through a proxy outbound. That is almost
 // always a split-routing mistake: domestic and LAN traffic should go direct.
-// For chained connections, it traces downstream hops to report the true final
-// exit outbound and full chain path rather than intermediate relay nodes.
+// Private/LAN IP targets are merged per outbound, and alerts across nodes
+// within a short burst window are combined into a single summary notification.
 func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []storedConnection, settings AlertSettings) {
 	if len(connections) == 0 {
 		return
 	}
 
-	issues := map[string]*routeIssue{}
+	cooldown := settings.CooldownMinutes
+	if cooldown < 30 {
+		cooldown = 30
+	}
+	if e.inCooldown("proxy_route:"+nodeID, cooldown) {
+		return
+	}
+
+	matched := make([]matchedRouteConn, 0, len(connections))
 	for _, connection := range connections {
 		if connection.IsChainRelay {
 			continue
@@ -1218,37 +1464,16 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 			chainPath = strings.Join(resolved.Path, " → ") + " → " + outbound
 		}
 
-		key := ipText + "|" + displayOutbound + "|" + chainPath
-		issue := issues[key]
-		if issue == nil {
-			location := "局域网/内网"
-			if !isLocal && e.locator != nil {
-				if resolvedLoc := strings.TrimSpace(e.locator.Locate(ipText)); resolvedLoc != "" && resolvedLoc != "未知" {
-					location = resolvedLoc
-				}
+		location := "局域网/内网"
+		if !isLocal && e.locator != nil {
+			if resolvedLoc := strings.TrimSpace(e.locator.Locate(ipText)); resolvedLoc != "" && resolvedLoc != "未知" {
+				location = resolvedLoc
 			}
-			issue = &routeIssue{
-				destIP:    ipText,
-				location:  location,
-				outbound:  displayOutbound,
-				chainPath: chainPath,
-				isChained: resolved.IsChained,
-				host:      host,
-			}
-			issues[key] = issue
 		}
-		issue.count++
-		if issue.host == "" && host != "" {
-			issue.host = host
-		}
-		if connection.Network != "" {
-			issue.networks = appendDistinctLimit(issue.networks, strings.ToLower(connection.Network), 2)
-		}
-		if destPort != "" {
-			issue.ports = appendDistinctLimit(issue.ports, destPort, 3)
-		}
+
+		var user string
 		if connection.User != "" && !isInternalUserID(connection.User) {
-			issue.users = appendDistinctLimit(issue.users, connection.User, 3)
+			user = connection.User
 		}
 		srcIP := strings.TrimSpace(connection.SourceIP)
 		if srcIP == "" && connection.Source != "" {
@@ -1258,30 +1483,218 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 				srcIP = strings.TrimSpace(connection.Source)
 			}
 		}
+		var srcDesc string
 		if srcIP != "" {
-			srcDesc := e.formatIP(srcIP)
+			srcDesc = e.formatIP(srcIP)
 			if !strings.Contains(srcDesc, "（") {
 				if loc := strings.TrimSpace(connection.SourceLocation); loc != "" && loc != "未知" && loc != "未知归属地" {
 					srcDesc += fmt.Sprintf("（%s）", loc)
 				}
 			}
-			issue.sourceIPs = appendDistinctLimit(issue.sourceIPs, srcDesc, 3)
 		}
 		listener := strings.TrimSpace(connection.ListenerName)
 		if listener == "" {
 			listener = strings.TrimSpace(connection.Inbound)
 		}
-		if listener != "" {
-			issue.listeners = appendDistinctLimit(issue.listeners, listener, 3)
-		}
+
+		matched = append(matched, matchedRouteConn{
+			connID:    strings.TrimSpace(connection.ID),
+			isLocal:   isLocal,
+			destIP:    ipText,
+			location:  location,
+			outbound:  displayOutbound,
+			chainPath: chainPath,
+			isChained: resolved.IsChained,
+			host:      host,
+			network:   strings.ToLower(connection.Network),
+			destPort:  destPort,
+			user:      user,
+			srcDesc:   srcDesc,
+			listener:  listener,
+		})
 	}
-	if len(issues) == 0 {
+	if len(matched) == 0 {
 		return
 	}
 
-	list := make([]*routeIssue, 0, len(issues))
-	for _, issue := range issues {
+	now := time.Now()
+	wait := e.proxyRouteBatchWindow()
+
+	e.proxyRouteMu.Lock()
+	batch := e.proxyRouteBatch
+	if batch == nil {
+		batch = &proxyRouteAlertBatch{
+			started: now,
+			fireAt:  now.Add(wait),
+			nodes:   make(map[string]*proxyRouteNodeEntry),
+		}
+		batch.timer = time.AfterFunc(wait, func() { e.flushProxyRouteBatch(batch) })
+		e.proxyRouteBatch = batch
+	} else {
+		batch.fireAt = extendBoundedTimer(batch.timer, batch.started, batch.fireAt, now, wait)
+	}
+
+	entry := batch.nodes[nodeID]
+	if entry == nil {
+		entry = &proxyRouteNodeEntry{
+			nodeID:   nodeID,
+			nodeName: nodeName,
+			cooldown: cooldown,
+			issues:   make(map[string]*routeIssue),
+			seenConn: make(map[string]struct{}),
+		}
+		batch.nodes[nodeID] = entry
+	}
+	entry.cooldown = cooldown
+	if nodeName != "" {
+		entry.nodeName = nodeName
+	}
+
+	for _, m := range matched {
+		if m.connID != "" {
+			if _, seen := entry.seenConn[m.connID]; seen {
+				continue
+			}
+			entry.seenConn[m.connID] = struct{}{}
+		}
+		key := m.destIP + "|" + m.outbound
+		if m.isLocal {
+			key = "local|" + m.outbound
+		}
+		issue := entry.issues[key]
+		if issue == nil {
+			issue = &routeIssue{
+				destIP:    m.destIP,
+				isLocal:   m.isLocal,
+				location:  m.location,
+				outbound:  m.outbound,
+				chainPath: m.chainPath,
+				isChained: m.isChained,
+				host:      m.host,
+			}
+			entry.issues[key] = issue
+		}
+		issue.count++
+		issue.addDestIP(m.destIP)
+		if issue.host == "" && m.host != "" {
+			issue.host = m.host
+		}
+		if m.host != "" {
+			issue.hosts = appendDistinctLimit(issue.hosts, m.host, 5)
+		}
+		if m.network != "" {
+			issue.networks = appendDistinctLimit(issue.networks, m.network, 3)
+		}
+		if m.destPort != "" {
+			issue.ports = appendDistinctLimit(issue.ports, m.destPort, 8)
+		}
+		if m.user != "" {
+			issue.users = appendDistinctLimit(issue.users, m.user, 5)
+		}
+		if m.srcDesc != "" {
+			issue.sourceIPs = appendDistinctLimit(issue.sourceIPs, m.srcDesc, 5)
+		}
+		if m.listener != "" {
+			issue.listeners = appendDistinctLimit(issue.listeners, m.listener, 5)
+		}
+		if entry.nodeName != "" {
+			issue.servers = appendDistinctLimit(issue.servers, entry.nodeName, 10)
+		}
+	}
+	shouldFlush := len(batch.nodes) >= maxProxyRouteBatchNodes
+	e.proxyRouteMu.Unlock()
+
+	if shouldFlush {
+		e.flushProxyRouteBatch(batch)
+	}
+}
+
+func (e *AlertEngine) flushProxyRouteBatch(target *proxyRouteAlertBatch) {
+	e.proxyRouteMu.Lock()
+	if e.proxyRouteBatch == nil || (target != nil && e.proxyRouteBatch != target) {
+		e.proxyRouteMu.Unlock()
+		return
+	}
+	batch := e.proxyRouteBatch
+	e.proxyRouteBatch = nil
+	if batch.timer != nil {
+		batch.timer.Stop()
+	}
+	e.proxyRouteMu.Unlock()
+
+	if len(batch.nodes) == 0 {
+		return
+	}
+	e.sendProxyRouteSummary(batch)
+}
+
+func (e *AlertEngine) sendProxyRouteSummary(batch *proxyRouteAlertBatch) {
+	settings, err := e.getSettings()
+	if err != nil || !settings.HasNotifier() {
+		return
+	}
+
+	entries := make([]*proxyRouteNodeEntry, 0, len(batch.nodes))
+	for _, entry := range batch.nodes {
+		if len(entry.issues) > 0 {
+			entries = append(entries, entry)
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].nodeName != entries[j].nodeName {
+			return entries[i].nodeName < entries[j].nodeName
+		}
+		return entries[i].nodeID < entries[j].nodeID
+	})
+
+	activeNodes := make([]*proxyRouteNodeEntry, 0, len(entries))
+	for _, entry := range entries {
+		if e.canAlert("proxy_route:"+entry.nodeID, entry.cooldown) {
+			activeNodes = append(activeNodes, entry)
+		}
+	}
+	if len(activeNodes) == 0 {
+		return
+	}
+
+	merged := make(map[string]*routeIssue)
+	serverNames := make([]string, 0, len(activeNodes))
+	for _, entry := range activeNodes {
+		if entry.nodeName != "" {
+			serverNames = appendDistinctLimit(serverNames, entry.nodeName, 0)
+		}
+		for key, issue := range entry.issues {
+			existing := merged[key]
+			if existing == nil {
+				clone := &routeIssue{
+					destIP:    issue.destIP,
+					isLocal:   issue.isLocal,
+					location:  issue.location,
+					outbound:  issue.outbound,
+					chainPath: issue.chainPath,
+					isChained: issue.isChained,
+					host:      issue.host,
+				}
+				mergeRouteIssue(clone, issue)
+				merged[key] = clone
+			} else {
+				mergeRouteIssue(existing, issue)
+			}
+		}
+	}
+	if len(merged) == 0 {
+		return
+	}
+
+	list := make([]*routeIssue, 0, len(merged))
+	totalTargets := 0
+	for _, issue := range merged {
 		list = append(list, issue)
+		n := issue.distinctIPCount()
+		if n < 1 {
+			n = 1
+		}
+		totalTargets += n
 	}
 	sort.Slice(list, func(left, right int) bool {
 		if list[left].count != list[right].count {
@@ -1290,40 +1703,69 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 		return list[left].destIP < list[right].destIP
 	})
 
-	cooldown := settings.CooldownMinutes
-	if cooldown < 30 {
-		cooldown = 30
-	}
-	if !e.canAlert("proxy_route:"+nodeID, cooldown) {
-		return
-	}
-
-	nodeCtx := e.nodeContext(nodeID, nodeName)
-	lines := make([]string, 0, len(list)*4)
-
+	multiServer := len(activeNodes) > 1
+	lines := make([]string, 0, len(list)*5)
 	barkBlocks := make([]string, 0, 3)
+
 	for index, issue := range list {
-		addrLabel := issue.destIP
-		portDesc := strings.Join(issue.ports, ", ")
-		if len(issue.networks) > 0 {
-			netDesc := strings.ToUpper(strings.Join(issue.networks, "/"))
-			if portDesc != "" {
-				addrLabel += fmt.Sprintf(":%s (%s)", portDesc, netDesc)
+		isMergedIPs := issue.distinctIPCount() > 1
+		var addrLabel string
+		var sortedIPs []string
+		if isMergedIPs {
+			sortedIPs = append([]string(nil), issue.destIPs...)
+			sortIPStrings(sortedIPs)
+		} else {
+			addrLabel = issue.destIP
+			portList := issue.ports
+			if len(portList) > 3 {
+				portList = portList[:3]
 			}
-		} else if len(issue.ports) == 1 {
-			addrLabel += ":" + issue.ports[0]
-		} else if len(issue.ports) > 1 {
-			addrLabel += fmt.Sprintf(" (端口 %s)", strings.Join(issue.ports, ", "))
+			portDesc := strings.Join(portList, ", ")
+			if len(issue.networks) > 0 {
+				netDesc := strings.ToUpper(strings.Join(issue.networks, "/"))
+				if portDesc != "" {
+					addrLabel += fmt.Sprintf(":%s (%s)", portDesc, netDesc)
+				}
+			} else if len(portList) == 1 {
+				addrLabel += ":" + portList[0]
+			} else if len(portList) > 1 {
+				addrLabel += fmt.Sprintf(" (端口 %s)", strings.Join(portList, ", "))
+			}
 		}
 
-		nodeDesc := strings.Join(issue.users, "、")
-		if nodeDesc == "" && len(issue.listeners) > 0 {
-			nodeDesc = strings.Join(issue.listeners, "、")
+		userList := issue.users
+		if len(userList) > 3 {
+			userList = userList[:3]
+		}
+		listenerList := issue.listeners
+		if len(listenerList) > 3 {
+			listenerList = listenerList[:3]
+		}
+		nodeDesc := strings.Join(userList, "、")
+		if nodeDesc == "" && len(listenerList) > 0 {
+			nodeDesc = strings.Join(listenerList, "、")
+		}
+		srcList := issue.sourceIPs
+		if len(srcList) > 3 {
+			srcList = srcList[:3]
 		}
 
 		if index < 5 {
 			var titleHTML string
-			if issue.host != "" {
+			if isMergedIPs {
+				shown := sortedIPs
+				if len(shown) > 3 {
+					shown = shown[:3]
+				}
+				codeIPs := make([]string, 0, len(shown))
+				for _, ip := range shown {
+					codeIPs = append(codeIPs, fmt.Sprintf("<code>%s</code>", tgEscape(ip)))
+				}
+				titleHTML = strings.Join(codeIPs, "、")
+				if len(sortedIPs) > len(shown) {
+					titleHTML += fmt.Sprintf(" 等 %d 个内网 IP", len(sortedIPs))
+				}
+			} else if issue.host != "" {
 				titleHTML = fmt.Sprintf("<code>%s</code>（<code>%s</code>）", tgEscape(issue.host), tgEscape(addrLabel))
 			} else {
 				titleHTML = fmt.Sprintf("<code>%s</code>", tgEscape(addrLabel))
@@ -1334,49 +1776,77 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 				itemHeader = "\n" + itemHeader
 			}
 			lines = append(lines, itemHeader)
+			if multiServer && len(issue.servers) > 0 {
+				lines = append(lines, tgLine("服务器", formatLimitedList(issue.servers, 5, "台")))
+			}
 			lines = append(lines, tgLine("类型", issue.trafficType()))
+			if isMergedIPs && len(issue.hosts) > 0 {
+				lines = append(lines, tgLine("访问域名", formatLimitedList(issue.hosts, 3, "个")))
+			}
 			if nodeDesc != "" {
 				lines = append(lines, tgLine("节点", nodeDesc))
 			}
-			if len(issue.sourceIPs) > 0 {
-				lines = append(lines, tgLine("来源", strings.Join(issue.sourceIPs, "、")))
+			if len(srcList) > 0 {
+				lines = append(lines, tgLine("来源", strings.Join(srcList, "、")))
 			}
 			lines = append(lines, tgCodeLine("最终出口", issue.outbound))
 		}
 
 		if index < 3 {
 			barkTarget := addrLabel
-			if issue.host != "" {
+			if isMergedIPs {
+				barkTarget = formatLimitedList(sortedIPs, 3, "个内网 IP")
+			} else if issue.host != "" {
 				barkTarget = fmt.Sprintf("%s (%s)", issue.host, addrLabel)
 			}
 			var itemLines []string
 			itemLines = append(itemLines, fmt.Sprintf("%d. %s [%s · %d条]", index+1, barkTarget, issue.location, issue.count))
+			if multiServer && len(issue.servers) > 0 {
+				itemLines = append(itemLines, "   服务器："+formatLimitedList(issue.servers, 3, "台"))
+			}
 			itemLines = append(itemLines, "   类型："+issue.trafficType())
 			if nodeDesc != "" {
 				itemLines = append(itemLines, "   节点："+nodeDesc)
 			}
-			if len(issue.sourceIPs) > 0 {
-				itemLines = append(itemLines, "   来源："+strings.Join(issue.sourceIPs, ","))
+			if len(srcList) > 0 {
+				itemLines = append(itemLines, "   来源："+strings.Join(srcList, ","))
 			}
 			itemLines = append(itemLines, fmt.Sprintf("   出口：%s", issue.outbound))
 			barkBlocks = append(barkBlocks, strings.Join(itemLines, "\n"))
 		}
 	}
 	if len(list) > 5 {
-		lines = append(lines, tgLine("其他目标", fmt.Sprintf("另有 %d 个未展开", len(list)-5)))
+		lines = append(lines, tgLine("其他目标", fmt.Sprintf("另有 %d 组未展开", len(list)-5)))
 	}
 	if len(list) > 3 {
-		barkBlocks = append(barkBlocks, fmt.Sprintf("另有 %d 个异常目标", len(list)-3))
+		barkBlocks = append(barkBlocks, fmt.Sprintf("另有 %d 组异常目标", len(list)-3))
 	}
 
-	telegramText := buildTelegramAlert(severityWarning, "分流策略", "国内/局域网目标正在走代理", nodeName,
-		e.withNodeInfo(nodeCtx, lines), "")
+	if !multiServer {
+		entry := activeNodes[0]
+		nodeCtx := e.nodeContext(entry.nodeID, entry.nodeName)
+		telegramText := buildTelegramAlert(severityWarning, "分流策略", "国内/局域网目标正在走代理", entry.nodeName,
+			e.withNodeInfo(nodeCtx, lines), "")
+		barkBody := fmt.Sprintf("发现 %d 个国内/局域网目标走代理：\n%s", totalTargets, strings.Join(barkBlocks, "\n"))
+		e.sendAlert(context.Background(), alertPayload{
+			Severity:  severityWarning,
+			BarkTitle: fmt.Sprintf("分流异常：%s", entry.nodeName),
+			BarkBody:  e.barkWithNode(nodeCtx, barkBody),
+			BarkGroup: "分流策略",
+			BarkSound: "horn.caf",
+			Telegram:  telegramText,
+		})
+		return
+	}
 
-	barkBody := fmt.Sprintf("发现 %d 个国内/局域网目标走代理：\n%s", len(list), strings.Join(barkBlocks, "\n"))
+	subject := fmt.Sprintf("%d 台服务器（%s）", len(serverNames), formatLimitedList(serverNames, 5, "台"))
+	telegramText := buildTelegramAlert(severityWarning, "分流策略", "国内/局域网目标正在走代理", subject, lines, "")
+	barkBody := fmt.Sprintf("发现 %d 个国内/局域网目标走代理（涉及 %s）：\n%s",
+		totalTargets, formatLimitedList(serverNames, 3, "台"), strings.Join(barkBlocks, "\n"))
 	e.sendAlert(context.Background(), alertPayload{
 		Severity:  severityWarning,
-		BarkTitle: fmt.Sprintf("分流异常：%s", nodeName),
-		BarkBody:  e.barkWithNode(nodeCtx, barkBody),
+		BarkTitle: fmt.Sprintf("分流异常：%d 台服务器", len(serverNames)),
+		BarkBody:  barkBody,
 		BarkGroup: "分流策略",
 		BarkSound: "horn.caf",
 		Telegram:  telegramText,
@@ -1463,52 +1933,140 @@ func (e *AlertEngine) NotifyServerExpiry(node Node, days int) {
 	})
 }
 
-// NotifyDDNSUpdated sends an alert when a NAT node's public IP changes and DDNS is updated.
+func (e *AlertEngine) ddnsBatchWindow() time.Duration {
+	if e.ddnsWait > 0 {
+		return e.ddnsWait
+	}
+	return defaultDDNSBatchWindow
+}
+
+func (e *AlertEngine) ensureDDNSBatchLocked(now time.Time) *ddnsAlertBatch {
+	wait := e.ddnsBatchWindow()
+	batch := e.ddnsBatch
+	if batch == nil {
+		batch = &ddnsAlertBatch{
+			started: now,
+			fireAt:  now.Add(wait),
+		}
+		batch.timer = time.AfterFunc(wait, func() { e.flushDDNSBatch(batch) })
+		e.ddnsBatch = batch
+		return batch
+	}
+	batch.fireAt = extendBoundedTimer(batch.timer, batch.started, batch.fireAt, now, wait)
+	return batch
+}
+
+func (e *AlertEngine) flushDDNSBatch(target *ddnsAlertBatch) {
+	e.ddnsMu.Lock()
+	if e.ddnsBatch == nil || (target != nil && e.ddnsBatch != target) {
+		e.ddnsMu.Unlock()
+		return
+	}
+	batch := e.ddnsBatch
+	e.ddnsBatch = nil
+	if batch.timer != nil {
+		batch.timer.Stop()
+	}
+	e.ddnsMu.Unlock()
+
+	if len(batch.updates) == 0 && len(batch.healings) == 0 && len(batch.completions) == 0 {
+		return
+	}
+	e.sendDDNSBatchSummary(batch)
+}
+
+// NotifyDDNSUpdated queues a DDNS IP change alert. Updates across nodes within
+// a short window (along with any chained DNS refresh events) are merged into one
+// summary notification instead of one push per node.
 func (e *AlertEngine) NotifyDDNSUpdated(nodeID, nodeName, oldIP, currentIP, domain string) {
+	settings, err := e.getSettings()
+	if err != nil || !settings.HasNotifier() {
+		return
+	}
 	alertKey := "ddns:" + nodeID + ":" + currentIP
-	if e.canAlert(alertKey, 1) {
-		nodeCtx := e.nodeContext(nodeID, nodeName)
-		telegramText := buildTelegramAlert(severityInfo, "DDNS IP 变更", "", nodeName, e.withNodeInfo(nodeCtx, []string{
-			tgLine("解析域名", domain),
-			tgLine("IP 变更", fmt.Sprintf("%s → %s", e.formatIP(oldIP), e.formatIP(currentIP))),
-		}), "")
-		e.sendAlert(context.Background(), alertPayload{
-			Severity:  severityInfo,
-			BarkTitle: fmt.Sprintf("服务器 IP 变更：%s", nodeName),
-			BarkBody: e.barkWithNode(nodeCtx, fmt.Sprintf("%s\n%s → %s",
-				domain, e.formatIP(oldIP), e.formatIP(currentIP))),
-			BarkGroup: "DDNS监控",
-			BarkSound: "bell.caf",
-			Telegram:  telegramText,
-		})
+	if !e.canAlert(alertKey, 1) {
+		return
+	}
+
+	domains := splitMultiItems(domain)
+	now := time.Now()
+
+	e.ddnsMu.Lock()
+	batch := e.ensureDDNSBatchLocked(now)
+	var existing *ddnsUpdateEntry
+	for _, u := range batch.updates {
+		if u.nodeID == nodeID {
+			existing = u
+			break
+		}
+	}
+	if existing == nil {
+		existing = &ddnsUpdateEntry{
+			nodeID:   nodeID,
+			nodeName: nodeName,
+			oldIP:    oldIP,
+			newIP:    currentIP,
+		}
+		batch.updates = append(batch.updates, existing)
+	} else {
+		if existing.nodeName == "" {
+			existing.nodeName = nodeName
+		}
+		if existing.oldIP == "" {
+			existing.oldIP = oldIP
+		}
+		existing.newIP = currentIP
+	}
+	for _, d := range domains {
+		existing.domains = appendDistinctLimit(existing.domains, d, 0)
+	}
+	shouldFlush := len(batch.updates)+len(batch.completions) >= maxDDNSBatchSize
+	e.ddnsMu.Unlock()
+
+	if shouldFlush {
+		e.flushDDNSBatch(batch)
 	}
 }
 
-// NotifyChainedDNSHealing sends an alert when chained nodes are signaled to refresh DNS and heal connections.
+// NotifyChainedDNSHealing queues an alert when chained nodes are signaled to
+// refresh DNS and heal connections.
 func (e *AlertEngine) NotifyChainedDNSHealing(targetNodeName string, chainedCount int, domains []string, targetIP string) {
-	alertKey := "dns_healing:" + targetNodeName + ":" + targetIP
-	if e.canAlert(alertKey, 1) {
-		nodeCtx := nodeAlertContext{Name: targetNodeName, IP: cleanIPAddress(targetIP)}
-		if nodeCtx.IP != "" && e.locator != nil {
-			if location := strings.TrimSpace(e.locator.Locate(nodeCtx.IP)); location != "" && location != "未知" {
-				nodeCtx.Location = location
-			}
-		}
-		telegramText := buildTelegramAlert(severityWarning, "触发前置 DNS 刷新", "", targetNodeName, e.withNodeInfo(nodeCtx, []string{
-			tgLine("影响域名", strings.Join(domains, "、")),
-			tgLine("目标最新 IP", e.formatIP(targetIP)),
-			tgLine("依赖前置服务器", fmt.Sprintf("%d 台", chainedCount)),
-		}), "")
-		e.sendAlert(context.Background(), alertPayload{
-			Severity:  severityWarning,
-			BarkTitle: "前置 DNS 刷新已触发",
-			BarkBody: e.barkWithNode(nodeCtx, fmt.Sprintf("%d 台前置服务器正在刷新 DNS\n域名：%s",
-				chainedCount, strings.Join(domains, "、"))),
-			BarkGroup: "DNS",
-			BarkSound: "anticipate.caf",
-			Telegram:  telegramText,
-		})
+	settings, err := e.getSettings()
+	if err != nil || !settings.HasNotifier() {
+		return
 	}
+	alertKey := "dns_healing:" + targetNodeName + ":" + targetIP
+	if !e.canAlert(alertKey, 1) {
+		return
+	}
+
+	now := time.Now()
+	e.ddnsMu.Lock()
+	batch := e.ensureDDNSBatchLocked(now)
+	var existing *ddnsHealingEntry
+	for _, h := range batch.healings {
+		if h.targetNodeName == targetNodeName {
+			existing = h
+			break
+		}
+	}
+	if existing == nil {
+		existing = &ddnsHealingEntry{
+			targetNodeName: targetNodeName,
+			chainedCount:   chainedCount,
+			targetIP:       targetIP,
+		}
+		batch.healings = append(batch.healings, existing)
+	} else {
+		if chainedCount > existing.chainedCount {
+			existing.chainedCount = chainedCount
+		}
+		existing.targetIP = targetIP
+	}
+	for _, d := range domains {
+		existing.domains = appendDistinctLimit(existing.domains, d, 0)
+	}
+	e.ddnsMu.Unlock()
 }
 
 func cleanDNSSummary(summary string) string {
@@ -1535,20 +2093,331 @@ func formatDNSMappingHTML(clean string) string {
 	return tgEscape(clean)
 }
 
-// NotifyChainedDNSCompleted sends a notification when a chained node completes DNS refresh.
+// NotifyChainedDNSCompleted queues a notification when a chained node completes
+// DNS refresh so multiple nodes finishing together produce one merged alert.
 func (e *AlertEngine) NotifyChainedDNSCompleted(nodeID, nodeName, summary string) {
-	alertKey := "dns_completed:" + nodeID
-	if e.canAlert(alertKey, 1) {
-		nodeCtx := e.nodeContext(nodeID, nodeName)
-		cleanSummary := cleanDNSSummary(summary)
-		dnsLine := formatDNSMappingHTML(cleanSummary)
-		telegramText := buildTelegramAlertRaw(severityRecovery, "DNS 刷新完成", "", nodeName, e.withNodeInfo(nodeCtx, []string{dnsLine}))
+	settings, err := e.getSettings()
+	if err != nil || !settings.HasNotifier() {
+		return
+	}
+	cleanSummary := cleanDNSSummary(summary)
+	alertKey := "dns_completed:" + nodeID + ":" + cleanSummary
+	if !e.canAlert(alertKey, 1) {
+		return
+	}
+
+	now := time.Now()
+	e.ddnsMu.Lock()
+	batch := e.ensureDDNSBatchLocked(now)
+	var existing *ddnsCompletedEntry
+	for _, c := range batch.completions {
+		if c.nodeID == nodeID {
+			existing = c
+			break
+		}
+	}
+	if existing == nil {
+		existing = &ddnsCompletedEntry{
+			nodeID:   nodeID,
+			nodeName: nodeName,
+		}
+		batch.completions = append(batch.completions, existing)
+	} else if existing.nodeName == "" {
+		existing.nodeName = nodeName
+	}
+	existing.summaries = appendDistinctLimit(existing.summaries, cleanSummary, 0)
+	shouldFlush := len(batch.updates)+len(batch.completions) >= maxDDNSBatchSize
+	e.ddnsMu.Unlock()
+
+	if shouldFlush {
+		e.flushDDNSBatch(batch)
+	}
+}
+
+func ddnsCompletionText(c *ddnsCompletedEntry) string {
+	return strings.Join(c.summaries, "；")
+}
+
+func renderDDNSCompletions(completions []*ddnsCompletedEntry) (nodeNames []string, tgLines []string, barkLines []string) {
+	sort.Slice(completions, func(i, j int) bool {
+		if completions[i].nodeName != completions[j].nodeName {
+			return completions[i].nodeName < completions[j].nodeName
+		}
+		return completions[i].nodeID < completions[j].nodeID
+	})
+
+	nodeNames = make([]string, 0, len(completions))
+	var commonSummary string
+	allSame := len(completions) > 0
+	for i, c := range completions {
+		nodeNames = append(nodeNames, c.nodeName)
+		summary := ddnsCompletionText(c)
+		if i == 0 {
+			commonSummary = summary
+		} else if summary != commonSummary {
+			allSame = false
+		}
+	}
+
+	if allSame && commonSummary != "" {
+		tgLines = []string{
+			tgLine("完成节点", formatLimitedList(nodeNames, 15, "台")),
+			formatDNSMappingHTML(commonSummary),
+		}
+		barkLines = []string{
+			fmt.Sprintf("节点：%s", formatLimitedList(nodeNames, 6, "台")),
+			commonSummary,
+		}
+		return nodeNames, tgLines, barkLines
+	}
+
+	tgShown := len(completions)
+	if tgShown > 15 {
+		tgShown = 15
+	}
+	tgLines = make([]string, 0, tgShown+1)
+	for _, c := range completions[:tgShown] {
+		tgLines = append(tgLines, fmt.Sprintf("• <b>%s</b>：%s", tgEscape(c.nodeName), formatDNSMappingHTML(ddnsCompletionText(c))))
+	}
+	if len(completions) > tgShown {
+		tgLines = append(tgLines, tgLine("其他节点", fmt.Sprintf("另有 %d 台未展开", len(completions)-tgShown)))
+	}
+
+	barkShown := len(completions)
+	if barkShown > 5 {
+		barkShown = 5
+	}
+	barkLines = make([]string, 0, barkShown+1)
+	for _, c := range completions[:barkShown] {
+		barkLines = append(barkLines, fmt.Sprintf("• %s：%s", c.nodeName, ddnsCompletionText(c)))
+	}
+	if len(completions) > barkShown {
+		barkLines = append(barkLines, fmt.Sprintf("另有 %d 台服务器", len(completions)-barkShown))
+	}
+	return nodeNames, tgLines, barkLines
+}
+
+func (e *AlertEngine) sendDDNSBatchSummary(batch *ddnsAlertBatch) {
+	settings, err := e.getSettings()
+	if err != nil || !settings.HasNotifier() {
+		return
+	}
+
+	// Case 1: One or more DDNS IP updates (optionally combined with chained DNS healing/completions)
+	if len(batch.updates) > 0 {
+		sort.Slice(batch.updates, func(i, j int) bool {
+			if batch.updates[i].nodeName != batch.updates[j].nodeName {
+				return batch.updates[i].nodeName < batch.updates[j].nodeName
+			}
+			return batch.updates[i].nodeID < batch.updates[j].nodeID
+		})
+
+		var tgLines []string
+		var barkLines []string
+		var subject string
+		var headline string
+		var barkTitle string
+
+		if len(batch.updates) == 1 {
+			u := batch.updates[0]
+			subject = u.nodeName
+			barkTitle = fmt.Sprintf("服务器 IP 变更：%s", u.nodeName)
+			domainStr := strings.Join(u.domains, "、")
+			oldStr := e.formatIPList(u.oldIP)
+			newStr := e.formatIPList(u.newIP)
+			if domainStr != "" {
+				tgLines = append(tgLines, tgLine("解析域名", domainStr))
+				barkLines = append(barkLines, domainStr)
+			}
+			tgLines = append(tgLines, tgLine("IP 变更", fmt.Sprintf("%s → %s", oldStr, newStr)))
+			barkLines = append(barkLines, fmt.Sprintf("%s → %s", oldStr, newStr))
+		} else {
+			headline = fmt.Sprintf("共 %d 台服务器", len(batch.updates))
+			barkTitle = fmt.Sprintf("DDNS IP 变更：%d 台服务器", len(batch.updates))
+
+			tgShown := len(batch.updates)
+			if tgShown > 15 {
+				tgShown = 15
+			}
+			for _, u := range batch.updates[:tgShown] {
+				domainStr := strings.Join(u.domains, "、")
+				oldStr := e.formatIPList(u.oldIP)
+				newStr := e.formatIPList(u.newIP)
+				entry := fmt.Sprintf("• <b>%s</b>", tgEscape(u.nodeName))
+				if domainStr != "" {
+					entry += fmt.Sprintf("（<code>%s</code>）", tgEscape(domainStr))
+				}
+				entry += fmt.Sprintf("\n  %s → %s", tgEscape(oldStr), tgEscape(newStr))
+				tgLines = append(tgLines, entry)
+			}
+			if len(batch.updates) > tgShown {
+				tgLines = append(tgLines, tgLine("其他节点", fmt.Sprintf("另有 %d 台服务器未展开", len(batch.updates)-tgShown)))
+			}
+
+			barkShown := len(batch.updates)
+			if barkShown > 6 {
+				barkShown = 6
+			}
+			for _, u := range batch.updates[:barkShown] {
+				domainStr := strings.Join(u.domains, "、")
+				oldStr := e.formatIPList(u.oldIP)
+				newStr := e.formatIPList(u.newIP)
+				if domainStr != "" {
+					barkLines = append(barkLines, fmt.Sprintf("• %s（%s）\n  %s → %s", u.nodeName, domainStr, oldStr, newStr))
+				} else {
+					barkLines = append(barkLines, fmt.Sprintf("• %s\n  %s → %s", u.nodeName, oldStr, newStr))
+				}
+			}
+			if len(batch.updates) > barkShown {
+				barkLines = append(barkLines, fmt.Sprintf("另有 %d 台服务器", len(batch.updates)-barkShown))
+			}
+		}
+
+		if len(batch.completions) > 0 {
+			completedNames, compTGLines, _ := renderDDNSCompletions(batch.completions)
+			tgLines = append(tgLines, fmt.Sprintf("\n<b>前置 DNS 刷新完成（%d 台）</b>", len(batch.completions)))
+			tgLines = append(tgLines, compTGLines...)
+			barkLines = append(barkLines, fmt.Sprintf("前置刷新完成（%d 台）：%s",
+				len(completedNames), formatLimitedList(completedNames, 5, "台")))
+		} else if len(batch.healings) > 0 {
+			sort.Slice(batch.healings, func(i, j int) bool {
+				return batch.healings[i].targetNodeName < batch.healings[j].targetNodeName
+			})
+			var healingParts []string
+			for _, h := range batch.healings {
+				healingParts = append(healingParts, fmt.Sprintf("%s（%d 台前置）", h.targetNodeName, h.chainedCount))
+			}
+			tgLines = append(tgLines, "\n<b>前置 DNS 刷新</b>", tgLine("触发范围", formatLimitedList(healingParts, 10, "个")))
+			barkLines = append(barkLines, "已触发前置刷新："+formatLimitedList(healingParts, 4, "个"))
+		}
+
+		var barkBody string
+		if len(batch.updates) == 1 {
+			nodeCtx := e.nodeContext(batch.updates[0].nodeID, batch.updates[0].nodeName)
+			tgLines = e.withNodeInfo(nodeCtx, tgLines)
+			barkBody = e.barkWithNode(nodeCtx, strings.Join(barkLines, "\n"))
+		} else {
+			barkBody = strings.Join(barkLines, "\n")
+		}
+
+		telegramText := buildTelegramAlert(severityInfo, "DDNS IP 变更", headline, subject, tgLines, "")
+		e.sendAlert(context.Background(), alertPayload{
+			Severity:  severityInfo,
+			BarkTitle: barkTitle,
+			BarkBody:  barkBody,
+			BarkGroup: "DDNS监控",
+			BarkSound: "bell.caf",
+			Telegram:  telegramText,
+		})
+		return
+	}
+
+	// Case 2: Chained DNS refresh completions (single or merged across nodes)
+	if len(batch.completions) > 0 {
+		if len(batch.completions) == 1 && len(batch.healings) == 0 {
+			c := batch.completions[0]
+			summary := ddnsCompletionText(c)
+			nodeCtx := e.nodeContext(c.nodeID, c.nodeName)
+			dnsLine := formatDNSMappingHTML(summary)
+			telegramText := buildTelegramAlertRaw(severityRecovery, "DNS 刷新完成", "", c.nodeName, e.withNodeInfo(nodeCtx, []string{dnsLine}))
+			e.sendAlert(context.Background(), alertPayload{
+				Severity:  severityRecovery,
+				BarkTitle: fmt.Sprintf("DNS 刷新完成：%s", c.nodeName),
+				BarkBody:  e.barkWithNode(nodeCtx, summary),
+				BarkGroup: "DNS",
+				BarkSound: "calypso.caf",
+				Telegram:  telegramText,
+			})
+			return
+		}
+
+		_, compTGLines, compBarkLines := renderDDNSCompletions(batch.completions)
+		headline := fmt.Sprintf("共 %d 台服务器", len(batch.completions))
+		if len(batch.completions) == 1 {
+			headline = batch.completions[0].nodeName
+		}
+		if len(batch.healings) > 0 {
+			var allDomains []string
+			for _, h := range batch.healings {
+				for _, d := range h.domains {
+					allDomains = appendDistinctLimit(allDomains, d, 0)
+				}
+			}
+			if len(allDomains) > 0 {
+				compTGLines = append(compTGLines, tgLine("涉及域名", formatLimitedList(allDomains, 8, "个")))
+			}
+		}
+
+		telegramText := buildTelegramAlertRaw(severityRecovery, "DNS 刷新完成", headline, "", compTGLines)
+		barkTitle := fmt.Sprintf("DNS 刷新完成：%d 台服务器", len(batch.completions))
+		if len(batch.completions) == 1 {
+			barkTitle = fmt.Sprintf("DNS 刷新完成：%s", batch.completions[0].nodeName)
+		}
 		e.sendAlert(context.Background(), alertPayload{
 			Severity:  severityRecovery,
-			BarkTitle: fmt.Sprintf("DNS 刷新完成：%s", nodeName),
-			BarkBody:  e.barkWithNode(nodeCtx, cleanSummary),
+			BarkTitle: barkTitle,
+			BarkBody:  strings.Join(compBarkLines, "\n"),
 			BarkGroup: "DNS",
 			BarkSound: "calypso.caf",
+			Telegram:  telegramText,
+		})
+		return
+	}
+
+	// Case 3: Chained DNS healing triggers only
+	if len(batch.healings) > 0 {
+		sort.Slice(batch.healings, func(i, j int) bool {
+			return batch.healings[i].targetNodeName < batch.healings[j].targetNodeName
+		})
+		if len(batch.healings) == 1 {
+			h := batch.healings[0]
+			nodeCtx := nodeAlertContext{Name: h.targetNodeName, IP: cleanIPAddress(h.targetIP)}
+			if nodeCtx.IP != "" && e.locator != nil {
+				if location := strings.TrimSpace(e.locator.Locate(nodeCtx.IP)); location != "" && location != "未知" {
+					nodeCtx.Location = location
+				}
+			}
+			telegramText := buildTelegramAlert(severityWarning, "触发前置 DNS 刷新", "", h.targetNodeName, e.withNodeInfo(nodeCtx, []string{
+				tgLine("影响域名", strings.Join(h.domains, "、")),
+				tgLine("目标最新 IP", e.formatIP(h.targetIP)),
+				tgLine("依赖前置服务器", fmt.Sprintf("%d 台", h.chainedCount)),
+			}), "")
+			e.sendAlert(context.Background(), alertPayload{
+				Severity:  severityWarning,
+				BarkTitle: "前置 DNS 刷新已触发",
+				BarkBody: e.barkWithNode(nodeCtx, fmt.Sprintf("%d 台前置服务器正在刷新 DNS\n域名：%s",
+					h.chainedCount, strings.Join(h.domains, "、"))),
+				BarkGroup: "DNS",
+				BarkSound: "anticipate.caf",
+				Telegram:  telegramText,
+			})
+			return
+		}
+
+		var tgLines []string
+		var barkLines []string
+		for i, h := range batch.healings {
+			if i < 10 {
+				tgLines = append(tgLines, fmt.Sprintf("• <b>%s</b>（%d 台前置）→ %s\n  域名：<code>%s</code>",
+					tgEscape(h.targetNodeName), h.chainedCount, tgEscape(e.formatIP(h.targetIP)), tgEscape(strings.Join(h.domains, "、"))))
+			}
+			if i < 5 {
+				barkLines = append(barkLines, fmt.Sprintf("• %s（%d 台前置）：%s", h.targetNodeName, h.chainedCount, strings.Join(h.domains, "、")))
+			}
+		}
+		if len(batch.healings) > 10 {
+			tgLines = append(tgLines, tgLine("其他目标", fmt.Sprintf("另有 %d 台未展开", len(batch.healings)-10)))
+		}
+		if len(batch.healings) > 5 {
+			barkLines = append(barkLines, fmt.Sprintf("另有 %d 个目标节点", len(batch.healings)-5))
+		}
+		telegramText := buildTelegramAlert(severityWarning, "触发前置 DNS 刷新", fmt.Sprintf("共 %d 个目标节点", len(batch.healings)), "", tgLines, "")
+		e.sendAlert(context.Background(), alertPayload{
+			Severity:  severityWarning,
+			BarkTitle: fmt.Sprintf("前置 DNS 刷新已触发：%d 个目标", len(batch.healings)),
+			BarkBody:  strings.Join(barkLines, "\n"),
+			BarkGroup: "DNS",
+			BarkSound: "anticipate.caf",
 			Telegram:  telegramText,
 		})
 	}

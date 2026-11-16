@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/liyuwei007036/polaris/internal/wire"
 )
 
 func TestNodeRecoveryRequiresPriorOffline(t *testing.T) {
@@ -581,6 +583,7 @@ func TestNotifyChainedDNSCompletedFormat(t *testing.T) {
 	}
 
 	engine := NewAlertEngine(store, nil)
+	engine.ddnsWait = 50 * time.Millisecond
 	engine.NotifyChainedDNSCompleted("node-hk", "香港-LowEndCloud-182",
 		"已执行动态 DNS 刷新与链路自愈：twhi.1x1x1.dpdns.org -> 36.234.152.63（已同步 /etc/hosts，已写入 sing-box 静态解析规则，已重启 sing-box 重置出站连接池）")
 
@@ -661,5 +664,248 @@ func TestRouteIssueTrafficType(t *testing.T) {
 	dnsIssue := &routeIssue{ports: []string{"53"}, networks: []string{"udp"}}
 	if !strings.Contains(dnsIssue.trafficType(), "DNS") {
 		t.Errorf("expected DNS description, got: %s", dnsIssue.trafficType())
+	}
+}
+
+func TestDDNSAlertsMergedAcrossNodesAndChainedCompletions(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu       sync.Mutex
+		gotTG    []string
+		gotBarks []BarkMessage
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "sendMessage") {
+			var msg telegramSendMessage
+			_ = json.NewDecoder(r.Body).Decode(&msg)
+			mu.Lock()
+			gotTG = append(gotTG, msg.Text)
+			mu.Unlock()
+		} else {
+			var bark BarkMessage
+			_ = json.NewDecoder(r.Body).Decode(&bark)
+			mu.Lock()
+			gotBarks = append(gotBarks, bark)
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := store.UpdateAlertSettings(ctx, AlertSettings{
+		TelegramEnabled:  true,
+		TelegramServer:   server.URL,
+		TelegramBotToken: "123:TOKEN",
+		TelegramChatID:   "12345",
+		BarkServer:       server.URL,
+		BarkDeviceKey:    "key",
+		CooldownMinutes:  1,
+	}); err != nil {
+		t.Fatalf("update alert settings: %v", err)
+	}
+
+	engine := NewAlertEngine(store, nil)
+	engine.ddnsWait = 60 * time.Millisecond
+
+	// Scenario 1: Multiple DDNS nodes update + trigger chained healing + chained nodes complete DNS refresh
+	engine.NotifyDDNSUpdated("nat-1", "家宽电信", "1.1.1.1", "2.2.2.2", "ct.example.com")
+	engine.NotifyChainedDNSHealing("家宽电信", 3, []string{"ct.example.com"}, "2.2.2.2")
+	engine.NotifyDDNSUpdated("nat-2", "家宽联通", "3.3.3.3", "4.4.4.4", "cu.example.com")
+	engine.NotifyChainedDNSHealing("家宽联通", 3, []string{"cu.example.com"}, "4.4.4.4")
+	engine.NotifyChainedDNSCompleted("hk-1", "香港-1", "ct.example.com -> 2.2.2.2（已同步 /etc/hosts）")
+	engine.NotifyChainedDNSCompleted("jp-1", "日本-1", "ct.example.com -> 2.2.2.2（已同步 /etc/hosts）")
+	engine.NotifyChainedDNSCompleted("sg-1", "新加坡-1", "ct.example.com -> 2.2.2.2（已同步 /etc/hosts）")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		tc, bc := len(gotTG), len(gotBarks)
+		mu.Unlock()
+		if tc >= 1 && bc >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for merged DDNS notification (tg=%d bark=%d)", tc, bc)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	if len(gotTG) != 1 || len(gotBarks) != 1 {
+		mu.Unlock()
+		t.Fatalf("expected exactly 1 merged DDNS notification per channel, got tg=%d bark=%d", len(gotTG), len(gotBarks))
+	}
+	tg1 := gotTG[0]
+	bark1 := gotBarks[0]
+	mu.Unlock()
+
+	if !strings.Contains(tg1, "共 2 台服务器") {
+		t.Errorf("expected Telegram header with 2 servers, got:\n%s", tg1)
+	}
+	for _, want := range []string{"家宽电信", "家宽联通", "ct.example.com", "cu.example.com", "2.2.2.2", "4.4.4.4", "前置 DNS 刷新完成（3 台）", "香港-1", "日本-1", "新加坡-1"} {
+		if !strings.Contains(tg1, want) {
+			t.Errorf("expected Telegram merged DDNS alert to contain %q, got:\n%s", want, tg1)
+		}
+	}
+	if !strings.Contains(bark1.Title, "DDNS IP 变更：2 台服务器") {
+		t.Errorf("expected Bark merged DDNS title, got: %s", bark1.Title)
+	}
+	for _, want := range []string{"家宽电信", "家宽联通", "前置刷新完成（3 台）", "香港-1", "日本-1", "新加坡-1"} {
+		if !strings.Contains(bark1.Body, want) {
+			t.Errorf("expected Bark merged DDNS body to contain %q, got:\n%s", want, bark1.Body)
+		}
+	}
+
+	// Scenario 2: Multiple chained nodes complete DNS refresh without a concurrent DDNS update
+	engine.NotifyChainedDNSCompleted("tw-1", "台湾-1", "nat.example.com -> 9.9.9.9（已写入静态规则）")
+	engine.NotifyChainedDNSCompleted("us-1", "美国-1", "nat.example.com -> 9.9.9.9（已写入静态规则）")
+
+	deadline2 := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		tc, bc := len(gotTG), len(gotBarks)
+		mu.Unlock()
+		if tc >= 2 && bc >= 2 {
+			break
+		}
+		if time.Now().After(deadline2) {
+			t.Fatalf("timed out waiting for merged DNS completion notification (tg=%d bark=%d)", tc, bc)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(gotTG) != 2 || len(gotBarks) != 2 {
+		t.Fatalf("expected 1 additional merged DNS completion notification, got tg=%d bark=%d", len(gotTG), len(gotBarks))
+	}
+	tg2 := gotTG[1]
+	bark2 := gotBarks[1]
+	if !strings.Contains(tg2, "共 2 台服务器") || !strings.Contains(tg2, "台湾-1") || !strings.Contains(tg2, "美国-1") || !strings.Contains(tg2, "<code>nat.example.com</code> → <code>9.9.9.9</code>") {
+		t.Errorf("unexpected merged Telegram DNS completion content:\n%s", tg2)
+	}
+	if !strings.Contains(bark2.Title, "DNS 刷新完成：2 台服务器") || !strings.Contains(bark2.Body, "台湾-1") || !strings.Contains(bark2.Body, "美国-1") {
+		t.Errorf("unexpected merged Bark DNS completion content: title=%q body=%q", bark2.Title, bark2.Body)
+	}
+}
+
+func TestDDNSSingleNodeAndNoOpDNS(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu       sync.Mutex
+		gotBarks []BarkMessage
+		gotTG    []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "sendMessage") {
+			var msg telegramSendMessage
+			_ = json.NewDecoder(r.Body).Decode(&msg)
+			mu.Lock()
+			gotTG = append(gotTG, msg.Text)
+			mu.Unlock()
+		} else {
+			var bark BarkMessage
+			_ = json.NewDecoder(r.Body).Decode(&bark)
+			mu.Lock()
+			gotBarks = append(gotBarks, bark)
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if _, err := store.UpdateAlertSettings(ctx, AlertSettings{
+		TelegramEnabled:  true,
+		TelegramServer:   server.URL,
+		TelegramBotToken: "123:TOKEN",
+		TelegramChatID:   "12345",
+		BarkServer:       server.URL,
+		BarkDeviceKey:    "key",
+		CooldownMinutes:  1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.alertEngine.ddnsWait = 50 * time.Millisecond
+
+	nodeID := createTestNode(t, store, "前置节点-HK", "198.51.100.50")
+	node, err := store.NodeByID(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Zero-op dns.update completion must not emit a notification.
+	noopTask, err := store.CreateTask(ctx, Task{
+		NodeID:         nodeID,
+		Kind:           "dns.update",
+		IdempotencyKey: "dns-noop-test",
+		Payload:        `{"ip":"1.1.1.1","domains":["a.example.com"]}`,
+		ExpectedHash:   "hash-noop-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noopBody, err := wire.Encode(wire.TaskResult{
+		TaskID:  noopTask.ID,
+		Status:  "succeeded",
+		Summary: "所有域名解析与静态规则均已是最新，无需修改",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !srv.handleAgentMessage(ctx, &node, wire.MsgTaskResult, noopBody) {
+		t.Fatal("handleAgentMessage failed for noop task result")
+	}
+	time.Sleep(120 * time.Millisecond)
+
+	mu.Lock()
+	if len(gotBarks) != 0 || len(gotTG) != 0 {
+		mu.Unlock()
+		t.Fatalf("expected zero-op dns.update not to notify, got bark=%d tg=%d", len(gotBarks), len(gotTG))
+	}
+	mu.Unlock()
+
+	// Single-node DDNS update keeps clean single-server formatting.
+	srv.alertEngine.NotifyDDNSUpdated(nodeID, "前置节点-HK", "1.1.1.1", "2.2.2.2", "hk.example.com")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		bc, tc := len(gotBarks), len(gotTG)
+		mu.Unlock()
+		if bc >= 1 && tc >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for single DDNS update (bark=%d tg=%d)", bc, tc)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(gotBarks[0].Title, "服务器 IP 变更：前置节点-HK") {
+		t.Errorf("unexpected single-node Bark title: %s", gotBarks[0].Title)
+	}
+	if !strings.Contains(gotTG[0], "hk.example.com") || !strings.Contains(gotTG[0], "1.1.1.1") || !strings.Contains(gotTG[0], "2.2.2.2") {
+		t.Errorf("unexpected single-node Telegram DDNS content:\n%s", gotTG[0])
 	}
 }

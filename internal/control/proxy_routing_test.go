@@ -52,6 +52,7 @@ func TestProxyRoutingFlagsDomesticOrLANThroughProxy(t *testing.T) {
 	}
 
 	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 50 * time.Millisecond
 	direct := []storedConnection{{
 		SourceIP:     "203.0.113.5:1234",
 		Destination:  "192.168.1.10:80",
@@ -127,6 +128,7 @@ func TestProxyRoutingSourceTrackingTelegram(t *testing.T) {
 	}
 
 	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 50 * time.Millisecond
 	proxied := []storedConnection{{
 		Destination:    "10.0.0.1:443",
 		User:           "alice",
@@ -435,6 +437,7 @@ func TestProxyRoutingChainedProxyResolvesTrueFinalExit(t *testing.T) {
 
 	hub := newConnectionsHub()
 	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 50 * time.Millisecond
 	engine.SetConnectionsHub(hub)
 
 	nowStr := time.Now().UTC().Format(time.RFC3339)
@@ -534,6 +537,7 @@ func TestProxyRoutingChainedProxyResolvesTrueFinalExit(t *testing.T) {
 	// Verify static DB chain resolution when downstream live hub snapshots are absent.
 	emptyHub := newConnectionsHub()
 	staticEngine := NewAlertEngine(store, nil)
+	staticEngine.proxyRouteWait = 50 * time.Millisecond
 	staticEngine.SetConnectionsHub(emptyHub)
 	staticEngine.CheckConnectionsTelemetry(nodeAID, "香港入口", 0, 0, []storedConnection{{
 		ID:            "static-1",
@@ -677,6 +681,7 @@ func TestTrafficSpikeOnRelayNodeRecoversUpstreamClient(t *testing.T) {
 
 	hub := newConnectionsHub()
 	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 50 * time.Millisecond
 	engine.SetConnectionsHub(hub)
 
 	entryConns := []storedConnection{{
@@ -1084,8 +1089,8 @@ func TestShortLivedAndOutOfOrderRelayCorrelationAndRecorder(t *testing.T) {
 func TestTrafficSpikeOnRelayNodeWithMinorDirectConnection(t *testing.T) {
 	ctx := context.Background()
 	var (
-		mu       sync.Mutex
-		tgTexts  []string
+		mu      sync.Mutex
+		tgTexts []string
 	)
 	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var msg struct {
@@ -1165,5 +1170,153 @@ func TestTrafficSpikeOnRelayNodeWithMinorDirectConnection(t *testing.T) {
 	text := tgTexts[len(tgTexts)-1]
 	if !strings.Contains(text, "112.86.163.226") || !strings.Contains(text, "alice") || !strings.Contains(text, "中转：Edge-Entry") || !strings.Contains(text, "heavy-cdn.example.com") {
 		t.Errorf("expected traffic spike alert on relay node with minor direct conn to attribute spike to heavy-cdn + 112.86.163.226 + Edge-Entry, got:\n%s", text)
+	}
+}
+
+func TestProxyRoutingMergesPrivateIPsAndAcrossNodes(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu       sync.Mutex
+		barks    []BarkMessage
+		gotTexts []string
+	)
+	barkServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg BarkMessage
+		_ = json.NewDecoder(r.Body).Decode(&msg)
+		mu.Lock()
+		barks = append(barks, msg)
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200})
+	}))
+	defer barkServer.Close()
+
+	tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&msg)
+		mu.Lock()
+		gotTexts = append(gotTexts, msg.Text)
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer tgServer.Close()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if _, err := store.UpdateAlertSettings(ctx, AlertSettings{
+		BarkServer:       barkServer.URL,
+		BarkDeviceKey:    "test_key",
+		TelegramEnabled:  true,
+		TelegramServer:   tgServer.URL,
+		TelegramBotToken: "123:tok",
+		TelegramChatID:   "100",
+		CooldownMinutes:  30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 60 * time.Millisecond
+
+	// Scenario 1: One server sees 5 distinct private IPs + 1 domestic IP + a repeated push of the same connID.
+	push1 := []storedConnection{
+		{ID: "p1", Network: "tcp", Destination: "192.168.1.1:80", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+		{ID: "p2", Network: "tcp", Destination: "192.168.1.2:443", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+		{ID: "p3", Network: "tcp", Destination: "192.168.1.3:22", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+		{ID: "p4", Network: "tcp", Destination: "10.0.0.10:8080", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+		{ID: "p5", Network: "tcp", Destination: "172.16.0.5:3306", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+		{ID: "cn1", Network: "udp", Destination: "223.5.5.5:53", User: "alice", SourceIP: "112.86.163.226", OutboundName: "Proxy-HK"},
+	}
+	engine.CheckConnectionsTelemetry("node-single", "香港-入口", 0, 0, push1)
+	// Repeated 1s push carrying the same IDs must not inflate count.
+	engine.CheckConnectionsTelemetry("node-single", "香港-入口", 0, 0, push1[:2])
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		bc, tc := len(barks), len(gotTexts)
+		mu.Unlock()
+		if bc >= 1 && tc >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for merged private-IP proxy alert (bark=%d tg=%d)", bc, tc)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	if len(barks) != 1 || len(gotTexts) != 1 {
+		mu.Unlock()
+		t.Fatalf("expected 1 merged notification, got bark=%d tg=%d", len(barks), len(gotTexts))
+	}
+	tg1 := gotTexts[0]
+	bark1 := barks[0]
+	mu.Unlock()
+
+	if !strings.Contains(tg1, "等 5 个内网 IP") || !strings.Contains(tg1, "· 5 条") {
+		t.Errorf("expected all 5 private IPs merged into 1 group with exact deduplicated count 5, got:\n%s", tg1)
+	}
+	if !strings.Contains(tg1, "223.5.5.5") {
+		t.Errorf("expected domestic IP 223.5.5.5 not to be crowded out by merged private IPs, got:\n%s", tg1)
+	}
+	if strings.Contains(tg1, "<b>[3]") {
+		t.Errorf("expected only 2 grouped items (merged private IPs + domestic IP), got:\n%s", tg1)
+	}
+	if !strings.Contains(bark1.Body, "发现 6 个国内/局域网目标走代理") || !strings.Contains(bark1.Body, "等 5 个内网 IP") {
+		t.Errorf("unexpected Bark body for merged private IPs:\n%s", bark1.Body)
+	}
+
+	// Scenario 2: Multiple servers report private IPs through proxy in the same window -> merged into 1 alert.
+	engine.CheckConnectionsTelemetry("node-hk", "香港-1", 0, 0, []storedConnection{
+		{ID: "hk-1", Network: "tcp", Destination: "192.168.10.1:80", User: "bob", SourceIP: "112.86.163.226", OutboundName: "Exit-Shared"},
+		{ID: "hk-2", Network: "tcp", Destination: "192.168.10.2:80", User: "bob", SourceIP: "112.86.163.226", OutboundName: "Exit-Shared"},
+	})
+	engine.CheckConnectionsTelemetry("node-jp", "日本-1", 0, 0, []storedConnection{
+		{ID: "jp-1", Network: "tcp", Destination: "192.168.20.1:443", User: "carol", SourceIP: "112.86.163.226", OutboundName: "Exit-Shared"},
+	})
+	engine.CheckConnectionsTelemetry("node-sg", "新加坡-1", 0, 0, []storedConnection{
+		{ID: "sg-1", Network: "tcp", Destination: "10.10.1.5:443", User: "dave", SourceIP: "112.86.163.226", OutboundName: "Exit-SG"},
+	})
+
+	deadline2 := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		bc, tc := len(barks), len(gotTexts)
+		mu.Unlock()
+		if bc >= 2 && tc >= 2 {
+			break
+		}
+		if time.Now().After(deadline2) {
+			t.Fatalf("timed out waiting for multi-server merged proxy routing alert (bark=%d tg=%d)", bc, tc)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(barks) != 2 || len(gotTexts) != 2 {
+		t.Fatalf("expected 1 additional merged notification across 3 servers, got bark=%d tg=%d", len(barks), len(gotTexts))
+	}
+	tg2 := gotTexts[1]
+	bark2 := barks[1]
+	if !strings.Contains(tg2, "3 台服务器") || !strings.Contains(tg2, "香港-1") || !strings.Contains(tg2, "日本-1") || !strings.Contains(tg2, "新加坡-1") {
+		t.Errorf("expected all 3 servers merged into Telegram alert, got:\n%s", tg2)
+	}
+	if !strings.Contains(tg2, "Exit-Shared") || !strings.Contains(tg2, "Exit-SG") {
+		t.Errorf("expected both outbounds in merged Telegram alert, got:\n%s", tg2)
+	}
+	if !strings.Contains(bark2.Title, "分流异常：3 台服务器") {
+		t.Errorf("expected Bark multi-server title, got: %s", bark2.Title)
+	}
+	if !strings.Contains(bark2.Body, "香港-1") || !strings.Contains(bark2.Body, "日本-1") || !strings.Contains(bark2.Body, "新加坡-1") {
+		t.Errorf("expected all 3 servers in Bark body, got:\n%s", bark2.Body)
 	}
 }
