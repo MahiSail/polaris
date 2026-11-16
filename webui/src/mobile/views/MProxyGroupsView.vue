@@ -6,6 +6,7 @@ import { api, del, post, put } from '../../api'
 import { includesText } from '../../format'
 import { protocolMap } from '../../protocols'
 import MPage from '../components/MPage.vue'
+import MSegmented from '../components/MSegmented.vue'
 import MSheet from '../components/MSheet.vue'
 import MPicker from '../components/MPicker.vue'
 import MActionSheet from '../components/MActionSheet.vue'
@@ -24,6 +25,7 @@ const listeners = ref([])
 const endpoints = ref([])
 const form = reactive({ name: '', strategy: 'select', members: [] })
 const keyword = ref('')
+const selectedStrategy = ref('')
 const actionsOpen = ref(false)
 const actionTarget = ref(null)
 const supported = new Set(['vless', 'hysteria2'])
@@ -63,10 +65,13 @@ const memberKeys = computed({
   },
 })
 const formValid = computed(() => Boolean(form.name.trim() && form.members.length))
-const filteredGroups = computed(() => groups.value.filter((group) => includesText(
-  [group.name, strategyNames[group.strategy], ...(group.members || []).map(memberLabel)],
-  keyword.value,
-)))
+const filteredGroups = computed(() => groups.value.filter((group) => {
+  if (selectedStrategy.value && group.strategy !== selectedStrategy.value) return false
+  return includesText(
+    [group.name, strategyNames[group.strategy], ...(group.members || []).map(memberLabel)],
+    keyword.value,
+  )
+}))
 
 async function load() {
   loading.value = true
@@ -123,8 +128,12 @@ const summaryOf = (group) => summaries.value[group.id] || emptySummary
 // 卡上只摆得下前几个名字，剩下的折成一个计数。全部铺开时十几枚标签会把
 // 一张卡撑到大半屏，一屏就只剩两个分组。
 const PREVIEW = 3
-const previewNodes = (group) => summaryOf(group).nodes.slice(0, PREVIEW)
-const restCount = (group) => Math.max(0, summaryOf(group).nodes.length - PREVIEW)
+const combinedMembers = (group) => [
+  ...summaryOf(group).nested.map((m) => ({ ...m, isGroup: true })),
+  ...summaryOf(group).nodes.map((m) => ({ ...m, isGroup: false })),
+]
+const previewMembers = (group) => combinedMembers(group).slice(0, PREVIEW)
+const restCount = (group) => Math.max(0, combinedMembers(group).length - PREVIEW)
 
 function openForm(group = null) {
   editing.value = group
@@ -211,6 +220,12 @@ onMounted(load)
       />
     </template>
     <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" />
+    <div class="m-filters">
+      <MSegmented
+        v-model="selectedStrategy"
+        :options="[{ value: '', label: '全部策略' }, { value: 'select', label: '手动选择' }, { value: 'url-test', label: '自动测速' }, { value: 'fallback', label: '故障切换' }]"
+      />
+    </div>
     <div class="m-count">共 {{ filteredGroups.length }} 个分组</div>
 
     <article v-for="group in filteredGroups" :key="group.id" class="m-item">
@@ -230,13 +245,13 @@ onMounted(load)
             <small>已失效</small>
           </span>
         </div>
-        <div v-if="previewNodes(group).length" class="picks">
+        <div v-if="previewMembers(group).length" class="picks">
           <span
-            v-for="(item, index) in previewNodes(group)"
+            v-for="(item, index) in previewMembers(group)"
             :key="index"
             class="pick"
-            :class="{ 'is-off': item.off, 'is-broken': item.missing }"
-          >{{ item.name }}</span>
+            :class="{ 'is-group': item.isGroup, 'is-off': item.off, 'is-broken': item.missing }"
+          >{{ item.isGroup ? `分组 · ${item.name}` : item.name }}</span>
           <span v-if="restCount(group)" class="pick pick--more">还有 {{ restCount(group) }} 个</span>
         </div>
         <div v-else class="m-item__meta">还没有节点，客户端会拿到一个空分组</div>

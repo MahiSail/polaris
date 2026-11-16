@@ -45,8 +45,11 @@ const groups = [
   {
     label: '系统管理',
     items: [
+      { id: 'status', label: '节点实时看板', icon: Monitor },
       { id: 'cloudflare', label: '域名解析', icon: Document },
-      { id: 'alerts', label: '通知设置', icon: Bell },
+      { id: 'settings?tab=alerts', route: 'settings', query: 'tab=alerts', label: '通知设置', icon: Bell, adminOnly: true },
+      { id: 'settings?tab=tools', route: 'settings', query: 'tab=tools', label: '网络工具', icon: Connection },
+      { id: 'admin-data', label: '数据备份与维护', icon: Operation, adminOnly: true },
       { id: 'settings', label: '系统设置', icon: Setting, adminOnly: true },
     ],
   },
@@ -132,7 +135,7 @@ async function confirmLogout() {
           :key="item.id"
           type="button"
           class="entry"
-          @click="navigate(item.id)"
+          @click="navigate(item.route || item.id, item.query || '')"
         >
           <el-icon :size="17"><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>

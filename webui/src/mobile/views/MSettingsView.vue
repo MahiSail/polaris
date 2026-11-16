@@ -1,8 +1,8 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Search } from '@element-plus/icons-vue'
-import { api, post, put } from '../../api'
+import { Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import { api, post, put, uploadFile } from '../../api'
 import { formatDateTime, includesText } from '../../format'
 import MPage from '../components/MPage.vue'
 import MSegmented from '../components/MSegmented.vue'
@@ -14,15 +14,20 @@ const isAdmin = inject('isAdmin')
 const loading = ref(false)
 
 const initialTab = () => {
+  const qTab = new URLSearchParams(location.search || '').get('tab')
+  if (qTab && ['operators', 'alerts', 'tools', 'ipdb'].includes(qTab)) return qTab
   const hash = location.hash || ''
   if (hash.includes('alerts')) return 'alerts'
-  return 'operators'
+  if (hash.includes('tools')) return 'tools'
+  if (hash.includes('ipdb')) return 'ipdb'
+  return isAdmin.value ? 'operators' : 'tools'
 }
 const tab = ref(initialTab())
 const operators = ref([])
 const operatorSheet = ref(false)
 const operator = reactive({ username: '', password: '', role: 'operator' })
 const operatorKeyword = ref('')
+const operatorStatus = ref('')
 const actionsOpen = ref(false)
 const actionTarget = ref(null)
 const roleSheet = ref(false)
@@ -40,7 +45,7 @@ const alertSettings = reactive({
   telegram_bot_token: '',
   telegram_chat_id: '',
   traffic_alert_enabled: true,
-  traffic_threshold_mbps: 50,
+  traffic_threshold_mbps: 150,
   traffic_duration_sec: 10,
   conn_alert_enabled: true,
   conn_threshold_count: 200,
@@ -76,19 +81,183 @@ const roles = [
   { value: 'viewer', label: '只读用户' },
 ]
 const roleNames = Object.fromEntries(roles.map((role) => [role.value, role.label]))
-const filteredOperators = computed(() => operators.value.filter((row) => includesText([row.username, roleNames[row.role]], operatorKeyword.value)))
-const tabs = computed(() => [
-  { value: 'operators', label: '管理账户' },
-  { value: 'alerts', label: '通知设置' },
-])
+const filteredOperators = computed(() => operators.value.filter((row) => {
+  if (operatorStatus.value && String(Boolean(row.enabled)) !== operatorStatus.value) return false
+  return includesText([row.username, roleNames[row.role]], operatorKeyword.value)
+}))
+const tabs = computed(() => (isAdmin.value
+  ? [
+      { value: 'operators', label: '账户' },
+      { value: 'alerts', label: '通知' },
+      { value: 'tools', label: '工具' },
+      { value: 'ipdb', label: 'IP 库' },
+    ]
+  : [{ value: 'tools', label: '网络工具' }]))
 
-function syncTabFromHash() {
-  const hash = location.hash || ''
-  if (hash.includes('alerts')) {
-    tab.value = 'alerts'
-  } else if (hash.includes('operators')) {
-    tab.value = 'operators'
+const barkReady = computed(() => Boolean(alertSettings.bark_device_key.trim()))
+const channelSummary = computed(() => {
+  const channels = []
+  if (barkReady.value) channels.push('Bark')
+  if (telegramReady.value) channels.push('Telegram')
+  return channels.length ? `${channels.join(' + ')} 通道已就绪` : '尚未配置推送通道'
+})
+const enabledRuleCount = computed(() => [
+  alertSettings.traffic_alert_enabled,
+  alertSettings.conn_alert_enabled,
+  alertSettings.single_ip_alert_enabled,
+  alertSettings.offline_alert_enabled,
+  alertSettings.scan_alert_enabled,
+].filter(Boolean).length)
+
+const savedAlertState = ref(null)
+const alertSnapshot = () => JSON.stringify(alertSettings)
+const isAlertDirty = computed(() => savedAlertState.value !== null && alertSnapshot() !== savedAlertState.value)
+function markAlertSaved() {
+  savedAlertState.value = alertSnapshot()
+}
+function revertAlertSettings() {
+  if (!savedAlertState.value) return
+  Object.assign(alertSettings, JSON.parse(savedAlertState.value))
+  ElMessage.info('已撤销未保存的修改')
+}
+
+// Reality 检测工具
+const realityForm = reactive({ target: 'gateway.icloud.com', port: 443 })
+const realityChecking = ref(false)
+const realityResult = ref(null)
+
+async function checkReality() {
+  const target = (realityForm.target || '').trim()
+  if (!target) return ElMessage.warning('请输入待检测的域名')
+  realityChecking.value = true
+  try {
+    const res = await post('/tools/reality-check', {
+      target,
+      port: Number(realityForm.port) || 443,
+    })
+    realityResult.value = res?.reality_check || res?.report || res
+  } catch (err) {
+    ElMessage.error(err?.message || '检测失败')
+  } finally {
+    realityChecking.value = false
   }
+}
+
+// 高精度 MMDB IP 库
+const ipdbStatus = reactive({
+  mmdb_loaded: false,
+  mmdb_path: '',
+  mmdb_type: '',
+  ip2region_loaded: true,
+})
+const ipdbDownloadURL = ref('')
+const ipdbLoading = ref(false)
+const ipReloading = ref(false)
+const mmdbUploadInput = ref(null)
+const ipTestAddr = ref('8.8.8.8')
+const ipTestLoading = ref(false)
+const ipTestResult = ref(null)
+
+async function loadIPDBStatus() {
+  if (!isAdmin.value) return
+  try {
+    const res = await api('/ip/database')
+    Object.assign(ipdbStatus, res)
+  } catch {
+    // ignore
+  }
+}
+
+async function downloadMMDB() {
+  try {
+    await ElMessageBox.confirm('确定从镜像源在线下载 GeoLite2-City.mmdb 并热加载吗？', '下载高精度 IP 库', {
+      type: 'info',
+      confirmButtonText: '下载',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  ipdbLoading.value = true
+  try {
+    const body = ipdbDownloadURL.value.trim() ? { url: ipdbDownloadURL.value.trim() } : {}
+    const res = await post('/ip/database/download', body)
+    if (res?.success) {
+      Object.assign(ipdbStatus, res)
+      ElMessage.success('MMDB 下载并加载成功')
+    } else {
+      ElMessage.error(res?.error || '下载失败')
+    }
+  } catch (err) {
+    ElMessage.error(err?.message || '下载 MMDB 失败')
+  } finally {
+    ipdbLoading.value = false
+  }
+}
+
+async function reloadIPDB() {
+  ipReloading.value = true
+  try {
+    const res = await post('/ip/database/reload', {})
+    if (res?.success) {
+      Object.assign(ipdbStatus, res)
+      ElMessage.success('MMDB 重新加载成功')
+    } else {
+      ElMessage.warning(res?.error || '未找到可用 MMDB 文件')
+    }
+  } catch (err) {
+    ElMessage.error(err?.message || '重新加载失败')
+  } finally {
+    ipReloading.value = false
+  }
+}
+
+async function onMMDBFileSelected(event) {
+  const file = event.target?.files?.[0]
+  if (event.target) event.target.value = ''
+  if (!file) return
+  ipdbLoading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await uploadFile('/ip/database/upload', formData)
+    if (res?.success) {
+      Object.assign(ipdbStatus, res)
+      ElMessage.success('MMDB 上传并生效成功')
+    } else {
+      ElMessage.error(res?.error || '上传失败')
+    }
+  } catch (err) {
+    ElMessage.error(err?.message || '上传 MMDB 失败')
+  } finally {
+    ipdbLoading.value = false
+  }
+}
+
+async function lookupTestIP() {
+  const ip = (ipTestAddr.value || '').trim()
+  if (!ip) return ElMessage.warning('请输入要查询的 IP')
+  ipTestLoading.value = true
+  try {
+    ipTestResult.value = await api(`/ip/lookup?ip=${encodeURIComponent(ip)}`)
+  } catch (err) {
+    ElMessage.error(err?.message || 'IP 查询失败')
+  } finally {
+    ipTestLoading.value = false
+  }
+}
+
+function syncTabFromLocation() {
+  const qTab = new URLSearchParams(location.search || '').get('tab')
+  if (qTab && ['operators', 'alerts', 'tools', 'ipdb'].includes(qTab)) {
+    tab.value = !isAdmin.value && qTab !== 'tools' ? 'tools' : qTab
+    return
+  }
+  const hash = location.hash || ''
+  if (hash.includes('alerts') && isAdmin.value) tab.value = 'alerts'
+  else if (hash.includes('tools')) tab.value = 'tools'
+  else if (hash.includes('ipdb') && isAdmin.value) tab.value = 'ipdb'
+  else if (hash.includes('operators') && isAdmin.value) tab.value = 'operators'
 }
 
 async function load() {
@@ -105,6 +274,8 @@ async function load() {
         alertSettings.bark_sound = alertSettings.bark_sound + '.caf'
       }
     }
+    markAlertSaved()
+    if (isAdmin.value) await loadIPDBStatus()
   } finally { loading.value = false }
 }
 
@@ -115,6 +286,7 @@ async function saveAlertSettings() {
     if (res?.settings) {
       Object.assign(alertSettings, res.settings)
     }
+    markAlertSaved()
     ElMessage.success('通知设置已保存')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '保存失败')
@@ -129,7 +301,10 @@ async function sendTestAlert() {
   }
   testSending.value = true
   try {
-    await put('/alerts/settings', alertSettings).catch(() => {})
+    if (isAlertDirty.value) {
+      await put('/alerts/settings', alertSettings)
+      markAlertSaved()
+    }
     const res = await post('/alerts/test', {
       server: alertSettings.bark_server,
       device_key: alertSettings.bark_device_key,
@@ -232,13 +407,15 @@ async function disableOperatorTOTP(row) {
 }
 
 onMounted(() => {
-  syncTabFromHash()
-  window.addEventListener('hashchange', syncTabFromHash)
+  syncTabFromLocation()
+  window.addEventListener('popstate', syncTabFromLocation)
+  window.addEventListener('hashchange', syncTabFromLocation)
   load()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('hashchange', syncTabFromHash)
+  window.removeEventListener('popstate', syncTabFromLocation)
+  window.removeEventListener('hashchange', syncTabFromLocation)
 })
 </script>
 
@@ -249,11 +426,16 @@ onBeforeUnmount(() => {
         <el-icon><Refresh /></el-icon>
       </button>
     </template>
-    <template v-if="isAdmin">
     <MSegmented v-model="tab" :options="tabs" />
 
-    <template v-if="tab === 'operators'">
-      <el-input v-model="operatorKeyword" clearable :prefix-icon="Search" placeholder="搜索用户名或权限" />
+    <template v-if="tab === 'operators' && isAdmin">
+      <div class="m-stack" style="gap: 8px; margin-bottom: 10px;">
+        <el-input v-model="operatorKeyword" clearable :prefix-icon="Search" placeholder="搜索用户名或权限" />
+        <MSegmented
+          v-model="operatorStatus"
+          :options="[{ value: '', label: '全部状态' }, { value: 'true', label: '启用' }, { value: 'false', label: '停用' }]"
+        />
+      </div>
       <div class="m-count">共 {{ filteredOperators.length }} 个账户</div>
       <article v-for="row in filteredOperators" :key="row.id" class="m-item" :class="{ 'is-off': !row.enabled }">
         <button type="button" class="m-item__hit" @click="openActions(row)">
@@ -272,7 +454,21 @@ onBeforeUnmount(() => {
       <div v-if="!filteredOperators.length && !loading" class="m-empty">还没有管理账户</div>
     </template>
 
-    <template v-else-if="tab === 'alerts'">
+    <template v-else-if="tab === 'alerts' && isAdmin">
+      <div class="m-sticky-bar" style="position: sticky; top: 0; bottom: auto; margin-bottom: 12px;">
+        <div class="m-sticky-bar__row">
+          <div style="font-size: 12px; color: var(--sb-text-2);">
+            <span>{{ channelSummary }}</span>
+            <span> · {{ enabledRuleCount }} / 5 项告警启用</span>
+          </div>
+          <el-tag v-if="isAlertDirty" type="warning" size="small" effect="light">未保存</el-tag>
+        </div>
+        <div class="m-filter-row" style="justify-content: flex-end;">
+          <el-button v-if="isAlertDirty" size="small" @click="revertAlertSettings">撤销</el-button>
+          <el-button size="small" :loading="testSending" :disabled="!notifierReady" @click="sendTestAlert">发送测试</el-button>
+          <el-button size="small" type="primary" :loading="alertSaving" :disabled="!isAlertDirty" @click="saveAlertSettings">保存</el-button>
+        </div>
+      </div>
       <!-- Bark 推送配置 -->
       <section class="m-card">
         <div class="m-card__top">
@@ -402,6 +598,163 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
+    <!-- 网络工具 (Reality 检测) -->
+    <template v-else-if="tab === 'tools'">
+      <section class="m-card">
+        <div class="m-card__top">
+          <span class="m-card__title">Reality 域名伪装检测</span>
+        </div>
+        <div class="m-card__note" style="margin-bottom: 10px;">
+          在服务端实测目标网站 TLS 1.3、ALPN (h2) 与证书状态，判断是否适合作为 VLESS Reality SNI 伪装目标。
+        </div>
+
+        <div class="m-field">
+          <label class="m-field__label">待测域名</label>
+          <el-input v-model="realityForm.target" placeholder="例如：gateway.icloud.com" clearable />
+        </div>
+        <div class="m-field">
+          <label class="m-field__label">端口</label>
+          <el-input-number v-model="realityForm.port" :min="1" :max="65535" style="width: 100%;" />
+        </div>
+        <el-button type="primary" :loading="realityChecking" style="width: 100%;" @click="checkReality">
+          开始检测
+        </el-button>
+
+        <div v-if="realityResult" class="m-stack" style="margin-top: 14px;">
+          <div class="m-filter-bar">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+              <strong class="m-mono-wrap">{{ realityResult.target || realityResult.domain }}</strong>
+              <el-tag :type="realityResult.compatible ? 'success' : 'danger'" size="small">
+                {{ realityResult.compatible ? '可用' : '不建议' }}
+              </el-tag>
+            </div>
+            <span class="m-note">{{ realityResult.latency_ms }} ms</span>
+          </div>
+
+          <div class="m-kv-grid">
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">解析 IP</span>
+              <span class="m-kv-cell__value m-mono-wrap">{{ realityResult.ip || '—' }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">TLS 1.3</span>
+              <span class="m-kv-cell__value">{{ realityResult.tls_13 ?? realityResult.tls13 ? '支持' : '不支持' }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">协商 ALPN</span>
+              <span class="m-kv-cell__value">{{ (realityResult.alpn || []).join(', ') || '无' }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">证书剩余天数</span>
+              <span class="m-kv-cell__value">{{ realityResult.cert_days_left ?? '—' }} 天</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">证书颁发机构</span>
+              <span class="m-kv-cell__value">{{ realityResult.cert_issuer || realityResult.issuer || '—' }}</span>
+            </div>
+          </div>
+
+          <el-alert
+            v-if="realityResult.recommendation || realityResult.verdict"
+            :title="realityResult.recommendation || realityResult.verdict"
+            :type="realityResult.compatible ? 'success' : 'warning'"
+            show-icon
+            :closable="false"
+          />
+          <div v-if="(realityResult.warnings || []).length" class="m-note" style="color: var(--sb-warning);">
+            <div v-for="(w, idx) in realityResult.warnings" :key="idx">• {{ w }}</div>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <!-- 高精度 IP 库 (MMDB) -->
+    <template v-else-if="tab === 'ipdb' && isAdmin">
+      <input
+        ref="mmdbUploadInput"
+        type="file"
+        accept=".mmdb"
+        style="display: none;"
+        @change="onMMDBFileSelected"
+      />
+
+      <section class="m-card">
+        <div class="m-card__top" style="margin-bottom: 8px;">
+          <span class="m-card__title">IP 归属地数据库状态</span>
+          <el-tag :type="ipdbStatus.mmdb_loaded ? 'success' : 'warning'" size="small" effect="light">
+            {{ ipdbStatus.mmdb_loaded ? 'MMDB 已加载' : '内置离线库' }}
+          </el-tag>
+        </div>
+
+        <div class="m-kv-grid" style="margin-bottom: 12px;">
+          <div class="m-kv-cell">
+            <span class="m-kv-cell__label">数据库类型</span>
+            <span class="m-kv-cell__value m-mono-wrap">{{ ipdbStatus.mmdb_type || '—' }}</span>
+          </div>
+          <div class="m-kv-cell">
+            <span class="m-kv-cell__label">ip2region 兜底</span>
+            <span class="m-kv-cell__value">{{ ipdbStatus.ip2region_loaded ? '可用' : '未加载' }}</span>
+          </div>
+          <div class="m-kv-cell" style="grid-column: 1 / -1;">
+            <span class="m-kv-cell__label">MMDB 路径</span>
+            <span class="m-kv-cell__value m-mono-wrap">{{ ipdbStatus.mmdb_path || '未配置' }}</span>
+          </div>
+        </div>
+
+        <div class="m-field">
+          <label class="m-field__label">下载镜像 URL（留空使用官方默认源）</label>
+          <el-input v-model="ipdbDownloadURL" placeholder="https://.../GeoLite2-City.mmdb" clearable />
+        </div>
+
+        <div class="m-stack" style="gap: 8px;">
+          <el-button type="primary" :loading="ipdbLoading" style="width: 100%;" @click="downloadMMDB">
+            在线下载最新 GeoLite2-City.mmdb
+          </el-button>
+          <div class="m-filter-row">
+            <el-button :icon="Upload" :loading="ipdbLoading" style="flex: 1;" @click="mmdbUploadInput?.click()">
+              上传 MMDB
+            </el-button>
+            <el-button :icon="Refresh" :loading="ipReloading" style="flex: 1;" @click="reloadIPDB">
+              重新加载
+            </el-button>
+          </div>
+        </div>
+      </section>
+
+      <section class="m-card" style="margin-top: 12px;">
+        <div class="m-card__top" style="margin-bottom: 8px;">
+          <span class="m-card__title">IP 解析测试</span>
+        </div>
+        <div class="m-filter-row" style="margin-bottom: 10px;">
+          <el-input v-model="ipTestAddr" placeholder="输入 IPv4 / IPv6" style="flex: 1;" @keyup.enter="lookupTestIP" />
+          <el-button type="primary" :loading="ipTestLoading" @click="lookupTestIP">查询</el-button>
+        </div>
+
+        <div v-if="ipTestResult" class="m-stack" style="gap: 6px;">
+          <div class="m-filter-bar">
+            <strong class="m-mono-wrap">{{ ipTestResult.ip }}</strong>
+            <el-tag size="small" effect="plain" :type="ipTestResult.source === 'mmdb' ? 'success' : 'info'">
+              {{ ipTestResult.source || 'ip2region' }}
+            </el-tag>
+          </div>
+          <div class="m-kv-grid">
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">归属地</span>
+              <span class="m-kv-cell__value">{{ ipTestResult.location || '—' }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">国家 / 城市</span>
+              <span class="m-kv-cell__value">{{ [ipTestResult.country, ipTestResult.province, ipTestResult.city].filter(Boolean).join(' · ') || '—' }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">ISP / ASN</span>
+              <span class="m-kv-cell__value">{{ [ipTestResult.isp, ipTestResult.asn].filter(Boolean).join(' · ') || '—' }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
+
     <MActionSheet v-model="actionsOpen" :title="actionTarget?.username" :details="details" :actions="actions" @select="runAction" />
 
     <MSheet v-model="roleSheet" :title="`修改 ${roleTarget?.username || ''} 的权限`">
@@ -434,8 +787,6 @@ onBeforeUnmount(() => {
         <el-button type="primary" :disabled="!operator.username || operator.password.length < 12" @click="saveOperator">创建</el-button>
       </template>
     </MSheet>
-    </template>
-    <div v-else class="m-empty">系统设置仅管理员可访问</div>
     <template v-if="isAdmin && tab === 'operators'" #fab>
       <button type="button" class="m-fab" aria-label="新建管理账户" @click="openOperator">
         <el-icon :size="24"><Plus /></el-icon>

@@ -118,11 +118,17 @@ const ruleActionOptions = computed(() => [
   { value: 'DIRECT', label: 'DIRECT', desc: '直连', group: '内置' },
   { value: 'REJECT', label: 'REJECT', desc: '阻断', group: '内置' },
 ])
-const groupOptions = computed(() => proxyGroups.value.map((group) => ({
-  value: group.id,
-  label: group.name,
-  desc: `${strategyNames[group.strategy]} · ${(group.members || []).length} 个节点`,
-})))
+const groupOptions = computed(() => proxyGroups.value.map((group) => {
+  const members = group.members || []
+  const nodeCount = members.filter((m) => m.kind !== 'group').length
+  const nestedCount = members.filter((m) => m.kind === 'group').length
+  const nestedPart = nestedCount ? ` · 套 ${nestedCount} 个分组` : ''
+  return {
+    value: group.id,
+    label: group.name,
+    desc: `${strategyNames[group.strategy]} · ${nodeCount} 个节点${nestedPart}`,
+  }
+}))
 const providerOptions = computed(() => ruleProviders.value.map((provider) => ({ value: provider.id, label: provider.name, desc: provider.url })))
 const selectedProviders = computed(() => form.rule_provider_ids
   .map((id) => ruleProviders.value.find((provider) => provider.id === id))
@@ -206,6 +212,20 @@ async function loadAccess() {
   } finally {
     accessLoading.value = false
   }
+}
+
+const hasAccessFilter = computed(() =>
+  Boolean(accessQuery.config_id || accessQuery.ip || accessQuery.location || accessQuery.user_agent)
+)
+
+function resetAccessFilter() {
+  accessQuery.config_id = ''
+  accessQuery.ip = ''
+  accessQuery.location = ''
+  accessQuery.user_agent = ''
+  accessQuery.page = 1
+  accessFilterOpen.value = false
+  loadAccess()
 }
 
 function searchAccess() {
@@ -643,7 +663,12 @@ onMounted(() => { load(); loadAccess() })
     <template v-else>
       <div class="access-bar">
         <span class="m-count">共 {{ accessQuery.total }} 条 · 第 {{ accessQuery.page }} 页</span>
-        <el-button size="small" @click="accessFilterOpen = true">筛选</el-button>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <el-button v-if="hasAccessFilter" size="small" text @click="resetAccessFilter">重置</el-button>
+          <el-button size="small" :type="hasAccessFilter ? 'primary' : ''" plain @click="accessFilterOpen = true">
+            {{ hasAccessFilter ? '已筛选' : '筛选' }}
+          </el-button>
+        </div>
       </div>
       <div v-loading="accessLoading">
         <article v-for="(row, index) in accessLogs" :key="`${row.ip}-${row.accessed_at}-${index}`" class="m-item">
@@ -687,6 +712,7 @@ onMounted(() => { load(); loadAccess() })
       <div class="m-field"><label class="m-field__label">归属地</label><el-input v-model="accessQuery.location" clearable aria-label="归属地" /></div>
       <div class="m-field"><label class="m-field__label">User-Agent</label><el-input v-model="accessQuery.user_agent" clearable aria-label="User-Agent" /></div>
       <template #footer>
+        <el-button @click="resetAccessFilter">重置</el-button>
         <el-button @click="accessFilterOpen = false">取消</el-button>
         <el-button type="primary" @click="searchAccess">查询</el-button>
       </template>
@@ -764,9 +790,9 @@ onMounted(() => { load(); loadAccess() })
       </div>
       <div class="m-field">
         <label class="m-field__label">允许访问的时间段</label>
-        <div class="access-actions">
-          <el-time-select v-model="form.access_window_start" start="00:00" step="00:30" end="23:30" placeholder="开始" aria-label="时间段开始" style="flex: 1" />
-          <el-time-select v-model="form.access_window_end" start="00:00" step="00:30" end="23:30" placeholder="结束" aria-label="时间段结束" style="flex: 1" />
+        <div class="access-actions" style="flex-wrap: wrap;">
+          <el-time-select v-model="form.access_window_start" start="00:00" step="00:30" end="23:30" placeholder="开始" aria-label="时间段开始" style="flex: 1 1 110px; min-width: 0;" />
+          <el-time-select v-model="form.access_window_end" start="00:00" step="00:30" end="23:30" placeholder="结束" aria-label="时间段结束" style="flex: 1 1 110px; min-width: 0;" />
           <el-button size="small" @click="form.access_window_start = ''; form.access_window_end = ''">清除</el-button>
         </div>
         <div class="m-field__hint">

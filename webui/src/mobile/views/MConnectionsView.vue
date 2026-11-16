@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { Refresh, Search } from '@element-plus/icons-vue'
 import { formatBytes, formatDateTime, includesText } from '../../format'
 import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../../connections'
 import MPage from '../components/MPage.vue'
@@ -143,6 +143,16 @@ onBeforeUnmount(() => {
 
 <template>
   <MPage title="当前连接" :loading="loading">
+    <template #actions>
+      <el-button
+        circle
+        size="small"
+        :icon="Refresh"
+        :loading="loading"
+        aria-label="刷新连接"
+        @click="load"
+      />
+    </template>
     <div class="m-listbar">
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索 IP、目标、入站节点或出口" />
       <div class="m-filters">

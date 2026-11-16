@@ -168,6 +168,33 @@ const chainTargets = computed(() => {
   })
 })
 
+function isOrphanChain(outboundID) {
+  if (!outboundID || !outboundID.startsWith('chain:')) return false
+  return !chainTargets.value.some((target) => target.value === outboundID)
+}
+
+function orphanChainLabel(outboundID) {
+  if (!outboundID || !outboundID.startsWith('chain:')) return ''
+  const targetID = outboundID.slice(6)
+  const targetEndpoint = (props.allEndpoints || []).find((e) => e.id === targetID)
+  if (targetEndpoint) {
+    const listener = (props.listeners || []).find((item) => item.id === targetEndpoint.listener_id)
+    const node = (props.nodes || []).find((item) => item.id === listener?.node_id)
+    const nodeName = node?.name || listener?.node_id || '其他服务器'
+    const listName = listener?.name || '未知服务'
+    const name = targetEndpoint.alias || targetEndpoint.name
+    return `${nodeName} · ${listName} · ${name} (已停用或同服务器)`
+  }
+  return `已删除的节点 (${targetID.slice(0, 8)})`
+}
+
+function isOutboundActive(item) {
+  if (!item || item.id === 'direct') return false
+  if (!item.expires_at) return true
+  const expiry = new Date(item.expires_at).getTime()
+  return Number.isNaN(expiry) || expiry >= Date.now()
+}
+
 function accountOutboundOptions(account) {
   const result = []
   // 1. 直连与出口 IP
@@ -199,7 +226,7 @@ function accountOutboundOptions(account) {
     })
   }
   // 2. 上网出口（配置的出口）
-  for (const item of (props.outbounds || []).filter((item) => item && item.id !== 'direct')) {
+  for (const item of (props.outbounds || []).filter(isOutboundActive)) {
     result.push({
       value: item.id,
       label: item.name + (item.type ? ` (${item.type.toUpperCase()})` : '') + (!item.enabled ? ' [已停用]' : ''),
@@ -214,6 +241,14 @@ function accountOutboundOptions(account) {
       label: item.label,
       desc: item.desc,
       group: item.nodeName,
+    })
+  }
+  if (account?.outbound_id && isOrphanChain(account.outbound_id)) {
+    result.push({
+      value: account.outbound_id,
+      label: orphanChainLabel(account.outbound_id),
+      desc: '已失效的链式代理目标',
+      group: '已失效的链式代理',
     })
   }
   return result

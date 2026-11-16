@@ -435,7 +435,7 @@ onMounted(load)
         <el-input v-model="firewall.cidr" aria-label="来源地址范围" placeholder="例如 192.168.1.0/24，留空表示所有来源" />
       </div>
       <div class="m-notice m-notice--info">
-        规则写入服务器自己的防火墙（ufw / firewalld，都没有时写入 iptables），保存后可在「访问限制」中看到结果。
+        规则写入服务器自己的防火墙（ufw / firewalld，都没有时写入 nftables），保存后可在「访问限制」中看到结果。
         {{ firewall.action === 'accept' ? `${firewall.protocol.toUpperCase()} ${firewall.port} 端口将对列出的来源放行。` : `${firewall.protocol.toUpperCase()} ${firewall.port} 端口将拒绝列出的来源。` }}
       </div>
       <div class="m-notice m-notice--warning">
@@ -491,7 +491,7 @@ onMounted(load)
         <el-input v-model="jail.ports" aria-label="封禁范围" placeholder="留空表示禁止该 IP 连接所有端口" />
         <div class="m-field__hint">多个端口用逗号分隔，如 443,8443。</div>
       </div>
-      <div class="m-notice m-notice--info">缺少的 Fail2Ban、防火墙链与日志文件会自动安装或创建。保存后立即在服务器上生效。</div>
+      <div class="m-notice m-notice--info">缺少的 Fail2Ban、nftables 链与日志文件会自动安装或创建。保存后立即在服务器上生效。</div>
       <template #footer>
         <el-button @click="jailOpen = false">取消</el-button>
         <el-button

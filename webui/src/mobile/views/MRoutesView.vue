@@ -359,6 +359,12 @@ onMounted(load)
         <el-input-number v-model="form.priority" :min="0" controls-position="right" aria-label="优先级" style="width: 100%" />
       </div>
       <div class="m-field">
+        <div class="m-filter-bar">
+          <label class="m-field__label" style="margin: 0;">启用规则</label>
+          <el-switch v-model="form.enabled" inline-prompt active-text="启用" inactive-text="停用" />
+        </div>
+      </div>
+      <div class="m-field">
         <label class="m-field__label">处理方式</label>
         <MPicker v-model="form.outbound_tag" :options="outboundOptions" title="选择处理方式" />
       </div>

@@ -82,7 +82,7 @@ function onDragEnd() {
 </template>
 
 <style scoped>
-.m-sheet { position: fixed; inset: 0; z-index: 2100; display: flex; flex-direction: column; justify-content: flex-end; }
+.m-sheet { position: fixed; inset: 0; z-index: 1500; display: flex; flex-direction: column; justify-content: flex-end; }
 .m-sheet__mask { position: absolute; inset: 0; background: rgba(0, 0, 0, .58); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .m-sheet__panel {
   position: relative;

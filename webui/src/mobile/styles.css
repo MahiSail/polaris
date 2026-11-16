@@ -678,3 +678,217 @@ html.light .m-fab, html:not(.dark) .m-fab {
   line-height: 1;
   cursor: pointer;
 }
+
+
+/* ── Parity Additions & Mobile Layout Containment ─────────────────────── */
+.m-header__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--sb-line);
+  background: var(--sb-surface);
+  color: var(--sb-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.m-header__btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.m-header__btn:hover:not(:disabled) {
+  background: var(--sb-surface-2);
+  color: var(--sb-text);
+  border-color: var(--sb-line-strong);
+}
+
+.m-header__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.m-action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.m-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.m-sort-row > * {
+  min-width: 0;
+}
+
+.m-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.m-kv-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.m-kv-cell__label {
+  font-size: 11px;
+  color: var(--sb-muted);
+}
+
+.m-kv-cell__value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sb-text);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.m-mono-wrap {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.m-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.m-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.m-note {
+  font-size: 12px;
+  color: var(--sb-muted);
+  line-height: 1.5;
+}
+
+.m-sticky-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--sb-line);
+  background: var(--sb-surface);
+  box-shadow: var(--sb-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-sticky-bar__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.m-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0 12px;
+  font-size: 12px;
+  color: var(--sb-muted);
+}
+
+.m-meter-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--sb-surface-2);
+  overflow: hidden;
+}
+
+.m-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+/* Constrain Element Plus poppers, pickers & adapted PC widgets inside 390px mobile viewport */
+@media (max-width: 767px) {
+  .el-popper,
+  .el-select-dropdown,
+  .el-picker-panel,
+  .el-date-picker,
+  .el-date-range-picker {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .el-date-range-picker .el-picker-panel__body-wrapper {
+    overflow-x: auto;
+    max-width: calc(100vw - 18px);
+  }
+
+  .el-date-range-picker .el-date-range-picker__content {
+    float: none;
+    width: 100% !important;
+    min-width: 260px;
+  }
+
+  .el-notification {
+    width: calc(100vw - 24px) !important;
+    max-width: 360px !important;
+  }
+
+  .el-message-box {
+    width: calc(100vw - 32px) !important;
+    max-width: 380px !important;
+  }
+}
+
+.m-app .summary-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.m-app .summary-tile {
+  padding: 10px 12px !important;
+  min-width: 0;
+}
+
+.m-app .summary-tile .tile-main {
+  font-size: 16px !important;
+}
+
+.m-app .openlat-metrics,
+.m-app .openlat-grid {
+  display: grid;
+  grid-template-columns: 1fr !important;
+  gap: 10px;
+}
+
+.m-app .summary-card,
+.m-app .map-card,
+.m-app .node-map-card,
+.m-app .openlat-console {
+  max-width: 100%;
+  overflow-x: hidden;
+}

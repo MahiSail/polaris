@@ -1,100 +1,798 @@
+<template>
+  <MPage
+    :title="detailNode ? detailNode.name : (isShareMode ? '只读共享节点' : '服务器')"
+    :back="isShareMode && !detailNode ? false : true"
+    :loading="loading"
+    @back="handlePageBack"
+  >
+    <template #actions>
+      <template v-if="!detailNode && !isShareMode">
+        <el-button
+          v-if="isAdmin && upgradableAgentNodes.length > 0"
+          size="small"
+          type="warning"
+          plain
+          @click="upgradeAllAgents"
+        >
+          升级 Agent ({{ upgradableAgentNodes.length }})
+        </el-button>
+        <button
+          v-if="canWrite"
+          type="button"
+          class="m-header__btn"
+          aria-label="探针管理"
+          @click="probeManagerOpen = true"
+        >
+          探针
+        </button>
+        <button
+          v-if="canWrite"
+          type="button"
+          class="m-header__btn"
+          aria-label="分享服务器"
+          @click="shareOpen = true"
+        >
+          <el-icon><Share /></el-icon>
+        </button>
+        <el-button
+          circle
+          size="small"
+          :icon="Refresh"
+          :loading="refreshing"
+          aria-label="刷新"
+          @click="load(false)"
+        />
+      </template>
+    </template>
+
+    <!-- 详情子页面 -->
+    <MNodeDetailView
+      v-if="detailNode"
+      :node="detailNode"
+      :metrics="metrics[detailNode.id] || {}"
+      :live="live.get(detailNode.id) || null"
+      :latest-agent-version="appState.systemUpdate?.latest_version || ''"
+      :sing-box-latest="singBoxLatest"
+      :can-write="canWrite"
+      :is-admin="isAdmin"
+      @edit="(tab) => openEdit(detailNode, tab)"
+      @probe-peers="openPeerProbe(detailNode)"
+      @upgrade-agent="upgradeAgent(detailNode)"
+      @upgrade-singbox="upgradeSingBox(detailNode)"
+      @revoke="revoke(detailNode)"
+      @refresh="load(false)"
+    />
+
+    <!-- 列表主视图 -->
+    <div v-else class="m-stack">
+      <SummaryCards v-if="appState.nodes.length" :nodes="appState.nodes" :metrics="metrics" />
+
+      <div v-if="appState.nodes.length" class="m-card" style="padding: 10px 12px;">
+        <div class="m-filter-bar" :style="showMap ? 'margin-bottom: 8px;' : ''">
+          <span style="font-size: 13px; font-weight: 600;">全球分布视图</span>
+          <el-button size="small" text @click="toggleMap">
+            {{ showMap ? '收起地图' : '展开地图' }}
+          </el-button>
+        </div>
+        <NodeMap v-if="showMap" :nodes="appState.nodes" :live="live" @open="openDetail" />
+      </div>
+
+      <div class="m-stack" style="gap: 8px;">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索服务器名称、IP、系统或厂商"
+          clearable
+        />
+
+        <MSegmented
+          v-model="statusFilter"
+          :options="[
+            { value: '', label: `全部 (${statusCounts.all})` },
+            { value: 'online', label: `在线 (${statusCounts.online})` },
+            { value: 'offline', label: `离线 (${statusCounts.offline})` },
+          ]"
+        />
+
+        <div class="m-sort-row">
+          <el-select v-model="sortBy" size="small" style="flex: 1;" aria-label="排序方式">
+            <el-option label="按名称排序" value="name" />
+            <el-option label="按活跃时间" value="last_seen" />
+            <el-option label="按实时连接数" value="conn" />
+            <el-option label="按 CPU 占用" value="cpu" />
+            <el-option label="按内存占用" value="mem" />
+          </el-select>
+          <div class="m-filter-row" style="gap: 4px; flex: none;">
+            <button
+              type="button"
+              class="m-pill"
+              :class="{ 'is-active': viewMode === 'card' }"
+              aria-label="卡片视图"
+              @click="viewMode = 'card'"
+            >
+              卡片
+            </button>
+            <button
+              type="button"
+              class="m-pill"
+              :class="{ 'is-active': viewMode === 'list' }"
+              aria-label="列表视图"
+              @click="viewMode = 'list'"
+            >
+              列表
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Registrations -->
+      <template v-if="!isShareMode && filteredPending.length">
+        <div class="m-section" style="padding: 4px 2px 0;">
+          <span>等待确认的服务器（{{ filteredPending.length }}）</span>
+        </div>
+        <article v-for="row in filteredPending" :key="row.id" class="m-item m-pending-item">
+          <div class="m-item__hit is-static">
+            <div class="m-item__head" style="display: flex; align-items: center; gap: 8px;">
+              <strong class="m-item__title">{{ row.node_name }}</strong>
+              <span class="m-pending-tag">待接入</span>
+            </div>
+            <div class="m-pending-specs">
+              <span class="m-spec-chip">
+                <OsIcon :os="parseCapabilities(row.capabilities).os" class="w-3.5 h-3.5 inline-block mr-1" />
+                {{ parseCapabilities(row.capabilities).os }} · {{ parseCapabilities(row.capabilities).arch }}
+              </span>
+              <span v-if="parseCapabilities(row.capabilities).singbox" class="m-spec-chip">
+                sing-box {{ parseCapabilities(row.capabilities).singbox }}
+              </span>
+              <span class="m-spec-chip m-mono-wrap">{{ parseCapabilities(row.capabilities).ip }}</span>
+            </div>
+            <div class="m-item__meta">提交时间：{{ formatDateTime(row.created_at) }}</div>
+          </div>
+          <button
+            v-if="isAdmin"
+            type="button"
+            class="m-pending-approve"
+            :disabled="approvingIds.has(row.id)"
+            @click="approve(row)"
+          >
+            <el-icon :size="18"><Check /></el-icon>
+            <small>{{ approvingIds.has(row.id) ? '处理中' : '接入' }}</small>
+          </button>
+        </article>
+      </template>
+
+      <div class="m-section" style="padding: 4px 2px 0;">
+        <span>已接入服务器（{{ filteredNodes.length }}）</span>
+      </div>
+
+      <div v-if="!filteredNodes.length" class="m-card m-note">尚未匹配到服务器</div>
+
+      <!-- Card View -->
+      <div v-else-if="viewMode === 'card'" class="m-list">
+        <article
+          v-for="node in shownNodes"
+          :key="node.id"
+          class="m-node-card"
+          @click="openDetail(node)"
+        >
+          <div class="m-node-head">
+            <div class="m-node-hero min-w-0 flex-1">
+              <span style="font-size: 18px; line-height: 1;">{{ nodeFlag(node) }}</span>
+              <OsIcon :os="node.os_name || node.os" class="m-node-os" />
+              <div style="min-width: 0; flex: 1;">
+                <h3 class="m-node-title truncate" :title="node.name">{{ node.name }}</h3>
+                <div class="m-note truncate" style="font-size: 11px;">
+                  {{ nodeLocationLabel(node) || node.os_name || node.os || '—' }}
+                  <span v-if="node.architecture"> · {{ node.architecture }}</span>
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex: none;">
+              <StatusDot :online="node.online" />
+              <button
+                v-if="!isShareMode"
+                type="button"
+                class="m-header__btn"
+                aria-label="服务器操作"
+                @click.stop="openActions(node)"
+              >
+                <el-icon><MoreFilled /></el-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="m-node-sub">
+            <span
+              class="m-mono-wrap"
+              style="cursor: pointer; text-decoration: underline dotted;"
+              @click.stop="copyAddress(node)"
+            >
+              {{ node.client_address || node.last_observed_ip || '未设置地址' }}
+            </span>
+            <span v-if="node.agent_version">v{{ node.agent_version }}</span>
+            <span v-if="node.bandwidth">{{ formatBandwidth(node.bandwidth) }}</span>
+          </div>
+
+          <!-- Tag Strip: expiry, DDNS, upgrades -->
+          <div v-if="!isShareMode" class="m-filter-row" style="gap: 5px;">
+            <el-tag
+              v-if="nodeExpiryInfo(node)"
+              :type="nodeExpiryInfo(node).tone"
+              size="small"
+              effect="light"
+            >
+              {{ nodeExpiryInfo(node).label }}
+            </el-tag>
+            <el-tag v-if="node.ddns_enabled" size="small" type="success" effect="plain">
+              DDNS
+            </el-tag>
+            <el-tag v-if="agentUpdateAvailable(node)" size="small" type="warning" effect="light">
+              Agent 可升级
+            </el-tag>
+            <el-tag v-if="singBoxUpdateAvailable(node)" size="small" type="warning" effect="plain">
+              sing-box 可升级
+            </el-tag>
+          </div>
+
+          <!-- 3 Resource Meters: CPU, Mem, Disk -->
+          <div class="m-node-meters" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+            <div class="m-node-meter">
+              <div class="m-node-meter-head">
+                <span>CPU</span>
+                <span>{{ statOf(node, (h) => h.cpu_percent != null ? `${Math.round(h.cpu_percent)}%` : '—') }}</span>
+              </div>
+              <div class="m-meter-track">
+                <div
+                  class="m-meter-fill"
+                  style="background: var(--sb-chart-1);"
+                  :style="{ width: `${meterPct(node, 'cpu')}%` }"
+                />
+              </div>
+            </div>
+
+            <div class="m-node-meter">
+              <div class="m-node-meter-head">
+                <span>内存</span>
+                <span>{{ memText(node) }}</span>
+              </div>
+              <div class="m-meter-track">
+                <div
+                  class="m-meter-fill"
+                  style="background: var(--sb-chart-2);"
+                  :style="{ width: `${meterPct(node, 'mem')}%` }"
+                />
+              </div>
+            </div>
+
+            <div class="m-node-meter">
+              <div class="m-node-meter-head">
+                <span>硬盘</span>
+                <span>{{ diskText(node) }}</span>
+              </div>
+              <div class="m-meter-track">
+                <div
+                  class="m-meter-fill"
+                  style="background: var(--sb-chart-3);"
+                  :style="{ width: `${meterPct(node, 'disk')}%` }"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Monthly Traffic & Quota -->
+          <div v-if="trafficOf(node)" class="m-stack" style="gap: 4px; padding-top: 2px;">
+            <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-text-2);">
+              <span>
+                本月流量 {{ formatBytes(trafficOf(node).monthlyTotal) }}
+                <template v-if="node.traffic_plan"> / {{ node.traffic_plan }}</template>
+              </span>
+              <span>累计 {{ formatBytes(trafficOf(node).lifetimeTotal) }}</span>
+            </div>
+            <div v-if="trafficOf(node).quotaPercent !== null" class="m-meter-track">
+              <div
+                class="m-meter-fill"
+                :style="{
+                  width: `${Math.min(100, trafficOf(node).quotaPercent)}%`,
+                  background: trafficOf(node).quotaPercent >= 90 ? 'var(--sb-danger)' : 'var(--sb-chart-4)',
+                }"
+              />
+            </div>
+          </div>
+
+          <!-- Foot: Speed, Latency, Connections -->
+          <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-muted);">
+            <span class="m-mono-wrap">
+              ↓ {{ speedText(node, 'net_rx_rate') }} · ↑ {{ speedText(node, 'net_tx_rate') }}
+            </span>
+            <span>
+              {{ latencyText(node) }} · 连接 {{ connText(node) }}
+            </span>
+          </div>
+        </article>
+      </div>
+
+      <!-- Compact List View -->
+      <div v-else class="m-list">
+        <div
+          v-for="node in shownNodes"
+          :key="node.id"
+          class="m-card"
+          style="padding: 10px 12px; cursor: pointer;"
+          @click="openDetail(node)"
+        >
+          <div class="m-filter-bar" style="margin-bottom: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
+              <span>{{ nodeFlag(node) }}</span>
+              <StatusDot :online="node.online" />
+              <strong class="truncate" style="font-size: 14px;">{{ node.name }}</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="m-note">{{ latencyText(node) }}</span>
+              <button
+                v-if="!isShareMode"
+                type="button"
+                class="m-header__btn"
+                aria-label="操作"
+                @click.stop="openActions(node)"
+              >
+                <el-icon><MoreFilled /></el-icon>
+              </button>
+            </div>
+          </div>
+          <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted);">
+            <span>CPU {{ statOf(node, (h) => h.cpu_percent != null ? `${Math.round(h.cpu_percent)}%` : '—') }} · 内存 {{ memText(node) }} · 连接 {{ connText(node) }}</span>
+            <span>{{ formatBytes(trafficOf(node).monthlyTotal) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <button
+        v-if="filteredNodes.length > visible"
+        type="button"
+        class="m-load-more"
+        @click="visible += 20"
+      >
+        加载更多（还有 {{ filteredNodes.length - visible }} 台）
+      </button>
+    </div>
+
+    <!-- Quick Action Sheet -->
+    <MActionSheet
+      v-model="actionsOpen"
+      :title="actionTarget?.name"
+      :details="actionDetails"
+      :actions="sheetActions"
+      @select="runAction"
+    />
+
+    <!-- Tabbed Edit Sheet -->
+    <MSheet v-model="editSheet" :title="editNode ? `配置服务器 · ${editNode.name}` : '编辑服务器'">
+      <div class="m-stack">
+        <MSegmented
+          v-model="editTab"
+          :options="[
+            { value: 'basic', label: '基本' },
+            { value: 'plan', label: '套餐' },
+            { value: 'network', label: 'DDNS/IP' },
+            { value: 'probes', label: '探针' },
+          ]"
+        />
+
+        <!-- Tab: basic -->
+        <template v-if="editTab === 'basic'">
+          <div class="m-field">
+            <label class="m-field__label">服务器名称 <em>*</em></label>
+            <el-input v-model="editForm.name" maxlength="128" aria-label="服务器名称" placeholder="例如：🇭🇰 香港服务器 01" />
+            <div class="m-field__hint">名称开头可写国旗 emoji 或地区关键字，列表自动显示对应地区旗帜。</div>
+          </div>
+
+          <div class="m-field">
+            <label class="m-field__label">客户端连接域名或 IP 地址</label>
+            <el-input v-model="editForm.client_address" aria-label="客户端连接域名或 IP 地址" placeholder="例如：proxy.example.com" />
+            <div class="m-field__hint">仅填域名或 IP，不含 http://、端口与路径。</div>
+            <div v-if="editNodeAllIPs.length" class="m-filter-row" style="margin-top: 6px;">
+              <span class="m-note">点击填入：</span>
+              <el-tag
+                v-for="ip in editNodeAllIPs"
+                :key="ip"
+                size="small"
+                type="info"
+                style="cursor: pointer;"
+                @click="editForm.client_address = ip"
+              >
+                {{ editForm.ip_aliases?.[ip] ? `${editForm.ip_aliases[ip]} (${ip})` : ip }}
+              </el-tag>
+            </div>
+          </div>
+        </template>
+
+        <!-- Tab: plan -->
+        <template v-else-if="editTab === 'plan'">
+          <div class="m-field">
+            <label class="m-field__label">计价周期与费用</label>
+            <el-select v-model="editForm.price_period" placeholder="计价周期" style="width: 100%; margin-bottom: 8px;">
+              <el-option label="未设置" value="" />
+              <el-option label="免费" value="free" />
+              <el-option label="按天" value="day" />
+              <el-option label="按月" value="month" />
+              <el-option label="按季" value="quarter" />
+              <el-option label="按年" value="year" />
+            </el-select>
+            <div style="display: flex; gap: 8px;">
+              <el-input
+                v-model="editForm.price"
+                :disabled="editForm.price_period === 'free'"
+                placeholder="价格"
+                style="flex: 1;"
+              />
+              <el-select v-model="editForm.currency" style="width: 105px;">
+                <el-option label="USD" value="USD" />
+                <el-option label="CNY" value="CNY" />
+                <el-option label="EUR" value="EUR" />
+                <el-option label="CAD" value="CAD" />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="m-field">
+            <div class="m-filter-bar" style="margin-bottom: 4px;">
+              <label class="m-field__label" style="margin: 0;">到期时间</label>
+              <el-button
+                size="small"
+                text
+                @click="editForm.expires_on = 'permanent'"
+              >
+                设为永久
+              </el-button>
+            </div>
+            <el-input
+              v-if="editForm.expires_on === 'permanent'"
+              model-value="永久有效 (permanent)"
+              readonly
+            >
+              <template #append>
+                <el-button @click="editForm.expires_on = ''">改回日期</el-button>
+              </template>
+            </el-input>
+            <el-date-picker
+              v-else
+              v-model="editForm.expires_on"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择到期日期"
+              clearable
+              style="width: 100%;"
+            />
+          </div>
+
+          <div class="m-field">
+            <label class="m-field__label">月流量配额</label>
+            <div style="display: flex; gap: 8px;">
+              <el-input v-model="editForm.traffic_value" placeholder="例如 1000" style="flex: 1;" />
+              <el-select v-model="editForm.traffic_unit" style="width: 100px;">
+                <el-option label="MB" value="MB" />
+                <el-option label="GB" value="GB" />
+                <el-option label="TB" value="TB" />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="m-field">
+            <label class="m-field__label">端口带宽上限</label>
+            <div style="display: flex; gap: 8px;">
+              <el-input v-model="editForm.bandwidth_value" placeholder="例如 1" style="flex: 1;" />
+              <el-select v-model="editForm.bandwidth_unit" style="width: 100px;">
+                <el-option label="Mbps" value="Mbps" />
+                <el-option label="Gbps" value="Gbps" />
+              </el-select>
+            </div>
+          </div>
+
+          <div class="m-field">
+            <label class="m-field__label">服务厂商</label>
+            <el-input v-model="editForm.provider" placeholder="例如：BandwagonHost / DMIT" style="margin-bottom: 8px;" />
+            <el-input v-model="editForm.provider_url" placeholder="厂商控制台 URL（可选）" />
+          </div>
+        </template>
+
+        <!-- Tab: network -->
+        <template v-else-if="editTab === 'network'">
+          <div class="m-field">
+            <label class="m-field__label">多出口 IP 别名管理</label>
+            <div class="m-field__hint" style="margin-bottom: 6px;">自动从服务器网卡获取或手动添加出口 IP 并绑定语义别名。</div>
+
+            <div class="m-filter-row" style="margin-bottom: 8px;">
+              <el-input v-model="newCustomEgressIP" placeholder="手动添加 IPv4/IPv6" style="flex: 1;" />
+              <el-button size="small" @click="addCustomEgressIP">添加</el-button>
+            </div>
+
+            <div v-if="editNodeAllIPs.length" class="m-list">
+              <div
+                v-for="ip in editNodeAllIPs"
+                :key="ip"
+                style="background: var(--sb-surface-2); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--sb-line);"
+              >
+                <div class="m-filter-bar" style="margin-bottom: 4px;">
+                  <span class="m-mono-wrap" style="font-size: 12px;">{{ ip }}</span>
+                  <el-button
+                    v-if="!editNode?.ip_addresses?.includes(ip)"
+                    text
+                    type="danger"
+                    size="small"
+                    @click="removeCustomEgressIP(ip)"
+                  >
+                    移除
+                  </el-button>
+                </div>
+                <el-input
+                  v-model="editForm.ip_aliases[ip]"
+                  size="small"
+                  placeholder="出口别名（例如：电信出口、落地IP）"
+                  clearable
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="m-field">
+            <div class="m-filter-bar" style="margin-bottom: 8px;">
+              <label class="m-field__label" style="margin: 0;">Cloudflare DDNS 自动更新</label>
+              <el-switch
+                v-model="editForm.ddns_enabled"
+                active-text="已开启"
+                inactive-text="未开启"
+                inline-prompt
+              />
+            </div>
+
+            <div v-if="editForm.ddns_enabled" class="m-stack" style="gap: 8px;">
+              <el-select
+                v-model="editForm.ddns_record_ids"
+                multiple
+                filterable
+                collapse-tags
+                placeholder="选择绑定域名记录"
+                style="width: 100%;"
+                :loading="cfLoading"
+                @change="syncDDNSDomainsFromSelection"
+              >
+                <el-option
+                  v-for="rec in cfRecords"
+                  :key="rec.id"
+                  :label="`${rec.type} · ${rec.name}`"
+                  :value="rec.id"
+                />
+              </el-select>
+
+              <div v-if="(editForm.ddns_domains || []).length" class="m-filter-row">
+                <el-tag v-for="d in editForm.ddns_domains" :key="d" size="small" type="info">
+                  {{ d }}
+                </el-tag>
+              </div>
+
+              <el-select
+                v-model="editForm.ddns_bind_ip"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                placeholder="默认同步出口 IP（留空则自动探测）"
+                style="width: 100%;"
+              >
+                <el-option
+                  v-for="opt in editDDNSIPOptions"
+                  :key="opt.value || 'auto'"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+
+              <div
+                v-if="(editForm.ddns_record_ids || []).length > 1 || Object.keys(editForm.ddns_record_ips || {}).length > 0"
+                class="m-stack"
+                style="gap: 8px;"
+              >
+                <label class="m-field__label" style="margin: 0; font-size: 12px;">分记录独立指定 IP（可选）</label>
+                <div
+                  v-for="(recId, idx) in editForm.ddns_record_ids"
+                  :key="recId"
+                  style="padding: 8px; border-radius: 8px; background: var(--sb-surface-2); display: flex; flex-direction: column; gap: 4px;"
+                >
+                  <span class="m-mono-wrap" style="font-size: 12px;">
+                    {{ cfRecordById(recId)?.type || 'DNS' }} · {{ cfRecordById(recId)?.name || editForm.ddns_domains[idx] || recId }}
+                  </span>
+                  <el-select
+                    v-model="editForm.ddns_record_ips[recId]"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    placeholder="继承默认策略"
+                    style="width: 100%;"
+                  >
+                    <el-option
+                      v-for="opt in editDDNSRecordIPOptions(recId)"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                    />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Tab: probes -->
+        <template v-else-if="editTab === 'probes'">
+          <div class="m-card m-card--flat">
+            <div class="m-filter-bar" style="margin-bottom: 6px;">
+              <strong style="font-size: 13px;">公共默认探针 ({{ publicProbes.length }})</strong>
+              <el-button size="small" text @click="probeManagerOpen = true">管理全局探针</el-button>
+            </div>
+            <div v-if="publicProbes.length === 0" class="m-note">暂无全局默认探针</div>
+            <div v-else class="m-filter-row">
+              <el-tag v-for="t in publicProbes" :key="t.id" size="small" effect="plain">
+                {{ t.name }} ({{ t.target }})
+              </el-tag>
+            </div>
+          </div>
+
+          <div class="m-field">
+            <div class="m-filter-bar" style="margin-bottom: 8px;">
+              <label class="m-field__label" style="margin: 0;">服务器专属探针 ({{ (editForm.custom_probes || []).length }})</label>
+              <el-button size="small" type="primary" plain @click="addCustomProbe">
+                + 添加专属探针
+              </el-button>
+            </div>
+            <div v-if="!(editForm.custom_probes || []).length" class="m-card m-card--flat m-note">
+              暂无专属探针，点击上方按钮添加仅针对该服务器的探测任务。
+            </div>
+            <div v-else class="m-list">
+              <div
+                v-for="(probe, idx) in editForm.custom_probes"
+                :key="probe.id || `m-new-${idx}`"
+                style="background: var(--sb-surface-2); padding: 10px; border-radius: 8px; border: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px;"
+              >
+                <div class="m-filter-bar">
+                  <strong style="font-size: 12px;">专属探针 #{{ idx + 1 }}</strong>
+                  <el-button size="small" type="danger" text @click="removeCustomProbe(idx)">删除</el-button>
+                </div>
+                <el-input v-model="probe.name" size="small" placeholder="名称，如：香港联通" />
+                <el-input v-model="probe.target" size="small" placeholder="目标 IP/域名:端口" />
+                <div class="m-filter-bar">
+                  <span class="m-note">间隔（秒）</span>
+                  <el-input-number v-model="probe.interval" size="small" :min="5" :max="3600" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <template #footer>
+        <el-button @click="editSheet = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="editSaving"
+          :disabled="!editForm.name.trim()"
+          @click="saveNode"
+        >
+          保存
+        </el-button>
+      </template>
+    </MSheet>
+
+    <!-- Token Install Sheet -->
+    <MSheet v-model="tokenSheet" title="服务器接入信息" full>
+      <div class="m-notice m-notice--warning">
+        此命令只显示一次，请立即复制。令牌一次性使用，过期后需重新生成。
+      </div>
+      <div class="m-field">
+        <label class="m-field__label">Master 地址（agent 拨号用的主机）</label>
+        <el-input v-model="masterHost" placeholder="例如：ctrl.example.com" @change="persistMasterHost" />
+      </div>
+      <div class="m-field">
+        <label class="m-field__label">在目标服务器上以 root 执行</label>
+        <pre class="command">{{ installCommand }}</pre>
+      </div>
+      <p class="m-field__hint">
+        令牌有效期至：{{ formatDateTime(expiresAt) }}。命令执行后该服务器会出现在「等待确认的服务器」，需在本页点「接入」批准。
+      </p>
+      <template #footer>
+        <el-button @click="tokenSheet = false">完成</el-button>
+        <el-button type="primary" @click="copyInstallCommand">复制</el-button>
+      </template>
+    </MSheet>
+
+    <MProbeManager v-model="probeManagerOpen" :nodes="appState.nodes" @changed="loadPingTasks" />
+    <MShareSheet v-model="shareOpen" page="nodes" />
+    <MPeerProbeSheet v-model="peerProbeOpen" :node="peerProbeTarget" />
+    <MSheet
+      v-model="ddnsHistorySheet"
+      :title="ddnsHistoryNode ? `DDNS 变更记录 · ${ddnsHistoryNode.name}` : 'DDNS 变更记录'"
+    >
+      <MDDNSHistoryList v-if="ddnsHistorySheet" :node-id="ddnsHistoryNode?.id || ''" />
+    </MSheet>
+
+    <template v-if="isAdmin && !detailNode && !isShareMode" #fab>
+      <button type="button" class="m-fab" aria-label="添加服务器" @click="generateToken">
+        <el-icon :size="24"><Plus /></el-icon>
+      </button>
+    </template>
+  </MPage>
+</template>
+
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, Delete, Plus, Refresh, Search, Top } from '@element-plus/icons-vue'
-import { api, post, put } from '../../api'
-import { buildDDNSIPOptions } from '../../ddns'
-import { writeClipboard } from '../../clipboard'
-import { formatBandwidth, formatBytes, formatDateTime, formatRelativeTime, includesText } from '../../format'
-import { subscribeLive } from '../../live'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { Check, MoreFilled, Plus, Refresh, Share } from '@element-plus/icons-vue'
 import { performAgentUpgrade, performAllAgentsUpgrade } from '../../agent_upgrade'
+import { api, post, put } from '../../api'
+import { writeClipboard } from '../../clipboard'
 import { connectionSnapshots, subscribeConnections } from '../../connections'
-import MPage from '../components/MPage.vue'
-import MSegmented from '../components/MSegmented.vue'
-import MSheet from '../components/MSheet.vue'
-import MActionSheet from '../components/MActionSheet.vue'
-import StatusDot from '../../components/StatusDot.vue'
-import OsIcon from '../../components/OsIcon.vue'
-import LatencyPanel from '../../components/LatencyPanel.vue'
+import { buildDDNSIPOptions } from '../../ddns'
+import { formatBandwidth, formatBytes, formatDateTime, includesText } from '../../format'
+import { subscribeLive } from '../../live'
+import { isShareMode, shareAPIPath } from '../../share'
 import { isNewerVersion } from '../../version'
+import NodeMap from '../../components/NodeMap.vue'
+import OsIcon from '../../components/OsIcon.vue'
+import StatusDot from '../../components/StatusDot.vue'
+import SummaryCards from '../../components/SummaryCards.vue'
+import MDDNSHistoryList from '../components/MDDNSHistoryList.vue'
+import MPage from '../components/MPage.vue'
+import MPeerProbeSheet from '../components/MPeerProbeSheet.vue'
+import MProbeManager from '../components/MProbeManager.vue'
+import MSegmented from '../components/MSegmented.vue'
+import MShareSheet from '../components/MShareSheet.vue'
+import MSheet from '../components/MSheet.vue'
+import MNodeDetailView from './MNodeDetailView.vue'
+import {
+  nodeExpiryInfo,
+  nodeFlag,
+  nodeLocationLabel,
+  nodeTrafficStats,
+  parseBandwidthPlan,
+  parseTrafficPlan,
+} from '../utils/nodeHelpers'
 
 const MASTER_HOST_KEY = 'polaris_master_host'
+const MAP_OPEN_KEY = 'polaris_mobile_nodes_map_open'
+const VIEW_MODE_KEY = 'polaris_mobile_nodes_view_mode'
+
 const appState = inject('appState')
-const isAdmin = inject('isAdmin')
 const canWrite = inject('canWrite')
+const isAdmin = inject('isAdmin')
 const loadNodes = inject('loadNodes')
+const goBack = inject('goBack', () => {})
 
 const loading = ref(false)
 const refreshing = ref(false)
+const keyword = ref('')
+const statusFilter = ref(getInitialStatusFilter())
+const sortBy = ref('name')
+const viewMode = ref(window.localStorage.getItem(VIEW_MODE_KEY) || 'card')
+const showMap = ref(window.localStorage.getItem(MAP_OPEN_KEY) !== '0')
+const visible = ref(20)
+
+const detailNodeId = ref('')
 const pending = ref([])
 const approvingIds = ref(new Set())
-
-function parseCapabilities(raw) {
-  if (!raw) {
-    return {
-      os: 'linux',
-      osLabel: 'Linux',
-      arch: 'amd64',
-      version: '',
-      pmtu: '',
-      tags: [],
-    }
-  }
-  let obj = {}
-  if (typeof raw === 'object') {
-    obj = raw
-  } else {
-    try {
-      obj = JSON.parse(raw)
-    } catch {
-      return {
-        os: 'linux',
-        osLabel: 'Linux',
-        arch: '',
-        version: '',
-        pmtu: '',
-        tags: [String(raw)],
-      }
-    }
-  }
-  const os = (obj.os || 'linux').toLowerCase()
-  const osMap = { linux: 'Linux', darwin: 'macOS', windows: 'Windows', freebsd: 'FreeBSD' }
-  const osLabel = osMap[os] || os
-  const arch = obj.architecture || obj.arch || ''
-  const version = obj.agent_version || obj.version || ''
-  const pmtu = obj.pmtu ? `MTU ${obj.pmtu}` : ''
-
-  const tags = []
-  for (const [k, v] of Object.entries(obj)) {
-    if (!['os', 'architecture', 'arch', 'agent_version', 'version', 'pmtu'].includes(k) && v) {
-      tags.push(typeof v === 'boolean' ? k : `${k}: ${v}`)
-    }
-  }
-
-  return {
-    os,
-    osLabel,
-    arch,
-    version,
-    pmtu,
-    tags,
-  }
-}
 const metrics = ref({})
-const keyword = ref('')
-// 从看板的「在线服务器」「N 台离线」点进来时直接落在筛好的那一档上，
-// 否则用户得再点一次分段控件才看到自己刚才点的那批。
-function getInitialStatusFilter() {
-  const queryStr = location.search ? location.search.slice(1) : (location.hash.split('?')[1] || '')
-  return new URLSearchParams(queryStr).get('status') || ''
-}
-const statusFilter = ref(getInitialStatusFilter())
+const pingTasks = ref([])
+const singBoxLatest = ref({})
 
-function onPopStateFilter() {
-  const s = getInitialStatusFilter()
-  if (s) statusFilter.value = s
-}
-const visible = ref(20)
+const actionsOpen = ref(false)
+const actionTarget = ref(null)
+
+const editSheet = ref(false)
+const editTab = ref('basic')
+const editSaving = ref(false)
+const editNode = ref(null)
+const cfLoading = ref(false)
+const cfRecords = ref([])
+const newCustomEgressIP = ref('')
+const editForm = ref(createEmptyEditForm())
 
 const tokenSheet = ref(false)
 const token = ref('')
@@ -104,51 +802,172 @@ const masterPublicKey = ref('')
 const masterHost = ref('')
 const agentPort = ref(19994)
 
-const editSheet = ref(false)
-const editNode = ref(null)
-const pingTasks = ref([])
-const editForm = ref({ name: '', client_address: '', ddns_enabled: false, ddns_record_id: '', ddns_domain: '', ddns_record_ids: [], ddns_domains: [], ddns_bind_ip: '', ddns_record_ips: {}, ip_aliases: {}, expires_on: '', price: '', price_period: '', currency: 'USD', provider: '', provider_url: '', traffic_plan: '', bandwidth: '', custom_probes: [] })
-const newCustomEgressIP = ref('')
+const probeManagerOpen = ref(false)
+const shareOpen = ref(false)
+const peerProbeOpen = ref(false)
+const peerProbeTarget = ref(null)
+const ddnsHistorySheet = ref(false)
+const ddnsHistoryNode = ref(null)
+
+let knownPendingIds = null
+let pendingTimer = null
+let stopLive = null
+let stopConnections = null
+
+watch(viewMode, (v) => window.localStorage.setItem(VIEW_MODE_KEY, v))
+
+function toggleMap() {
+  showMap.value = !showMap.value
+  window.localStorage.setItem(MAP_OPEN_KEY, showMap.value ? '1' : '0')
+}
+
+function createEmptyEditForm() {
+  return {
+    name: '',
+    client_address: '',
+    ddns_enabled: false,
+    ddns_record_id: '',
+    ddns_domain: '',
+    ddns_record_ids: [],
+    ddns_domains: [],
+    ddns_bind_ip: '',
+    ddns_record_ips: {},
+    ip_aliases: {},
+    expires_on: '',
+    price: '',
+    price_period: '',
+    currency: 'USD',
+    provider: '',
+    provider_url: '',
+    traffic_value: '',
+    traffic_unit: 'GB',
+    bandwidth_value: '',
+    bandwidth_unit: 'Gbps',
+    custom_probes: [],
+  }
+}
+
+function getInitialStatusFilter() {
+  const queryStr = location.search ? location.search.slice(1) : location.hash.split('?')[1] || ''
+  return new URLSearchParams(queryStr).get('status') || ''
+}
+
+function onPopStateFilter() {
+  const s = getInitialStatusFilter()
+  statusFilter.value = s
+}
+
+function parseCapabilities(raw) {
+  if (!raw) return { os: '—', arch: '—', singbox: '', ip: '—' }
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return {
+      os: obj.os_name || obj.os || '—',
+      arch: obj.architecture || '—',
+      singbox: obj.sing_box_version || '',
+      ip: obj.last_observed_ip || obj.client_address || '—',
+    }
+  } catch {
+    return { os: '—', arch: '—', singbox: '', ip: '—' }
+  }
+}
+
+const live = computed(() => connectionSnapshots.value)
+
+const detailNode = computed(() => {
+  if (!detailNodeId.value) return null
+  return (appState.nodes || []).find((n) => n.id === detailNodeId.value) || null
+})
+
+const statusCounts = computed(() => {
+  const nodes = appState.nodes || []
+  let online = 0
+  let offline = 0
+  for (const n of nodes) {
+    if (n.online) online++
+    else offline++
+  }
+  return { all: nodes.length, online, offline }
+})
+
+const filteredPending = computed(() =>
+  pending.value.filter((row) => includesText([row.node_name, row.capabilities], keyword.value))
+)
+
+function resourceRatio(used, total) {
+  if (!total || total <= 0) return 0
+  return (Number(used || 0) / Number(total)) * 100
+}
+
+const filteredNodes = computed(() => {
+  const list = (appState.nodes || []).filter((n) => {
+    if (statusFilter.value === 'online' && !n.online) return false
+    if (statusFilter.value === 'offline' && n.online) return false
+    return includesText(
+      [
+        n.name,
+        n.client_address,
+        n.last_observed_ip,
+        n.os,
+        n.os_name,
+        n.architecture,
+        n.provider,
+        nodeLocationLabel(n),
+      ],
+      keyword.value
+    )
+  })
+
+  return [...list].sort((a, b) => {
+    if (sortBy.value === 'last_seen') {
+      return (Date.parse(b.last_seen_at) || 0) - (Date.parse(a.last_seen_at) || 0)
+    }
+    if (sortBy.value === 'conn') {
+      return (live.value.get(b.id)?.connection_count || 0) - (live.value.get(a.id)?.connection_count || 0)
+    }
+    if (sortBy.value === 'cpu') {
+      return (metrics.value[b.id]?.host?.cpu_percent || 0) - (metrics.value[a.id]?.host?.cpu_percent || 0)
+    }
+    if (sortBy.value === 'mem') {
+      const ma = resourceRatio(metrics.value[a.id]?.host?.memory_used, metrics.value[a.id]?.host?.memory_total)
+      const mb = resourceRatio(metrics.value[b.id]?.host?.memory_used, metrics.value[b.id]?.host?.memory_total)
+      return mb - ma
+    }
+    return (a.name || '').localeCompare(b.name || '', 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  })
+})
+
+const shownNodes = computed(() => filteredNodes.value.slice(0, visible.value))
+
+const upgradableAgentNodes = computed(() =>
+  (appState.nodes || []).filter((n) => n.online && agentUpdateAvailable(n))
+)
+
 const publicProbes = computed(() => pingTasks.value.filter((t) => t.auto_join !== false))
 
-async function loadPingTasks() {
-  try {
-    const res = await api('/ping-tasks').catch(() => ({ tasks: [] }))
-    pingTasks.value = res.tasks || []
-  } catch {
-    pingTasks.value = []
+const editNodeAllIPs = computed(() => {
+  const ips = []
+  const seen = new Set()
+  const add = (ip) => {
+    const val = (ip || '').trim()
+    if (val && !seen.has(val)) {
+      seen.add(val)
+      ips.push(val)
+    }
   }
-}
-
-function getCustomProbesForNode(nodeId) {
-  if (!nodeId) return []
-  return pingTasks.value
-    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
-    .map((t) => ({
-      id: t.id,
-      name: t.name || '',
-      target: t.target || '',
-      interval: t.interval || 60,
-    }))
-}
-
-function addCustomProbe() {
-  if (!Array.isArray(editForm.value.custom_probes)) {
-    editForm.value.custom_probes = []
+  if (Array.isArray(editNode.value?.ip_addresses)) {
+    for (const ip of editNode.value.ip_addresses) add(ip)
   }
-  editForm.value.custom_probes.push({ id: 0, name: '', target: '', interval: 60 })
-}
-
-function removeCustomProbe(idx) {
-  if (Array.isArray(editForm.value.custom_probes)) {
-    editForm.value.custom_probes.splice(idx, 1)
+  if (editForm.value?.ip_aliases) {
+    for (const ip of Object.keys(editForm.value.ip_aliases)) add(ip)
   }
-}
+  return ips
+})
 
 const editDDNSIPOptions = computed(() =>
   buildDDNSIPOptions(editNode.value, editForm.value.ip_aliases, {
     selectedValues: [editForm.value.ddns_bind_ip],
-  }),
+  })
 )
 
 function editDDNSRecordIPOptions(recId) {
@@ -163,38 +982,326 @@ function cfRecordById(recId) {
   return cfRecords.value.find((r) => r.id === recId) || null
 }
 
-const editNodeAllIPs = computed(() => {
-  const ips = []
-  const seen = new Set()
-  const add = (ip) => {
-    if (!ip || typeof ip !== 'string') return
-    const trimmed = ip.trim()
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed)
-      ips.push(trimmed)
+function hostOf(node) {
+  return live.value.get(node.id)?.host || metrics.value[node.id]?.host || null
+}
+
+function statOf(node, picker) {
+  if (!node.online) return '—'
+  const h = hostOf(node)
+  return h ? picker(h) : '—'
+}
+
+function meterPct(node, kind) {
+  if (!node.online) return 0
+  const h = hostOf(node)
+  if (!h) return 0
+  if (kind === 'cpu') return Math.min(100, Math.max(0, Math.round(h.cpu_percent || 0)))
+  if (kind === 'mem') return Math.min(100, Math.round(resourceRatio(h.memory_used, h.memory_total)))
+  if (kind === 'disk') return Math.min(100, Math.round(resourceRatio(h.disk_used, h.disk_total)))
+  return 0
+}
+
+function memText(node) {
+  const pct = meterPct(node, 'mem')
+  return node.online && hostOf(node)?.memory_total ? `${pct}%` : '—'
+}
+
+function diskText(node) {
+  const pct = meterPct(node, 'disk')
+  return node.online && hostOf(node)?.disk_total ? `${pct}%` : '—'
+}
+
+function speedText(node, field) {
+  if (!node.online) return '0 B/s'
+  const h = hostOf(node)
+  return formatBytes(h?.[field] || 0, '/s')
+}
+
+function latencyText(node) {
+  if (!node.online) return '离线'
+  const lat = live.value.get(node.id)?.latency || metrics.value[node.id]?.latency
+  const val = lat?.latency ?? lat?.avgLatency
+  return val != null ? `${Math.round(val)} ms` : '— ms'
+}
+
+function connText(node) {
+  if (!node.online) return '0'
+  return String(live.value.get(node.id)?.connection_count ?? 0)
+}
+
+function trafficOf(node) {
+  return nodeTrafficStats(node, metrics.value[node.id])
+}
+
+function agentUpdateAvailable(node) {
+  return isNewerVersion(appState.systemUpdate?.latest_version, node.agent_version)
+}
+
+function singBoxUpdateAvailable(node) {
+  const latest = singBoxLatest.value[node.architecture]
+  return Boolean(latest && node.sing_box_version && node.sing_box_version !== latest)
+}
+
+function checkNewPending(list) {
+  if (!isAdmin.value) return
+  const nextIds = new Set((list || []).map((r) => r.id))
+  if (knownPendingIds !== null) {
+    for (const item of list || []) {
+      if (!knownPendingIds.has(item.id)) {
+        ElNotification({
+          title: '新服务器申请接入',
+          message: `检测到服务器「${item.node_name}」申请接入，请确认批准。`,
+          type: 'warning',
+          duration: 6000,
+        })
+      }
     }
   }
-  if (Array.isArray(editNode.value?.ip_addresses)) {
-    for (const ip of editNode.value.ip_addresses) add(ip)
+  knownPendingIds = nextIds
+}
+
+async function load(silent = false) {
+  if (refreshing.value) return
+  refreshing.value = true
+  if (!silent && !(appState.nodes || []).length) loading.value = true
+  try {
+    await loadNodes()
+    const metricsPath = isShareMode ? shareAPIPath('/nodes/metrics') : '/nodes/metrics'
+    const [regRes, metricRes] = await Promise.all([
+      isAdmin.value && !isShareMode ? api('/registrations').catch(() => ({ registrations: [] })) : Promise.resolve({ registrations: [] }),
+      api(metricsPath).catch(() => ({ nodes: [] })),
+    ])
+    const regs = regRes.registrations || []
+    pending.value = regs
+    checkNewPending(regs)
+    metrics.value = Object.fromEntries((metricRes.nodes || []).map((entry) => [entry.node_id, entry.report]))
+    if (!isShareMode) await loadSingBoxLatest()
+  } finally {
+    loading.value = false
+    refreshing.value = false
   }
-  if (editForm.value?.ip_aliases) {
-    for (const ip of Object.keys(editForm.value.ip_aliases)) add(ip)
+}
+
+async function loadSingBoxLatest() {
+  const architectures = [...new Set((appState.nodes || []).map((n) => n.architecture).filter(Boolean))]
+  await Promise.all(
+    architectures.map(async (arch) => {
+      try {
+        const res = await api(`/sing-box/latest?architecture=${encodeURIComponent(arch)}`)
+        if (res?.version) singBoxLatest.value[arch] = res.version
+      } catch {
+        // ignore offline check errors
+      }
+    })
+  )
+}
+
+async function loadPingTasks() {
+  if (isShareMode) return
+  try {
+    const res = await api('/ping-tasks').catch(() => ({ tasks: [] }))
+    pingTasks.value = res.tasks || []
+  } catch {
+    pingTasks.value = []
   }
-  return ips
+}
+
+function getCustomProbesForNode(nodeId) {
+  if (!nodeId) return []
+  return pingTasks.value
+    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
+    .map((t) => ({ id: t.id, name: t.name, target: t.target, interval: t.interval || 60 }))
+}
+
+function openDetail(nodeOrId) {
+  const id = typeof nodeOrId === 'string' ? nodeOrId : nodeOrId?.id
+  if (!id) return
+  detailNodeId.value = id
+}
+
+function closeDetail() {
+  detailNodeId.value = ''
+}
+
+function handlePageBack() {
+  if (detailNode.value) {
+    closeDetail()
+  } else {
+    goBack('more')
+  }
+}
+
+function openActions(node) {
+  actionTarget.value = node
+  actionsOpen.value = true
+}
+
+const actionDetails = computed(() => {
+  const n = actionTarget.value
+  if (!n) return []
+  const exp = nodeExpiryInfo(n)
+  return [
+    { label: '状态', value: n.online ? '在线' : '离线' },
+    { label: '连接地址', value: n.client_address || n.last_observed_ip || '未设置' },
+    { label: '地区 / 系统', value: [nodeLocationLabel(n), n.os_name || n.os].filter(Boolean).join(' · ') || '—' },
+    { label: '本月流量', value: `${formatBytes(trafficOf(n).monthlyTotal)}${n.traffic_plan ? ` / ${n.traffic_plan}` : ''}` },
+    ...(exp ? [{ label: '到期状态', value: exp.label }] : []),
+  ]
 })
+
+const sheetActions = computed(() => {
+  const n = actionTarget.value
+  if (!n) return []
+  const list = [{ key: 'detail', label: '查看详情与图表', hint: '资源曲线 · 延迟 · 详细参数' }]
+  if (canWrite.value) {
+    list.push({ key: 'edit', label: '编辑配置', hint: '名称、套餐、DDNS 与地址' })
+    list.push({ key: 'edit-probes', label: '探针配置', hint: '查看默认探针与自定义探针' })
+  }
+  list.push({ key: 'probe-peers', label: '线路与丢包排查', hint: '实测到其他互联服务器的延迟与丢包' })
+  if (canWrite.value && n.ddns_enabled) {
+    list.push({ key: 'ddns-sync', label: '同步 DDNS', hint: '立即更新 Cloudflare 解析' })
+  }
+  if (n.ddns_enabled) {
+    list.push({ key: 'ddns-history', label: 'DDNS 变更记录' })
+  }
+  if (isAdmin.value && agentUpdateAvailable(n)) {
+    list.push({ key: 'upgrade', label: '升级 Agent', hint: `升级到 v${appState.systemUpdate?.latest_version}` })
+  }
+  if (isAdmin.value && singBoxUpdateAvailable(n)) {
+    list.push({ key: 'upgrade-sing-box', label: '升级 sing-box', hint: `升级到 ${singBoxLatest.value[n.architecture]}` })
+  }
+  if (isAdmin.value) {
+    list.push({ key: 'revoke', label: '移除服务器', danger: true })
+  }
+  return list
+})
+
+async function runAction(key) {
+  const node = actionTarget.value
+  if (!node) return
+  if (key === 'detail') return openDetail(node)
+  if (key === 'edit') return openEdit(node, 'basic')
+  if (key === 'edit-probes') return openEdit(node, 'probes')
+  if (key === 'probe-peers') return openPeerProbe(node)
+  if (key === 'ddns-sync') return syncNodeDDNS(node)
+  if (key === 'ddns-history') {
+    ddnsHistoryNode.value = node
+    ddnsHistorySheet.value = true
+    return
+  }
+  if (key === 'upgrade') return upgradeAgent(node)
+  if (key === 'upgrade-sing-box') return upgradeSingBox(node)
+  if (key === 'revoke') return revoke(node)
+}
+
+function openPeerProbe(node) {
+  peerProbeTarget.value = node
+  peerProbeOpen.value = true
+}
+
+async function syncNodeDDNS(node) {
+  try {
+    const res = await post(`/nodes/${node.id}/ddns/sync`, {})
+    ElMessage.success(`DDNS 同步成功${res.ip ? `：${res.ip}` : ''}`)
+    await load(true)
+  } catch (err) {
+    ElMessage.error(err.message || 'DDNS 同步失败')
+  }
+}
+
+async function copyAddress(node) {
+  const addr = node.client_address || node.last_observed_ip
+  if (!addr) return
+  try {
+    await writeClipboard(addr)
+    ElMessage.success(`已复制：${addr}`)
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+async function loadCloudflareRecords() {
+  cfLoading.value = true
+  try {
+    const cfSettings = await api('/cloudflare/settings').catch(() => ({ configured: false }))
+    if (!cfSettings?.configured) {
+      cfRecords.value = []
+      return
+    }
+    const res = await api('/cloudflare/records').catch(() => ({ records: [] }))
+    cfRecords.value = (res.records || []).filter((r) => r.type === 'A' || r.type === 'AAAA')
+  } finally {
+    cfLoading.value = false
+  }
+}
+
+function syncDDNSDomainsFromSelection(selectedIds) {
+  const selected = cfRecords.value.filter((r) => selectedIds.includes(r.id))
+  editForm.value.ddns_domains = selected.map((r) => r.name)
+  if (selected.length) {
+    editForm.value.ddns_record_id = selected[0].id
+    editForm.value.ddns_domain = selected[0].name
+  } else {
+    editForm.value.ddns_record_id = ''
+    editForm.value.ddns_domain = ''
+  }
+}
+
+async function openEdit(node, initialTab = 'basic') {
+  editNode.value = node
+  const recordIds = node.ddns_record_ids?.length
+    ? [...node.ddns_record_ids]
+    : node.ddns_record_id
+      ? [node.ddns_record_id]
+      : []
+  const domains = node.ddns_domains?.length
+    ? [...node.ddns_domains]
+    : node.ddns_domain
+      ? [node.ddns_domain]
+      : []
+
+  const tPlan = parseTrafficPlan(node.traffic_plan)
+  const bwPlan = parseBandwidthPlan(node.bandwidth)
+
+  editForm.value = {
+    name: node.name || '',
+    client_address: node.client_address || '',
+    ddns_enabled: Boolean(node.ddns_enabled),
+    ddns_record_id: node.ddns_record_id || '',
+    ddns_domain: node.ddns_domain || '',
+    ddns_record_ids: recordIds,
+    ddns_domains: domains,
+    ddns_bind_ip: node.ddns_bind_ip || '',
+    ddns_record_ips: node.ddns_record_ips ? { ...node.ddns_record_ips } : {},
+    ip_aliases: node.ip_aliases ? { ...node.ip_aliases } : {},
+    expires_on: node.expires_on || '',
+    price: node.price || '',
+    price_period: node.price_period || '',
+    currency: node.currency || 'USD',
+    provider: node.provider || '',
+    provider_url: node.provider_url || '',
+    traffic_value: tPlan.traffic_value,
+    traffic_unit: tPlan.traffic_unit,
+    bandwidth_value: bwPlan.bandwidth_value,
+    bandwidth_unit: bwPlan.bandwidth_unit,
+    custom_probes: getCustomProbesForNode(node.id),
+  }
+
+  editTab.value = typeof initialTab === 'string' && initialTab ? initialTab : 'basic'
+  editSheet.value = true
+  loadCloudflareRecords()
+  loadPingTasks().then(() => {
+    if (editNode.value?.id === node.id) {
+      editForm.value.custom_probes = getCustomProbesForNode(node.id)
+    }
+  })
+}
 
 function addCustomEgressIP() {
   const ip = (newCustomEgressIP.value || '').trim()
   if (!ip) return
-  const ipv4 = /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$/
-  const ipv6 = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/
-  if (!ipv4.test(ip) && !ipv6.test(ip)) {
-    ElMessage.warning('请输入有效的 IPv4 或 IPv6 地址')
-    return
-  }
-  if (!editForm.value.ip_aliases) {
-    editForm.value.ip_aliases = {}
-  }
+  if (!editForm.value.ip_aliases) editForm.value.ip_aliases = {}
   if (editForm.value.ip_aliases[ip] === undefined) {
     editForm.value.ip_aliases[ip] = ''
   }
@@ -207,66 +1314,96 @@ function removeCustomEgressIP(ip) {
     delete editForm.value.ip_aliases[ip]
   }
 }
-const cfRecords = ref([])
-const cfLoading = ref(false)
-const editSaving = ref(false)
 
-const actionsOpen = ref(false)
-const actionTarget = ref(null)
-// 架构 -> 官方最新 sing-box 版本号
-const singBoxLatest = ref({})
+function addCustomProbe() {
+  if (!Array.isArray(editForm.value.custom_probes)) editForm.value.custom_probes = []
+  editForm.value.custom_probes.push({ id: 0, name: '', target: '', interval: 60 })
+}
 
-let stopLive
-let stopConnections
-
-const filteredNodes = computed(() => appState.nodes.filter((node) => {
-  if (statusFilter.value === 'online' && !node.online) return false
-  if (statusFilter.value === 'offline' && node.online) return false
-  return includesText([node.name, node.client_address, node.os_name, node.os, node.architecture, node.agent_version, node.sing_box_version], keyword.value)
-}))
-const shownNodes = computed(() => filteredNodes.value.slice(0, visible.value))
-const filteredPending = computed(() => pending.value.filter((row) => includesText([row.node_name, row.capabilities], keyword.value)))
-const live = computed(() => connectionSnapshots.value)
-
-watch([keyword, statusFilter], () => { visible.value = 20 })
-
-async function load(silent = false) {
-  if (refreshing.value) return
-  refreshing.value = true
-  if (!silent) loading.value = true
-  try {
-    await loadNodes()
-    const [registrations, metricResult] = await Promise.all([
-      isAdmin.value ? api('/registrations').catch(() => ({ registrations: [] })) : Promise.resolve({ registrations: [] }),
-      api('/nodes/metrics').catch(() => ({ nodes: [] })),
-    ])
-    pending.value = registrations.registrations || []
-    metrics.value = Object.fromEntries((metricResult.nodes || []).map((entry) => [entry.node_id, entry.report]))
-    await loadSingBoxLatest()
-  } finally {
-    loading.value = false
-    refreshing.value = false
+function removeCustomProbe(idx) {
+  if (Array.isArray(editForm.value.custom_probes)) {
+    editForm.value.custom_probes.splice(idx, 1)
   }
 }
 
+async function saveNode() {
+  const customProbes = []
+  for (const p of editForm.value.custom_probes || []) {
+    const name = (p.name || '').trim()
+    const target = (p.target || '').trim()
+    if (!name && !target) continue
+    if (!name || !target) {
+      editTab.value = 'probes'
+      ElMessage.warning('请完整填写专属探针的名称和目标地址')
+      return
+    }
+    customProbes.push({
+      id: p.id || 0,
+      name,
+      target,
+      interval: Math.max(5, Number(p.interval) || 60),
+    })
+  }
 
-// 控制台的域名只是 agent 拨号地址的一个猜测：控制台常在反向代理后面，
-// 和 Noise 端口未必同名，所以这里可改，命令跟着改。
+  editSaving.value = true
+  try {
+    const trafficPlan = editForm.value.traffic_value
+      ? `${editForm.value.traffic_value.trim()} ${editForm.value.traffic_unit}`
+      : ''
+    const bandwidth = editForm.value.bandwidth_value
+      ? `${editForm.value.bandwidth_value.trim()} ${editForm.value.bandwidth_unit}`
+      : ''
+
+    await put(`/nodes/${editNode.value.id}`, {
+      name: editForm.value.name.trim(),
+      client_address: editForm.value.client_address.trim(),
+      ddns_enabled: editForm.value.ddns_enabled,
+      ddns_record_id: editForm.value.ddns_record_id,
+      ddns_domain: editForm.value.ddns_domain,
+      ddns_record_ids: editForm.value.ddns_record_ids,
+      ddns_domains: editForm.value.ddns_domains,
+      ddns_bind_ip: (editForm.value.ddns_bind_ip || '').trim(),
+      ddns_record_ips: editForm.value.ddns_record_ips || {},
+      ip_aliases: editForm.value.ip_aliases || {},
+      expires_on: editForm.value.expires_on,
+      price: editForm.value.price_period === 'free' ? '0' : editForm.value.price,
+      price_period: editForm.value.price_period,
+      currency: editForm.value.currency,
+      provider: editForm.value.provider,
+      provider_url: editForm.value.provider_url,
+      traffic_plan: trafficPlan,
+      bandwidth,
+      custom_probes: customProbes,
+    })
+
+    ElMessage.success('服务器信息已保存')
+    editSheet.value = false
+    await Promise.all([load(true), loadPingTasks()])
+  } catch (err) {
+    ElMessage.error(err.message || '保存失败')
+  } finally {
+    editSaving.value = false
+  }
+}
+
 const masterAddress = computed(() => {
   const host = masterHost.value.trim().replace(/[^A-Za-z0-9.:_[\]-]/g, '')
   return `${host}:${agentPort.value}`
 })
-watch(masterHost, (value) => {
-  const host = value.trim()
-  if (host) window.localStorage.setItem(MASTER_HOST_KEY, host)
-})
-const installCommand = computed(() => [
-  'curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh',
-  ` && sudo env POLARIS_MASTER_ADDRESS='${masterAddress.value}'`,
-  ` POLARIS_MASTER_PUBKEY='${masterPublicKey.value}'`,
-  ` POLARIS_REGISTRATION_TOKEN='${token.value}'`,
-  ' bash install.sh agent',
-].join(''))
+
+const installCommand = computed(() =>
+  [
+    'curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh',
+    ` && sudo env POLARIS_MASTER_ADDRESS='${masterAddress.value}'`,
+    ` POLARIS_MASTER_PUBKEY='${masterPublicKey.value}'`,
+    ` POLARIS_REGISTRATION_TOKEN='${token.value}'`,
+    ' bash install.sh agent',
+  ].join('')
+)
+
+function persistMasterHost() {
+  window.localStorage.setItem(MASTER_HOST_KEY, masterHost.value.trim())
+}
 
 async function generateToken() {
   const result = await post('/nodes/registration-tokens', { lifetime_seconds: lifetime })
@@ -281,9 +1418,9 @@ async function generateToken() {
 async function copyInstallCommand() {
   try {
     await writeClipboard(installCommand.value)
-    ElMessage.success('安装命令已复制')
+    ElMessage.success('安装命令已复制到剪贴板')
   } catch {
-    ElMessage.error('自动复制失败，请长按上面的命令手动复制')
+    ElMessage.error('复制失败，请手动选中命令')
   }
 }
 
@@ -292,1018 +1429,171 @@ async function approve(registration) {
     await ElMessageBox.confirm(
       `允许服务器“${registration.node_name}”接入管理平台？批准后即可远程管理该服务器并下发配置。`,
       '确认服务器接入',
-      {
-        confirmButtonText: '确认批准',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
+      { confirmButtonText: '确认批准', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
   }
+
   approvingIds.value.add(registration.id)
   try {
-    await post(`/nodes/${registration.id}/approve`, {})
-    ElMessage.success(`服务器「${registration.node_name}」接入成功！`)
+    await post(`/registrations/${registration.id}/approve`, {})
+    ElMessage.success(`已批准 ${registration.node_name} 接入`)
     await load(true)
-  } catch (e) {
-    ElMessage.error(e?.message || '批准接入失败')
+  } catch (err) {
+    ElMessage.error(err?.message || '批准接入失败')
   } finally {
     approvingIds.value.delete(registration.id)
   }
 }
 
-function agentUpdateAvailable(node) {
-  return isNewerVersion(appState.systemUpdate?.latest_version, node.agent_version)
+async function upgradeAgent(node) {
+  try {
+    await performAgentUpgrade(node, {
+      refreshList: () => load(true),
+      refreshNodes: loadNodes,
+    })
+  } catch (err) {
+    if (err !== 'cancel' && err?.message !== 'cancel') {
+      ElMessage.error(err?.message || 'Agent 升级失败')
+    }
+  }
 }
-
-const upgradableAgentNodes = computed(() => {
-  return (appState.nodes || []).filter((node) => {
-    const osOk = !node.os || !/windows|darwin|macos|freebsd/i.test(node.os)
-    const archOk = Boolean(node.architecture)
-    return osOk && archOk && agentUpdateAvailable(node)
-  })
-})
-
-const upgradingAllAgents = ref(false)
 
 async function upgradeAllAgents() {
   if (!upgradableAgentNodes.value.length) {
     ElMessage.info('当前所有服务器的 Agent 均已是最新版本，无需升级')
     return
   }
-  upgradingAllAgents.value = true
   try {
     await performAllAgentsUpgrade(upgradableAgentNodes.value, {
       refreshList: () => load(true),
-      refreshNodes: () => loadNodes(),
+      refreshNodes: loadNodes,
       latestVersion: appState.systemUpdate?.latest_version,
     })
-  } catch (error) {
-    if (error !== 'cancel' && error?.message !== 'cancel') {
-      ElMessage.error(error?.message || '一键升级失败')
+  } catch (err) {
+    if (err !== 'cancel' && err?.message !== 'cancel') {
+      ElMessage.error(err?.message || '批量升级 Agent 失败')
     }
-  } finally {
-    upgradingAllAgents.value = false
   }
-}
-
-// 同一架构的服务器共用一个官方版本号，按架构查一次即可；已经拿到的不再重复请求。
-async function loadSingBoxLatest() {
-  const architectures = [...new Set(appState.nodes.map((node) => node.architecture).filter(Boolean))]
-  await Promise.all(architectures.map(async (architecture) => {
-    if (singBoxLatest.value[architecture]) return
-    const release = await api(`/sing-box/latest?architecture=${architecture}`).catch(() => null)
-    if (release?.version) singBoxLatest.value[architecture] = release.version
-  }))
-}
-
-function singBoxUpdateAvailable(node) {
-  const latest = singBoxLatest.value[node.architecture]
-  return Boolean(latest && node.sing_box_version && node.sing_box_version !== latest)
-}
-
-function openActions(node) {
-  actionTarget.value = node
-  actionsOpen.value = true
-}
-
-// 卡片上只留在线状态、实时速率和活动连接；系统、版本、累计流量这些
-// 看一眼就够的字段留到详情里，否则一台服务器要占掉大半屏。
-function statOf(node, pick) {
-  const snapshot = live.value.get(node.id)
-  if (!node.online) return '—'
-  if (pick === 'connections') return String(snapshot?.connection_count ?? '—')
-  if (!snapshot?.has_rates) return '—'
-  return formatBytes(pick === 'down' ? snapshot.received_rate : snapshot.sent_rate, '/s')
-}
-
-// 脚注答的是「客户端连的是哪个地址」和「这台机器到现在搬了多少数据」。
-// 系统、架构、版本号看一眼就够，留在详情里，不和这两条抢同一行。
-function totalText(node) {
-  const totals = metrics.value[node.id]?.node || metrics.value[node.id]?.proxy
-  if (!totals) return '累计流量等待上报'
-  return `累计 ↓ ${formatBytes(totals.received_bytes)} · ↑ ${formatBytes(totals.sent_bytes)}`
-}
-
-function addressText(node) {
-  if (!node.client_address) return '未填写连接地址'
-  if (node.ddns_enabled && node.last_observed_ip) {
-    return `${node.client_address} (DDNS: ${node.last_observed_ip})`
-  }
-  return node.client_address
-}
-
-const details = computed(() => {
-  const node = actionTarget.value
-  if (!node) return []
-  const nodeM = metrics.value[node.id]?.node
-  const proxy = metrics.value[node.id]?.proxy
-  const mainM = nodeM || proxy
-  const host = metrics.value[node.id]?.host
-  const addrVal = node.client_address ? (node.ddns_enabled && node.last_observed_ip ? `${node.client_address} (DDNS: ${node.last_observed_ip})` : node.client_address) : '未配置，客户端拿不到节点链接'
-  const items = [
-    { label: '运行状态', value: node.online ? '在线' : '离线' },
-    { label: '连接地址', value: addrVal, mono: Boolean(node.client_address) },
-    { label: '系统', value: [node.os_name || host?.os_name || node.os, node.architecture].filter(Boolean).join(' · ') || '—' },
-    { label: '版本', value: 'agent ' + (node.agent_version || '—') + ' · sing-box ' + (node.sing_box_version || '—') },
-    ...(node.ip_addresses && node.ip_addresses.length ? [{ label: '出口 IP', value: node.ip_addresses.map((ip) => (node.ip_aliases?.[ip] ? `${node.ip_aliases[ip]} (${ip})` : ip)).join('、') }] : []),
-  ]
-  if (host) {
-    items.push(
-      { label: 'CPU 负载', value: (host.cpu_percent != null ? host.cpu_percent.toFixed(1) + '%' : '—') },
-      { label: '内存占用', value: formatBytes(host.memory_used) + ' / ' + formatBytes(host.memory_total) },
-      { label: '硬盘占用', value: formatBytes(host.disk_used) + ' / ' + formatBytes(host.disk_total) },
-    )
-  }
-  items.push(
-    { label: '累计流量', value: mainM ? '↓ ' + formatBytes(mainM.received_bytes) + ' · ↑ ' + formatBytes(mainM.sent_bytes) : '等待上报' },
-    { label: '最后在线', value: formatDateTime(node.last_seen_at, '从未在线') },
-  )
-  return items
-})
-
-const actions = computed(() => {
-  const node = actionTarget.value
-  if (!node) return []
-  const list = []
-  if (canWrite.value) list.push({ key: 'edit', label: '编辑', hint: '名称与客户端连接地址' })
-  if (isAdmin.value && agentUpdateAvailable(node)) list.push({ key: 'upgrade', label: '升级 Agent', hint: `升级到 v${appState.systemUpdate?.latest_version}` })
-  if (isAdmin.value && singBoxUpdateAvailable(node)) list.push({ key: 'upgrade-sing-box', label: '升级 sing-box', hint: `升级到 ${singBoxLatest.value[node.architecture]}` })
-  if (isAdmin.value) list.push({ key: 'revoke', label: '移除服务器', danger: true })
-  return list
-})
-
-function runAction(key) {
-  const node = actionTarget.value
-  if (key === 'edit') return openEdit(node)
-  if (key === 'upgrade') return upgradeAgent(node)
-  if (key === 'upgrade-sing-box') return upgradeSingBox(node)
-  if (key === 'revoke') return revoke(node)
-}
-
-async function upgradeAgent(node) {
-  await performAgentUpgrade(node, {
-    refreshList: () => load(true),
-    refreshNodes: () => loadNodes(),
-  })
 }
 
 async function upgradeSingBox(node) {
-  await ElMessageBox.confirm(
-    `将“${node.name}”的 sing-box 从 ${node.sing_box_version} 升级到 ${singBoxLatest.value[node.architecture]}？升级时 sing-box 会重启，正在通过该服务器的连接会短暂中断；新版本启动失败会自动回滚到当前版本。`,
-    '升级 sing-box',
-    { type: 'warning', confirmButtonText: '开始升级' },
-  )
+  const targetVersion = singBoxLatest.value[node.architecture] || '最新版本'
+  try {
+    await ElMessageBox.confirm(
+      `确认将“${node.name}”的 sing-box 升级到 ${targetVersion}？`,
+      '升级 sing-box',
+      { confirmButtonText: '开始升级', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
   await post(`/nodes/${node.id}/sing-box/install`, {})
   ElMessage.success('升级任务已下发，完成后服务器会上报新的 sing-box 版本')
 }
 
 async function revoke(node) {
-  await ElMessageBox.confirm(`移除“${node.name}”后，该服务器将无法继续连接管理平台。`, '移除服务器', {
-    type: 'warning',
-    confirmButtonText: '确认移除',
-  })
+  try {
+    await ElMessageBox.confirm(
+      `移除“${node.name}”后，该服务器将无法继续连接管理平台。`,
+      '移除服务器',
+      { type: 'warning', confirmButtonText: '确认移除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
   await post(`/nodes/${node.id}/revoke`, {})
-  ElMessage.success('服务器已移除')
-  await load()
+  ElMessage.success('已移除')
+  if (detailNodeId.value === node.id) detailNodeId.value = ''
+  await load(false)
 }
-
-async function loadCloudflareRecords() {
-  cfLoading.value = true
-  try {
-    const res = await api('/cloudflare/records').catch(() => ({ records: [] }))
-    cfRecords.value = (res.records || []).filter(r => r.type === 'A' || r.type === 'AAAA')
-  } finally {
-    cfLoading.value = false
-  }
-}
-
-function onRecordsSelected(selectedIds) {
-  editForm.value.ddns_record_ids = selectedIds
-  const selectedRecords = cfRecords.value.filter(r => selectedIds.includes(r.id))
-  editForm.value.ddns_domains = selectedRecords.map(r => r.name)
-  editForm.value.ddns_record_id = selectedIds[0] || ''
-  editForm.value.ddns_domain = editForm.value.ddns_domains[0] || ''
-  const nextRecIPs = {}
-  for (const id of selectedIds) {
-    if (editForm.value.ddns_record_ips?.[id]) {
-      nextRecIPs[id] = editForm.value.ddns_record_ips[id]
-    }
-  }
-  editForm.value.ddns_record_ips = nextRecIPs
-  if (!editForm.value.client_address || /^[0-9.:]+$/.test(editForm.value.client_address)) {
-    if (editForm.value.ddns_domain) {
-      editForm.value.client_address = editForm.value.ddns_domain
-    }
-  }
-}
-
-async function openEdit(node) {
-  editNode.value = node
-
-  const recordIds = (node.ddns_record_ids && node.ddns_record_ids.length)
-    ? [...node.ddns_record_ids]
-    : (node.ddns_record_id ? [node.ddns_record_id] : [])
-  const domains = (node.ddns_domains && node.ddns_domains.length)
-    ? [...node.ddns_domains]
-    : (node.ddns_domain ? [node.ddns_domain] : [])
-
-  editForm.value = {
-    name: node.name,
-    client_address: node.client_address || '',
-    ddns_enabled: Boolean(node.ddns_enabled),
-    ddns_record_id: node.ddns_record_id || '',
-    ddns_domain: node.ddns_domain || '',
-    ddns_record_ids: recordIds,
-    ddns_domains: domains,
-    ddns_bind_ip: node.ddns_bind_ip || '',
-    ddns_record_ips: { ...(node.ddns_record_ips || {}) },
-    ip_aliases: { ...(node.ip_aliases || {}) },
-    expires_on: node.expires_on || '', price: node.price || '', price_period: node.price_period || '', currency: node.currency || 'USD', provider: node.provider || '', provider_url: node.provider_url || '', traffic_plan: node.traffic_plan || '', bandwidth: node.bandwidth || '',
-    custom_probes: getCustomProbesForNode(node.id),
-  }
-  loadCloudflareRecords()
-  loadPingTasks().then(() => {
-    if (editNode.value?.id === node.id) {
-      editForm.value.custom_probes = getCustomProbesForNode(node.id)
-    }
-  })
-  editSheet.value = true
-}
-
-async function saveNode() {
-  const customProbes = []
-  for (const p of editForm.value.custom_probes || []) {
-    const name = (p.name || '').trim()
-    const target = (p.target || '').trim()
-    if (!name && !target) continue
-    if (!name || !target) {
-      ElMessage.warning('请完整填写独立探针的名称和目标地址')
-      return
-    }
-    const interval = Number(p.interval) >= 5 && Number(p.interval) <= 3600 ? Math.round(Number(p.interval)) : 60
-    customProbes.push({
-      id: Number(p.id) || 0,
-      name,
-      target,
-      interval,
-      auto_join: false,
-      node_ids: [editNode.value.id],
-    })
-  }
-  editSaving.value = true
-  try {
-    await put(`/nodes/${editNode.value.id}`, {
-      name: editForm.value.name.trim(),
-      client_address: editForm.value.client_address.trim(),
-      ddns_enabled: editForm.value.ddns_enabled,
-      ddns_record_id: editForm.value.ddns_record_id,
-      ddns_domain: editForm.value.ddns_domain,
-      ddns_record_ids: editForm.value.ddns_record_ids,
-      ddns_domains: editForm.value.ddns_domains,
-      ddns_bind_ip: (editForm.value.ddns_bind_ip || '').trim(),
-      ddns_record_ips: editForm.value.ddns_record_ips || {},
-      ip_aliases: editForm.value.ip_aliases || {},
-      expires_on: editForm.value.expires_on, price: editForm.value.price, price_period: editForm.value.price_period, currency: editForm.value.currency,
-      provider: editForm.value.provider, provider_url: editForm.value.provider_url, traffic_plan: editForm.value.traffic_plan, bandwidth: editForm.value.bandwidth,
-      custom_probes: customProbes,
-    })
-    ElMessage.success('服务器信息已保存')
-    editSheet.value = false
-    await load()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '服务器信息保存失败')
-  } finally {
-    editSaving.value = false
-  }
-}
-
-function openProvider(node) {
-  if (node.provider_url) window.open(node.provider_url, '_blank', 'noopener,noreferrer')
-}
-
-let mobilePendingTimer = null
 
 onMounted(() => {
-  window.addEventListener('popstate', onPopStateFilter)
-  load()
+  load(false)
+  loadPingTasks()
   stopConnections = subscribeConnections(() => {})
-  stopLive = subscribeLive((event) => {
-    // 节点状态变更通过 MobileApp.vue 增量 patch，性能指标通过 connections SSE 增量推流
-    if (event.kind === 'registration' || event.kind === 'node') load(true).catch(() => {})
-  })
-  if (isAdmin.value) {
-    mobilePendingTimer = setInterval(() => {
+  window.addEventListener('popstate', onPopStateFilter)
+  stopLive = subscribeLive(() => load(true).catch(() => {}))
+  if (!isShareMode) {
+    pendingTimer = window.setInterval(() => {
       if (isAdmin.value) {
-        api('/registrations').then((res) => {
-          pending.value = res.registrations || []
-        }).catch(() => {})
+        api('/registrations')
+          .then((res) => {
+            const regs = res.registrations || []
+            pending.value = regs
+            checkNewPending(regs)
+          })
+          .catch(() => {})
       }
     }, 10000)
   }
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('popstate', onPopStateFilter)
-  if (mobilePendingTimer) clearInterval(mobilePendingTimer)
+onUnmounted(() => {
+  if (pendingTimer) window.clearInterval(pendingTimer)
   stopLive?.()
   stopConnections?.()
+  window.removeEventListener('popstate', onPopStateFilter)
 })
 </script>
 
-<template>
-  <MPage title="服务器" :loading="loading">
-    <template #actions>
-      <el-button
-        v-if="isAdmin && upgradableAgentNodes.length > 0"
-        size="small"
-        type="warning"
-        :icon="Top"
-        :loading="upgradingAllAgents"
-        @click="upgradeAllAgents"
-      >
-        升级 Agent ({{ upgradableAgentNodes.length }})
-      </el-button>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="refreshing"
-        aria-label="刷新"
-        @click="load(false)"
-      />
-    </template>
-    <div class="m-listbar">
-      <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或版本" />
-      <div class="m-filters">
-        <MSegmented
-          v-model="statusFilter"
-          :options="[{ value: '', label: '全部' }, { value: 'online', label: '在线' }, { value: 'offline', label: '离线' }]"
-        />
-      </div>
-    </div>
-
-    <template v-if="filteredPending.length">
-      <div class="m-section flex items-center justify-between">
-        <span>等待确认的服务器（{{ filteredPending.length }}）</span>
-      </div>
-      <article v-for="row in filteredPending" :key="row.id" class="m-item m-pending-item">
-        <div class="m-item__hit is-static">
-          <div class="m-item__head flex items-center gap-2">
-            <span class="m-item__title font-semibold">{{ row.node_name }}</span>
-            <span class="m-pending-tag">待接入</span>
-          </div>
-          <div class="m-pending-specs">
-            <span class="m-spec-chip">
-              <OsIcon :os="parseCapabilities(row.capabilities).os" class="w-3.5 h-3.5 inline-block mr-1" />
-              {{ parseCapabilities(row.capabilities).osLabel }}
-              <template v-if="parseCapabilities(row.capabilities).arch">/ {{ parseCapabilities(row.capabilities).arch }}</template>
-            </span>
-            <span v-if="parseCapabilities(row.capabilities).version" class="m-spec-chip font-mono">
-              v{{ parseCapabilities(row.capabilities).version }}
-            </span>
-            <span v-if="parseCapabilities(row.capabilities).pmtu" class="m-spec-chip font-mono">
-              {{ parseCapabilities(row.capabilities).pmtu }}
-            </span>
-          </div>
-          <div class="m-item__meta mt-1 text-xs opacity-75">
-            申请于 {{ formatRelativeTime(row.created_at) }}
-          </div>
-        </div>
-        <button
-          type="button"
-          class="m-item__act m-item__act--primary"
-          :aria-label="`接入 ${row.node_name}`"
-          :disabled="approvingIds.has(row.id)"
-          @click="approve(row)"
-        >
-          <el-icon :size="18"><Check /></el-icon><small>{{ approvingIds.has(row.id) ? '处理中' : '接入' }}</small>
-        </button>
-      </article>
-    </template>
-
-    <div class="m-section">已接入服务器（{{ filteredNodes.length }}）</div>
-    <!-- 整条就是详情入口：完整字段和编辑、升级、移除都在弹出的抽屉里。 -->
-    <article
-      v-for="node in shownNodes"
-      :key="node.id"
-      class="m-node-card neu rise"
-      :class="{ 'is-offline': !node.online }"
-      role="button"
-      tabindex="0"
-      @click="openActions(node)"
-    >
-      <span class="m-node-glow" :class="node.online ? 'is-online' : 'is-offline'" />
-
-      <div class="m-node-head">
-        <div class="m-node-hero min-w-0 flex-1">
-          <OsIcon :os="node.os_name || node.os" class="m-node-os" />
-          <h3 class="m-node-title truncate" :title="node.name">{{ node.name }}</h3>
-        </div>
-        <div class="m-node-status" :class="node.online ? 'is-online' : 'is-offline'">
-          <span class="m-node-pulse" />
-          <span>{{ node.online ? '在线' : '离线' }}</span>
-        </div>
-      </div>
-
-      <div class="m-node-tags">
-        <span class="m-node-addr font-mono truncate">{{ addressText(node) }}</span>
-        <span v-if="!node.client_address" class="m-pill m-pill--warning">缺地址</span>
-        <span v-if="agentUpdateAvailable(node) || singBoxUpdateAvailable(node)" class="m-pill m-pill--amber">可升级</span>
-        <span v-if="node.ddns_enabled" class="m-pill m-pill--info">DDNS</span>
-        <span v-if="node.bandwidth" class="m-pill m-pill--neutral">⚡ {{ formatBandwidth(node.bandwidth) }}</span>
-      </div>
-
-      <div class="m-node-gauges neu-inset">
-        <div class="gauge-col">
-          <div class="gauge-meta">
-            <span class="gauge-dot is-down" />
-            <span class="gauge-lbl">实时下行</span>
-          </div>
-          <div class="gauge-val font-mono" :class="{ 'is-muted': !node.online }">
-            ↓ {{ statOf(node, 'down') }}
-          </div>
-        </div>
-        <div class="gauge-sep" />
-        <div class="gauge-col">
-          <div class="gauge-meta">
-            <span class="gauge-dot is-up" />
-            <span class="gauge-lbl">实时上行</span>
-          </div>
-          <div class="gauge-val font-mono" :class="{ 'is-muted': !node.online }">
-            ↑ {{ statOf(node, 'up') }}
-          </div>
-        </div>
-        <div class="gauge-sep" />
-        <div class="gauge-col">
-          <div class="gauge-meta">
-            <span class="gauge-dot is-conn" />
-            <span class="gauge-lbl">活动连接</span>
-          </div>
-          <div class="gauge-val font-mono" :class="{ 'is-muted': !node.online }">
-            {{ statOf(node, 'connections') }}
-          </div>
-        </div>
-      </div>
-
-      <div v-if="node.online && metrics[node.id]?.host" class="m-node-host-meters">
-        <div v-if="metrics[node.id].host.cpu_percent != null" class="m-host-meter">
-          <span class="m-host-meter__lbl">CPU</span>
-          <div class="m-host-meter__track neu-inset">
-            <div class="m-host-meter__fill is-cpu" :style="{ width: `${Math.min(100, Math.max(2, metrics[node.id].host.cpu_percent))}%` }" />
-          </div>
-          <span class="m-host-meter__val font-mono">{{ metrics[node.id].host.cpu_percent.toFixed(0) }}%</span>
-        </div>
-        <div v-if="metrics[node.id].host.memory_total" class="m-host-meter">
-          <span class="m-host-meter__lbl">内存</span>
-          <div class="m-host-meter__track neu-inset">
-            <div class="m-host-meter__fill is-mem" :style="{ width: `${Math.min(100, Math.max(2, (metrics[node.id].host.memory_used / metrics[node.id].host.memory_total) * 100))}%` }" />
-          </div>
-          <span class="m-host-meter__val font-mono">{{ formatBytes(metrics[node.id].host.memory_used) }}</span>
-        </div>
-      </div>
-
-      <div v-if="metrics[node.id]?.latency" class="m-node-latency">
-        <LatencyPanel :latency="metrics[node.id]?.latency" :compact="true" />
-      </div>
-
-      <div class="m-node-footer">
-        <div class="m-node-traffic">{{ totalText(node) }}</div>
-        <div v-if="node.expires_on || node.provider || node.price_period" class="m-node-billing">
-          <span v-if="node.provider" class="provider-link" :class="{ 'is-clickable': node.provider_url }" @click.stop="openProvider(node)">
-            {{ node.provider }}
-          </span>
-          <span v-if="node.expires_on" class="expire-date">到期 {{ node.expires_on }}</span>
-          <span v-if="node.price_period" class="price-chip">
-            {{ node.price_period === 'free' ? '免费' : `${node.currency || 'USD'} ${node.price}/${({day:'天',month:'月',quarter:'季',year:'年'})[node.price_period] || node.price_period}` }}
-          </span>
-        </div>
-        <div v-if="!node.online" class="m-node-offline-hint">
-          离线 · 最后在线 {{ formatDateTime(node.last_seen_at, '从未在线') }}
-        </div>
-      </div>
-    </article>
-
-    <div v-if="!filteredNodes.length" class="m-empty">尚未接入任何服务器</div>
-    <button v-if="filteredNodes.length > visible" type="button" class="m-load-more" @click="visible += 20">
-      加载更多（还有 {{ filteredNodes.length - visible }} 台）
-    </button>
-
-    <MActionSheet
-      v-model="actionsOpen"
-      :title="actionTarget?.name"
-      :details="details"
-      :actions="actions"
-      @select="runAction"
-    />
-
-    <MSheet v-model="editSheet" title="编辑服务器">
-      <div class="m-field">
-        <label class="m-field__label">套餐与到期信息</label>
-        <el-date-picker v-model="editForm.expires_on" type="date" value-format="YYYY-MM-DD" placeholder="到期日期" clearable style="width:100%;margin-bottom:8px" />
-        <div style="display:flex;gap:8px"><el-input v-model="editForm.price" :disabled="editForm.price_period === 'free'" placeholder="价格"/><el-select v-model="editForm.currency" style="width:110px"><el-option label="USD" value="USD"/><el-option label="CNY" value="CNY"/><el-option label="EUR" value="EUR"/><el-option label="CAD" value="CAD"/></el-select></div>
-        <el-select v-model="editForm.price_period" placeholder="计价周期" style="width:100%;margin-top:8px"><el-option label="免费" value="free"/><el-option label="按天" value="day"/><el-option label="按月" value="month"/><el-option label="按季" value="quarter"/><el-option label="按年" value="year"/></el-select>
-        <el-input v-model="editForm.provider" placeholder="厂商" style="margin-top:8px"/><el-input v-model="editForm.provider_url" placeholder="厂商访问 URL" style="margin-top:8px"/><el-input v-model="editForm.traffic_plan" placeholder="流量套餐" style="margin-top:8px"/><el-input v-model="editForm.bandwidth" placeholder="带宽大小" style="margin-top:8px"/>
-      </div>
-      <div class="m-field">
-        <label class="m-field__label">服务器名称 <em>*</em></label>
-        <el-input v-model="editForm.name" maxlength="128" aria-label="服务器名称" placeholder="例如：香港服务器 01" />
-      </div>
-      <div class="m-field">
-        <label class="m-field__label">客户端连接域名或 IP 地址</label>
-        <el-input v-model="editForm.client_address" aria-label="客户端连接域名或 IP 地址" placeholder="例如：proxy.example.com" />
-        <div class="m-field__hint">接入时会自动填入来源 IP。仅填域名或 IP，不含 http://、端口与路径。</div>
-        <div v-if="editNodeAllIPs.length" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
-          <span style="font-size: 12px; color: var(--sb-muted)">点击填入：</span>
-          <el-tag
-            v-for="ip in editNodeAllIPs"
-            :key="ip"
-            size="small"
-            type="info"
-            style="cursor: pointer"
-            @click="editForm.client_address = ip"
-          >
-            {{ editForm.ip_aliases?.[ip] ? `${editForm.ip_aliases[ip]} (${ip})` : ip }}
-          </el-tag>
-        </div>
-      </div>
-      <div class="m-field">
-        <label class="m-field__label">本机出口 IP 与别名设置</label>
-        <div class="m-field__hint">自动从服务器网卡获取或手动配置的出口 IP。在此为每个出口 IP 设置别名。</div>
-        <div v-if="editNodeAllIPs.length" style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px">
-          <div
-            v-for="ip in editNodeAllIPs"
-            :key="ip"
-            style="background: var(--sb-surface-2); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--sb-line)"
-          >
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px">
-              <span style="font-family: monospace; font-size: 12px; font-weight: 600; word-break: break-all">{{ ip }}</span>
-              <div style="display: flex; align-items: center; gap: 6px">
-                <el-tag size="small" :type="ip.includes(':') ? 'warning' : 'success'">
-                  {{ ip.includes(':') ? 'IPv6' : 'IPv4' }}
-                </el-tag>
-                <el-button
-                  v-if="!editNode?.ip_addresses?.includes(ip)"
-                  text
-                  type="danger"
-                  size="small"
-                  :icon="Delete"
-                  title="删除手动添加的出口 IP"
-                  @click="removeCustomEgressIP(ip)"
-                />
-              </div>
-            </div>
-            <el-input
-              v-model="editForm.ip_aliases[ip]"
-              size="small"
-              placeholder="出口别名（例如：电信出口、香港主）"
-              clearable
-            />
-          </div>
-        </div>
-        <div v-else class="m-field__hint" style="margin-top: 6px">
-          暂未检测到出口 IP。您可手动输入本服务器的出口 IP 添加管理。
-        </div>
-        <div style="display: flex; gap: 8px; width: 100%; margin-top: 8px">
-          <el-input
-            v-model="newCustomEgressIP"
-            size="small"
-            placeholder="手动添加出口 IP（如：198.51.100.2）"
-            clearable
-            @keydown.enter.prevent="addCustomEgressIP"
-          />
-          <el-button size="small" :icon="Plus" @click="addCustomEgressIP">添加</el-button>
-        </div>
-      </div>
-      <div class="m-field">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-          <label class="m-field__label" style="margin: 0">动态域名解析 (DDNS)</label>
-          <el-switch
-            v-model="editForm.ddns_enabled"
-            active-text="已开启"
-            inactive-text="未开启"
-            inline-prompt
-          />
-        </div>
-        <div class="m-field__hint">NAT 机器公网出口 IP 变动时自动更新绑定的 Cloudflare A 记录。</div>
-        <div v-if="editForm.ddns_enabled" style="margin-top: 8px;">
-          <el-select
-            v-model="editForm.ddns_record_ids"
-            multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="选择关联的 Cloudflare 记录（支持多选）"
-            style="width: 100%;"
-            :loading="cfLoading"
-            no-data-text="未找到可用记录（请先在域名解析中添加）"
-            @change="onRecordsSelected"
-          >
-            <el-option
-              v-for="item in cfRecords"
-              :key="item.id"
-              :label="`${item.name} (${item.type} ➔ ${item.content})`"
-              :value="item.id"
-            />
-          </el-select>
-          <div v-if="(editForm.ddns_domains || []).length" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px">
-            <el-tag v-for="d in editForm.ddns_domains" :key="d" size="small" type="info">
-              {{ d }}
-            </el-tag>
-          </div>
-          <div style="margin-top: 10px;">
-            <label class="m-field__label" style="font-size: 12px; margin-bottom: 4px;">绑定出口 IP（多 IP / NAT 可选）</label>
-            <el-select
-              v-model="editForm.ddns_bind_ip"
-              filterable
-              allow-create
-              default-first-option
-              clearable
-              placeholder="自动识别（默认出口 IP）"
-              style="width: 100%;"
-            >
-              <el-option v-for="opt in editDDNSIPOptions" :key="opt.value || '__auto__'" :label="opt.label" :value="opt.value" />
-            </el-select>
-            <div class="m-field__hint">多网卡或多公网 IP 服务器可指定使用的出口 IP；单 IP 保持「自动识别」即可。</div>
-          </div>
-          <div v-if="(editForm.ddns_record_ids || []).length > 1 || Object.keys(editForm.ddns_record_ips || {}).length > 0" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
-            <label class="m-field__label" style="font-size: 12px; margin: 0;">分记录独立指定 IP（可选）</label>
-            <div v-for="(recId, idx) in editForm.ddns_record_ids" :key="recId" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 8px; background: rgba(148,163,184,0.08);">
-              <span class="font-mono" style="font-size: 12px;">{{ cfRecordById(recId)?.type || 'DNS' }} · {{ cfRecordById(recId)?.name || editForm.ddns_domains[idx] || recId }}</span>
-              <el-select
-                v-model="editForm.ddns_record_ips[recId]"
-                filterable
-                allow-create
-                default-first-option
-                clearable
-                placeholder="沿用上方默认绑定"
-                style="width: 100%;"
-              >
-                <el-option v-for="opt in editDDNSRecordIPOptions(recId)" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="m-field">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-          <label class="m-field__label" style="margin: 0">探针配置（公共 + 本机独立）</label>
-          <el-button size="small" :icon="Plus" @click="addCustomProbe">添加独立探针</el-button>
-        </div>
-        <div class="m-field__hint">当前服务器除自动继承公共探针外，还可单独配置专属探针。</div>
-        <div v-if="publicProbes.length" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
-          <span style="font-size: 12px; color: var(--sb-muted)">公共探针：</span>
-          <el-tag v-for="p in publicProbes" :key="p.id" size="small" type="success" effect="plain">
-            {{ p.name }} ({{ p.target }})
-          </el-tag>
-        </div>
-        <div v-if="(editForm.custom_probes || []).length" style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-          <div
-            v-for="(probe, idx) in editForm.custom_probes"
-            :key="probe.id || `m-new-${idx}`"
-            style="background: var(--sb-surface-2); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px;"
-          >
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-              <el-input v-model="probe.name" size="small" placeholder="探针名称（如：广州电信）" style="flex: 1" />
-              <el-input-number v-model="probe.interval" size="small" :min="5" :max="3600" :step="5" controls-position="right" style="width: 96px" />
-              <el-button text type="danger" size="small" :icon="Delete" @click="removeCustomProbe(idx)" />
-            </div>
-            <el-input v-model="probe.target" size="small" placeholder="目标地址 host:port（如 1.1.1.1:443）" />
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="editSheet = false">取消</el-button>
-        <el-button type="primary" :loading="editSaving" :disabled="!editForm.name.trim()" @click="saveNode">保存</el-button>
-      </template>
-    </MSheet>
-
-    <MSheet v-model="tokenSheet" title="服务器接入信息" full>
-      <div class="m-notice m-notice--warning">此命令只显示一次，请立即复制。令牌一次性使用，过期后需重新生成。</div>
-      <div class="m-field">
-        <label class="m-field__label">Master 地址（agent 拨号用的主机）</label>
-        <el-input v-model="masterHost" aria-label="Master 地址" placeholder="control.example.com">
-          <template #append>:{{ agentPort }}</template>
-        </el-input>
-        <div class="m-field__hint">默认按当前控制台域名填入。若 agent 需通过其他域名或公网 IP 连接，请改成正确的主机名，本浏览器会记住。</div>
-      </div>
-      <div class="m-field">
-        <label class="m-field__label">在目标服务器上以 root 执行</label>
-        <pre class="command">{{ installCommand }}</pre>
-      </div>
-      <p class="m-field__hint">令牌有效期至：{{ formatDateTime(expiresAt) }}。命令执行后该服务器会出现在「等待确认的服务器」，需在本页点「接入」批准。</p>
-      <template #footer>
-        <el-button @click="tokenSheet = false">完成</el-button>
-        <el-button type="primary" @click="copyInstallCommand">复制</el-button>
-      </template>
-    </MSheet>
-
-    <template v-if="isAdmin" #fab>
-      <button type="button" class="m-fab" aria-label="添加服务器" @click="generateToken">
-        <el-icon :size="24"><Plus /></el-icon>
-      </button>
-    </template>
-  </MPage>
-</template>
-
 <style scoped>
-/* 命令很长，横向滚动比换行成六七行好读，也方便长按整段选中。 */
-.command {
-  margin: 0;
-  padding: 12px;
-  color: var(--sb-text-2);
-  background: rgba(148, 163, 184, .07);
-  border: 1px solid var(--sb-line);
-  border-radius: var(--sb-radius-sm);
-  font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  word-break: break-all;
-  user-select: all;
-}
-
 .m-node-card {
-  position: relative;
-  display: block;
-  width: 100%;
-  padding: 14px 15px 12px;
-  margin-bottom: 12px;
-  background: var(--sb-panel-solid);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--sb-surface);
   border: 1px solid var(--sb-line);
-  border-radius: var(--m-radius);
-  box-shadow: var(--sb-shadow-sm);
+  border-radius: 14px;
   cursor: pointer;
-  text-align: left;
-  user-select: none;
-  overflow: hidden;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.m-node-card:active {
-  transform: scale(0.992);
-}
-.m-node-card.is-offline {
-  opacity: 0.72;
-}
-
-.m-node-glow {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 70px;
-  height: 70px;
-  border-radius: 0 var(--m-radius) 0 50px;
-  pointer-events: none;
-  opacity: 0.35;
-  transition: opacity 0.3s ease;
-}
-.m-node-glow.is-online {
-  background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.45) 0%, transparent 70%);
-}
-.m-node-glow.is-offline {
-  background: radial-gradient(circle at top right, rgba(148, 163, 184, 0.25) 0%, transparent 70%);
-}
-
 .m-node-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 .m-node-hero {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
 }
 .m-node-os {
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  flex: none;
 }
 .m-node-title {
   margin: 0;
-  color: var(--sb-text);
-  font-size: 15.5px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1.35;
-}
-
-.m-node-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 15px;
   font-weight: 600;
-  flex-shrink: 0;
+  color: var(--sb-text);
 }
-.m-node-status.is-online {
-  background: rgba(16, 185, 129, 0.12);
-  color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.28);
-}
-html.dark .m-node-status.is-online {
-  background: rgba(16, 185, 129, 0.18);
-  color: #34D399;
-  border-color: rgba(16, 185, 129, 0.35);
-}
-.m-node-status.is-offline {
-  background: var(--sb-surface-3);
-  color: var(--sb-muted);
-  border: 1px solid var(--sb-line);
-}
-.m-node-pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.m-node-status.is-online .m-node-pulse {
-  background: #10B981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
-  animation: pulse-dot 2s infinite ease-in-out;
-}
-.m-node-status.is-offline .m-node-pulse {
-  background: #94A3B8;
-}
-@keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.6; }
-}
-
-.m-node-tags {
+.m-node-sub {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.m-node-addr {
+  gap: 8px;
   font-size: 12px;
-  color: var(--sb-muted);
-  max-width: 60%;
-}
-.m-pill--amber {
-  background: rgba(245, 158, 11, 0.12);
-  color: #D97706;
-  border: 1px solid rgba(245, 158, 11, 0.28);
-}
-html.dark .m-pill--amber {
-  background: rgba(245, 158, 11, 0.2);
-  color: #FBBF24;
-  border-color: rgba(245, 158, 11, 0.35);
-}
-.m-pill--neutral {
-  background: var(--sb-surface-3);
   color: var(--sb-text-2);
-  border: 1px solid var(--sb-line);
 }
-
-.m-node-gauges {
+.m-node-meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.m-node-meter {
   display: flex;
-  align-items: center;
-  margin-top: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  background: var(--neu-inset-bg);
-  border: 1px solid var(--sb-line);
-  box-shadow: var(--sh-inset);
-}
-.gauge-col {
-  flex: 1;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
+}
+.m-node-meter-head {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.gauge-meta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.gauge-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.gauge-dot.is-down { background: #0284C7; }
-html.dark .gauge-dot.is-down { background: #38BDF8; }
-.gauge-dot.is-up { background: #D97706; }
-html.dark .gauge-dot.is-up { background: #FBBF24; }
-.gauge-dot.is-conn { background: #10B981; }
-html.dark .gauge-dot.is-conn { background: #34D399; }
-
-.gauge-lbl {
-  font-size: 10.5px;
-  color: var(--sb-muted);
-}
-.gauge-val {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--sb-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.gauge-val.is-muted {
-  color: var(--sb-muted);
-}
-.gauge-sep {
-  width: 1px;
-  height: 24px;
-  background: var(--sb-line);
-  margin: 0 8px;
-  flex-shrink: 0;
-}
-
-.m-node-host-meters {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-  padding: 0 2px;
-}
-.m-host-meter {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   font-size: 11px;
-}
-.m-host-meter__lbl {
   color: var(--sb-muted);
-  font-weight: 600;
-  width: 24px;
-  flex-shrink: 0;
-}
-.m-host-meter__track {
-  flex: 1;
-  height: 6px;
-  background: var(--neu-inset-bg);
-  border-radius: 999px;
-  border: 1px solid var(--sb-line);
-  overflow: hidden;
-}
-.m-host-meter__fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-.m-host-meter__fill.is-cpu {
-  background: linear-gradient(90deg, #38BDF8, #0284C7);
-}
-.m-host-meter__fill.is-mem {
-  background: linear-gradient(90deg, #A78BFA, #7C3AED);
-}
-.m-host-meter__val {
-  color: var(--sb-text-2);
-  font-size: 11px;
-  min-width: 32px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.m-node-latency {
-  margin-top: 8px;
-}
-
-.m-node-footer {
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px solid var(--sb-line);
-  font-size: 11.5px;
-  color: var(--sb-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.m-node-traffic {
-  color: var(--sb-text-2);
-}
-.m-node-billing {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.provider-link.is-clickable {
-  color: var(--sb-accent);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.price-chip {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--sb-surface-3);
-  border: 1px solid var(--sb-line);
-}
-.m-node-offline-hint {
-  color: var(--sb-danger);
-  font-weight: 500;
 }
 .m-pending-item {
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -1312,10 +1602,10 @@ html.dark .gauge-dot.is-conn { background: #34D399; }
 .m-pending-tag {
   font-size: 10px;
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #d97706;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--sb-warning);
 }
 .m-pending-specs {
   display: flex;
@@ -1328,13 +1618,32 @@ html.dark .gauge-dot.is-conn { background: #34D399; }
   align-items: center;
   font-size: 11px;
   padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--sb-surface-2, rgba(0, 0, 0, 0.04));
+  border-radius: 6px;
+  background: var(--sb-surface-2);
   color: var(--sb-text-2);
-  border: 1px solid var(--sb-line, rgba(0, 0, 0, 0.06));
 }
-.m-item__act--primary {
-  color: var(--sb-warning) !important;
+.m-pending-approve {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid var(--sb-line);
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--sb-success);
+  cursor: pointer;
 }
-
+.command {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 </style>

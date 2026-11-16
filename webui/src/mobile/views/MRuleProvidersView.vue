@@ -195,8 +195,22 @@ onMounted(load)
       </div>
       <div class="m-field">
         <label class="m-field__label">下载代理 <em>*</em></label>
-        <MPicker v-model="form.proxy" :options="proxyOptions" title="选择下载代理" />
-        <div class="m-field__hint">需为 DIRECT，或客户端配置中已存在的代理分组 / 节点名称。</div>
+        <el-select
+          v-model="form.proxy"
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或输入下载代理"
+          style="width: 100%;"
+        >
+          <el-option
+            v-for="opt in proxyOptions"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
+        <div class="m-field__hint">需为 DIRECT，或客户端配置中已存在的代理分组 / 节点名称（支持直接输入自定义节点名）。</div>
       </div>
       <template #footer>
         <el-button @click="sheetOpen = false">取消</el-button>

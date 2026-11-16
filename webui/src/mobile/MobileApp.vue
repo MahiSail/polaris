@@ -6,6 +6,7 @@ import { api, post, setCsrfToken } from '../api'
 import { closeLiveEvents, subscribeLive } from '../live'
 import { closeConnectionEvents } from '../connections'
 import { isShareMode } from '../share'
+import { isDark, toggleTheme } from '../theme'
 import './styles.css'
 import MLoginView from './views/MLoginView.vue'
 import MPasswordChangeView from './views/MPasswordChangeView.vue'
@@ -38,11 +39,18 @@ const views = {
   outbounds: defineAsyncComponent(() => import('./views/MOutboundsView.vue')),
   connections: defineAsyncComponent(() => import('./views/MConnectionsView.vue')),
   devices: defineAsyncComponent(() => import('./views/MDevicesView.vue')),
-  'connection-history': defineAsyncComponent(() => import('./views/MDevicesView.vue')),
+  'connection-history': defineAsyncComponent(() => import('./views/MConnectionHistoryView.vue')),
   audit: defineAsyncComponent(() => import('./views/MAuditView.vue')),
   security: defineAsyncComponent(() => import('./views/MSecurityView.vue')),
   cloudflare: defineAsyncComponent(() => import('./views/MCloudflareView.vue')),
   settings: defineAsyncComponent(() => import('./views/MSettingsView.vue')),
+  status: defineAsyncComponent(() => import('./views/MStatusView.vue')),
+  'admin-notify': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
+  'admin-data': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
+  'admin-themes': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
+  'admin-security': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
+  'admin-settings': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
+  'admin-update': defineAsyncComponent(() => import('./views/MAdminManagementView.vue')),
 }
 
 const resolveInitialView = () => {
@@ -86,6 +94,7 @@ let stopAppLive
 let inFlightNodesPromise = null
 
 function navigate(view, query = '') {
+  const effectiveQuery = !query && view === 'alerts' ? 'tab=alerts' : query
   const resolved = viewAliases[view] || view
   if (isShareMode && resolved !== sharePage.value) {
     ElMessage.warning('这是只读分享页面，仅包含分享的页面')
@@ -97,7 +106,7 @@ function navigate(view, query = '') {
   }
   currentView.value = views[resolved] ? resolved : 'dashboard'
   if (!isShareMode) {
-    const target = `/${currentView.value}${query ? `?${query}` : ''}`
+    const target = `/${currentView.value}${effectiveQuery ? `?${effectiveQuery}` : ''}`
     if (window.location.pathname + window.location.search !== target || window.location.hash) {
       window.history.pushState({ view: currentView.value }, '', target)
       window.dispatchEvent(new PopStateEvent('popstate'))
@@ -264,6 +273,8 @@ provide('navigate', navigate)
 provide('goBack', goBack)
 provide('currentView', currentView)
 provide('logout', logout)
+provide('isDark', isDark)
+provide('toggleTheme', toggleTheme)
 
 onMounted(() => {
   if (location.hash) {
@@ -316,7 +327,7 @@ onBeforeUnmount(() => {
       </transition>
     </main>
 
-    <nav class="m-app__tabs" aria-label="主导航">
+    <nav v-if="!isShareMode" class="m-app__tabs" aria-label="主导航">
       <button
         v-for="tab in tabs"
         :key="tab.id"

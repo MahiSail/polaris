@@ -9,7 +9,7 @@ import MSegmented from '../components/MSegmented.vue'
 import MSheet from '../components/MSheet.vue'
 import MPicker from '../components/MPicker.vue'
 import MActionSheet from '../components/MActionSheet.vue'
-import DDNSHistoryTable from '../../components/DDNSHistoryTable.vue'
+import MDDNSHistoryList from '../components/MDDNSHistoryList.vue'
 
 const isAdmin = inject('isAdmin')
 const appState = inject('appState')
@@ -31,6 +31,7 @@ const remoteError = ref('')
 const certificate = reactive({ id: '', domain: '', certificate: '', private_key: '' })
 const keyword = ref('')
 const selectedType = ref('')
+const selectedNode = ref('')
 const actionsOpen = ref(false)
 const actionTarget = ref(null)
 const actionKind = ref('record')
@@ -50,6 +51,7 @@ const recordsAvailable = computed(() => zones.value.length
   : Boolean(settings.value.connected))
 const filteredRecords = computed(() => records.value.filter((row) => {
   if (selectedType.value && row.type !== selectedType.value) return false
+  if (selectedNode.value && !(row.bindings || []).some((b) => b.node_name === selectedNode.value)) return false
   return includesText([row.name, row.content, row.type, row.zone_name, boundTo(row)], keyword.value)
 }))
 const filteredCertificates = computed(() => certificates.value.filter((row) =>
@@ -312,8 +314,12 @@ onMounted(load)
     <MSegmented v-model="tab" :options="[{ value: 'records', label: '域名记录' }, { value: 'certificates', label: '源证书', badge: certificates.length }, { value: 'ddns-history', label: 'DDNS记录' }]" />
 
     <el-input v-if="tab !== 'ddns-history'" v-model="keyword" clearable :prefix-icon="Search" :placeholder="tab === 'records' ? '搜索域名、内容或服务器' : '搜索域名或证书'" />
-    <div v-if="tab === 'records'" class="m-filters">
+    <div v-if="tab === 'records'" class="m-filters" style="flex-direction: column; align-items: stretch; gap: 6px;">
       <MSegmented v-model="selectedType" :options="[{ value: '', label: '全部类型' }, ...recordTypes.map((type) => ({ value: type, label: type }))]" />
+      <el-select v-if="(appState.nodes || []).length" v-model="selectedNode" clearable placeholder="全部服务器" style="width: 100%;">
+        <el-option label="全部服务器" value="" />
+        <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.name" />
+      </el-select>
     </div>
 
     <template v-if="tab === 'records'">
@@ -370,7 +376,7 @@ onMounted(load)
 
     <template v-else-if="tab === 'ddns-history'">
       <div style="margin-top: 10px;">
-        <DDNSHistoryTable />
+        <MDDNSHistoryList />
       </div>
     </template>
 

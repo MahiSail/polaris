@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Share } from '@element-plus/icons-vue'
+import MShareSheet from '../components/MShareSheet.vue'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
 import { init, use } from 'echarts/core'
@@ -16,9 +17,11 @@ import MPage from '../components/MPage.vue'
 use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent, CanvasRenderer])
 
 const appState = inject('appState')
+const canWrite = inject('canWrite', computed(() => false))
 const loadNodes = inject('loadNodes')
 const navigate = inject('navigate')
 const loading = ref(false)
+const shareOpen = ref(false)
 const endpointCount = ref(0)
 const cumulative = ref({ download: 0, upload: 0 })
 const trafficHistory = shallowRef([])
@@ -90,7 +93,7 @@ function donutLabels(formatter, show) {
   }
 }
 
-const historyLength = 60
+const historyLength = 120
 let stopLive
 let stopTotals
 let refreshTimer
@@ -296,7 +299,10 @@ async function load(silent = false) {
       api('/listeners').catch(() => ({ listeners: [] })),
       api('/nodes/metrics').catch(() => ({ nodes: [] })),
     ])
-    endpointCount.value = (listenerResult.listeners || []).length
+    endpointCount.value = (listenerResult.listeners || []).reduce(
+      (total, listener) => total + Number(listener.endpoint_count || 0),
+      0
+    )
     cumulative.value = (metricResult.nodes || []).reduce((total, entry) => ({
       download: total.download + Number(entry.report?.proxy?.received_bytes || 0),
       upload: total.upload + Number(entry.report?.proxy?.sent_bytes || 0),
@@ -340,6 +346,14 @@ onBeforeUnmount(() => {
   <MPage title="运行概览" :loading="loading">
     <template #actions>
       <el-button
+        v-if="canWrite"
+        circle
+        size="small"
+        :icon="Share"
+        aria-label="分享"
+        @click="shareOpen = true"
+      />
+      <el-button
         circle
         size="small"
         :icon="Refresh"
@@ -379,6 +393,7 @@ onBeforeUnmount(() => {
     </div>
     <div ref="connectionChart" class="chart neu-sm" />
     <div ref="proxyChart" class="chart chart--bars neu-sm" />
+    <MShareSheet v-model="shareOpen" page="dashboard" />
   </MPage>
 </template>
 

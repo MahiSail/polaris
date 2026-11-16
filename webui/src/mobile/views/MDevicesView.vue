@@ -1,22 +1,122 @@
+<template>
+  <MPage title="热门设备" :loading="loading">
+    <template #actions>
+      <el-button
+        circle
+        size="small"
+        :icon="Refresh"
+        :loading="loading"
+        aria-label="刷新"
+        @click="load"
+      />
+    </template>
+
+    <div class="m-stack">
+      <div class="m-card" style="padding: 10px 12px;">
+        <MSegmented
+          v-model="range"
+          :options="[
+            { value: '24h', label: '最近 24 小时' },
+            { value: '7d', label: '最近 7 天' },
+            { value: '30d', label: '最近 30 天' },
+          ]"
+        />
+        <div class="m-filter-bar" style="margin-top: 8px;">
+          <span class="m-note">保留最近 30 天 · {{ timeZoneLabel }}</span>
+          <el-button size="small" type="primary" text @click="navigate('connection-history')">
+            历史连接明细
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 4 Separate Summary Stats (PC parity) -->
+      <div class="m-kv-grid">
+        <div class="m-card" style="padding: 10px 12px;">
+          <div class="m-kv-cell__label">历史连接数</div>
+          <div class="m-kv-cell__value" style="font-size: 16px;">{{ summary.total_connections || 0 }}</div>
+        </div>
+        <div class="m-card" style="padding: 10px 12px;">
+          <div class="m-kv-cell__label">热门设备数 (独立 IP)</div>
+          <div class="m-kv-cell__value" style="font-size: 16px;">{{ summary.unique_ips || summary.unique_devices || 0 }}</div>
+        </div>
+        <div class="m-card" style="padding: 10px 12px;">
+          <div class="m-kv-cell__label">累计下行流量</div>
+          <div class="m-kv-cell__value" style="font-size: 15px;">{{ formatBytes(summary.total_download || 0) }}</div>
+        </div>
+        <div class="m-card" style="padding: 10px 12px;">
+          <div class="m-kv-cell__label">累计上行流量</div>
+          <div class="m-kv-cell__value" style="font-size: 15px;">{{ formatBytes(summary.total_upload || 0) }}</div>
+        </div>
+      </div>
+
+      <div v-if="!loading && devices.length === 0" class="m-card m-note">
+        该时间段暂无设备活动记录
+      </div>
+
+      <div v-else class="m-list">
+        <div
+          v-for="(row, idx) in devices"
+          :key="`${row.source_ip}-${row.user || idx}`"
+          class="m-card"
+          style="cursor: pointer;"
+          @click="filterByIP(row.source_ip)"
+        >
+          <div class="m-filter-bar" style="margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              <el-tag size="small" effect="plain">#{{ idx + 1 }}</el-tag>
+              <strong class="m-mono-wrap" style="font-size: 14px;">{{ row.source_ip }}</strong>
+            </div>
+            <strong style="font-size: 14px; white-space: nowrap;">
+              {{ formatBytes(row.total_bytes || Number(row.upload || 0) + Number(row.download || 0)) }}
+            </strong>
+          </div>
+
+          <div class="m-filter-bar" style="margin-bottom: 6px;">
+            <span class="m-note">{{ row.source_location || '归属地未知' }}</span>
+            <el-button
+              v-if="row.user"
+              size="small"
+              text
+              type="primary"
+              style="padding: 0; height: auto;"
+              @click.stop="filterByUser(row.user)"
+            >
+              接入节点：{{ row.user }}
+            </el-button>
+          </div>
+
+          <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-text-2); margin-bottom: 4px;">
+            <span class="m-mono-wrap">
+              ↓ {{ formatBytes(row.download || 0) }} · ↑ {{ formatBytes(row.upload || 0) }}
+            </span>
+            <span>{{ row.connection_count || 0 }} 次连接</span>
+          </div>
+
+          <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted);">
+            <span class="truncate" style="max-width: 60%;">{{ row.node_names || '—' }}</span>
+            <span>{{ formatDateTime(row.last_seen_at) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </MPage>
+</template>
+
 <script setup>
-import { computed, inject, onMounted, reactive, ref } from 'vue'
-import { Download, Filter, Refresh, Search } from '@element-plus/icons-vue'
-import { api, csrfToken } from '../../api'
-import { formatBytes, formatDateTime, formatDuration } from '../../format'
+import { inject, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
+import { api } from '../../api'
+import { formatBytes, formatDateTime, localTimeZoneLabel } from '../../format'
 import MPage from '../components/MPage.vue'
 import MSegmented from '../components/MSegmented.vue'
-import MPicker from '../components/MPicker.vue'
 
-const appState = inject('appState')
-const loadNodes = inject('loadNodes')
+const navigate = inject('navigate', () => {})
+const timeZoneLabel = localTimeZoneLabel()
 
-const isHistoryRoute = () => location.hash.includes('connection-history')
-const tab = ref(isHistoryRoute() ? 'history' : 'popular')
+const range = ref('7d')
 const loading = ref(false)
-const popularLoading = ref(false)
-
-// 热门设备概览
-const popularRange = ref('7d')
+const devices = ref([])
 const summary = reactive({
   total_connections: 0,
   unique_devices: 0,
@@ -24,279 +124,41 @@ const summary = reactive({
   total_upload: 0,
   total_download: 0,
 })
-const popularDevices = ref([])
 
-// 历史连接查询
-const filter = reactive({
-  ip: '',
-  node_id: '',
-  keyword: '',
-})
-const page = ref(1)
-const pageSize = ref(20)
-const total = ref(0)
-const records = ref([])
-
-const tabOptions = [
-  { value: 'popular', label: '热门排行' },
-  { value: 'history', label: '历史记录' },
-]
-
-const rangeOptions = [
-  { value: '24h', label: '近 24 小时' },
-  { value: '7d', label: '近 7 天' },
-  { value: '30d', label: '近 30 天' },
-]
-
-const nodeOptions = computed(() => [
-  { value: '', label: '全部服务器' },
-  ...appState.nodes.map((n) => ({ value: n.id, label: n.name })),
-])
-
-async function loadPopular() {
-  popularLoading.value = true
-  try {
-    const data = await api(`/devices/popular?range=${popularRange.value}&limit=20`)
-    Object.assign(summary, data.summary || {})
-    popularDevices.value = data.devices || []
-  } catch (err) {
-    console.error('Failed to load popular devices', err)
-  } finally {
-    popularLoading.value = false
-  }
-}
-
-async function loadRecords(append = false) {
+async function load() {
   loading.value = true
   try {
-    const params = new URLSearchParams({
-      page: String(page.value),
-      page_size: String(pageSize.value),
+    const res = await api(`/devices/popular?range=${encodeURIComponent(range.value)}&limit=20`)
+    devices.value = res.devices || []
+    Object.assign(summary, {
+      total_connections: res.summary?.total_connections || 0,
+      unique_devices: res.summary?.unique_devices || 0,
+      unique_ips: res.summary?.unique_ips || 0,
+      total_upload: res.summary?.total_upload || 0,
+      total_download: res.summary?.total_download || 0,
     })
-    if (filter.ip) params.set('ip', filter.ip.trim())
-    if (filter.node_id) params.set('node_id', filter.node_id)
-    if (filter.keyword) params.set('keyword', filter.keyword.trim())
-
-    const data = await api(`/devices/connections?${params}`)
-    const list = data.records || []
-    total.value = data.total || 0
-    if (append) {
-      records.value = [...records.value, ...list]
-    } else {
-      records.value = list
-    }
   } catch (err) {
-    console.error('Failed to load connection records', err)
+    ElMessage.error(err.message || '加载热门设备失败')
   } finally {
     loading.value = false
   }
 }
 
-function handleSearch() {
-  page.value = 1
-  loadRecords(false)
+function filterByIP(ip) {
+  if (!ip) return
+  navigate('connection-history', `ip=${encodeURIComponent(ip)}`)
 }
 
-function loadMore() {
-  if (records.value.length < total.value) {
-    page.value += 1
-    loadRecords(true)
-  }
+function filterByUser(user) {
+  if (!user) return
+  navigate('connection-history', `user=${encodeURIComponent(user)}`)
 }
 
-const exporting = ref(false)
+watch(range, () => {
+  load()
+})
 
-async function exportCSV() {
-  exporting.value = true
-  try {
-    const params = new URLSearchParams()
-    if (filter.ip) params.set('ip', filter.ip.trim())
-    if (filter.node_id) params.set('node_id', filter.node_id)
-    if (filter.keyword) params.set('keyword', filter.keyword.trim())
-
-    const headers = {}
-    if (csrfToken.value) headers['X-CSRF-Token'] = csrfToken.value
-
-    const res = await fetch(`/api/v1/devices/connections/export?${params}`, {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers,
-    })
-    if (!res.ok) throw new Error('导出失败')
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `connections_${Date.now()}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  } catch (err) {
-    console.error('Export error', err)
-  } finally {
-    exporting.value = false
-  }
-}
-
-function filterByDeviceIP(ip) {
-  filter.ip = ip
-  tab.value = 'history'
-  handleSearch()
-}
-
-function refresh() {
-  if (tab.value === 'popular') loadPopular()
-  else handleSearch()
-}
-
-onMounted(async () => {
-  await loadNodes()
-  loadPopular()
-  loadRecords()
+onMounted(() => {
+  load()
 })
 </script>
-
-<template>
-  <MPage title="热门设备与历史连接" :loading="loading && popularLoading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading || popularLoading" aria-label="刷新" @click="refresh">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
-    <MSegmented v-model="tab" :options="tabOptions" />
-
-    <!-- 热门排行 TAB -->
-    <div v-if="tab === 'popular'">
-      <div class="m-filters" style="margin-bottom: 12px">
-        <MPicker v-model="popularRange" chip :options="rangeOptions" title="时间范围" @update:model-value="loadPopular" />
-      </div>
-
-      <!-- 概览指标卡 -->
-      <div class="m-stats-card">
-        <div class="m-stat-row">
-          <div class="m-stat-col">
-            <span class="m-stat-col__val">{{ summary.total_connections.toLocaleString() }}</span>
-            <span class="m-stat-col__lbl">连接记录</span>
-          </div>
-          <div class="m-stat-col">
-            <span class="m-stat-col__val">{{ summary.unique_devices }}</span>
-            <span class="m-stat-col__lbl">活跃设备</span>
-          </div>
-          <div class="m-stat-col">
-            <span class="m-stat-col__val">{{ summary.unique_ips }}</span>
-            <span class="m-stat-col__lbl">来源 IP</span>
-          </div>
-          <div class="m-stat-col">
-            <span class="m-stat-col__val">{{ formatBytes(summary.total_download + summary.total_upload) }}</span>
-            <span class="m-stat-col__lbl">总流量</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="m-count">{{ popularDevices.length }} 个设备 · 最多保留 30 天数据</div>
-
-      <article v-for="(row, index) in popularDevices" :key="index" class="m-item">
-        <div class="m-item__hit" style="cursor: default">
-          <div class="m-item__head">
-            <div class="m-rank-title">
-              <span class="m-pill" :class="index < 3 ? 'm-pill--warning' : 'm-pill--info'">#{{ index + 1 }}</span>
-              <span class="m-item__title m-item__title--mono" style="margin-left: 6px"><strong>{{ row.source_ip }}</strong></span>
-            </div>
-            <el-button size="small" link type="primary" :icon="Filter" @click="filterByDeviceIP(row.source_ip)">
-              查此 IP 连接
-            </el-button>
-          </div>
-          <div class="m-item__stats">
-            <span class="m-stat"><b>{{ row.connection_count.toLocaleString() }} 次</b><small>连接次数</small></span>
-            <span class="m-stat"><b>{{ formatBytes(row.total_bytes) }}</b><small>累计流量</small></span>
-          </div>
-          <div class="m-item__meta">
-            {{ row.source_location || '未知归属地' }}{{ row.user ? ` · ${row.user}` : '' }} · {{ formatDateTime(row.last_seen_at) }}
-          </div>
-        </div>
-      </article>
-      <div v-if="popularDevices.length === 0" class="m-empty">暂无热门设备数据</div>
-    </div>
-
-    <!-- 历史记录 TAB -->
-    <div v-if="tab === 'history'">
-      <div class="m-listbar">
-        <el-input v-model="filter.ip" clearable :prefix-icon="Search" placeholder="按来源 IP 筛选" @change="handleSearch" />
-        <div class="m-filters">
-          <MPicker v-model="filter.node_id" chip :options="nodeOptions" title="按服务器筛选" placeholder="全部服务器" @update:model-value="handleSearch" />
-          <el-input v-model="filter.keyword" clearable placeholder="搜索域名/目标" style="flex: 1" @change="handleSearch" />
-        </div>
-      </div>
-
-      <div class="m-count" style="display: flex; justify-content: space-between; align-items: center">
-        <span>{{ total }} 条历史记录</span>
-        <el-button size="small" link type="primary" :icon="Download" :loading="exporting" @click="exportCSV">
-          导出 CSV
-        </el-button>
-      </div>
-
-      <article v-for="row in records" :key="row.id" class="m-item">
-        <div class="m-item__hit" style="cursor: default">
-          <div class="m-item__head">
-            <span class="m-item__title m-item__title--mono">{{ row.host || row.destination }}</span>
-            <span class="m-pill m-pill--info">{{ (row.network || 'TCP').toUpperCase() }}</span>
-          </div>
-          <div class="m-item__stats">
-            <span class="m-stat"><b>↓ {{ formatBytes(row.download) }}</b><small>下行流量</small></span>
-            <span class="m-stat"><b>↑ {{ formatBytes(row.upload) }}</b><small>上行流量</small></span>
-          </div>
-          <div class="m-item__meta">
-            {{ row.user ? `${row.user} · ` : '' }}{{ row.source_ip }} · {{ row.node_name || row.node_id }} · {{ formatDateTime(row.started_at) }}
-            <span v-if="row.closed_at">({{ formatDuration(row.duration_seconds) }})</span>
-          </div>
-        </div>
-      </article>
-
-      <div v-if="records.length === 0 && !loading" class="m-empty">未找到匹配的历史连接记录</div>
-
-      <div v-if="records.length < total" style="padding: 16px 0; text-align: center">
-        <el-button :loading="loading" round @click="loadMore">加载更多 ({{ records.length }}/{{ total }})</el-button>
-      </div>
-    </div>
-  </MPage>
-</template>
-
-<style scoped>
-.m-stats-card {
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  background: var(--sb-panel-solid);
-  border: 1px solid var(--sb-line);
-  border-radius: var(--sb-radius);
-  box-shadow: var(--sb-shadow-sm);
-}
-.m-stat-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  text-align: center;
-}
-.m-stat-col {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.m-stat-col__val {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--sb-text);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.m-stat-col__lbl {
-  font-size: 11px;
-  color: var(--sb-muted);
-}
-.m-rank-title {
-  display: flex;
-  align-items: center;
-}
-</style>

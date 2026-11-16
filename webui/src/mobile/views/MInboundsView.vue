@@ -354,6 +354,7 @@ onMounted(load)
         <div class="m-inbound-hero min-w-0 flex-1">
           <span class="m-inbound-name truncate" :title="row.name">{{ row.name }}</span>
           <span class="m-pill" :class="protocolPill(row)">{{ protocolLabel(row) }}</span>
+          <span v-if="row.spec?.transport?.type === 'httpupgrade'" class="m-pill m-pill--info">CDN</span>
         </div>
         <span class="m-inbound-status" :class="row.enabled ? 'is-enabled' : 'is-disabled'">
           {{ row.enabled ? '启用' : '停用' }}

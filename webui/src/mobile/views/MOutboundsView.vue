@@ -28,12 +28,14 @@ const testResults = ref([])
 const form = reactive({ name: '', type: 'socks', server: '', server_port: 1080, username: '', password: '', enabled: true, expires_at: '' })
 const keyword = ref('')
 const selectedType = ref('')
+const selectedStatus = ref('')
 const actionsOpen = ref(false)
 const actionTarget = ref(null)
 
 const typeOptions = [{ value: 'socks', label: 'SOCKS5' }, { value: 'http', label: 'HTTP' }]
 const filteredRows = computed(() => rows.value.filter((row) => {
   if (selectedType.value && row.type !== selectedType.value) return false
+  if (selectedStatus.value && String(Boolean(row.enabled)) !== selectedStatus.value) return false
   return includesText([row.name, row.type, row.server, row.server_port, row.username], keyword.value)
 }))
 const onlineNodes = computed(() => appState.nodes.filter((node) => node.online))
@@ -196,10 +198,14 @@ onMounted(load)
       </button>
     </template>
     <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" />
-    <div class="m-filters">
+    <div class="m-filters" style="flex-direction: column; align-items: stretch; gap: 6px;">
       <MSegmented
         v-model="selectedType"
-        :options="[{ value: '', label: '全部' }, { value: 'socks', label: 'SOCKS5' }, { value: 'http', label: 'HTTP' }, { value: 'direct', label: '直连' }]"
+        :options="[{ value: '', label: '全部类型' }, { value: 'socks', label: 'SOCKS5' }, { value: 'http', label: 'HTTP' }, { value: 'direct', label: '直连' }]"
+      />
+      <MSegmented
+        v-model="selectedStatus"
+        :options="[{ value: '', label: '全部状态' }, { value: 'true', label: '启用' }, { value: 'false', label: '停用' }]"
       />
     </div>
 

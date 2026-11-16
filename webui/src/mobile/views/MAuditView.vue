@@ -8,6 +8,7 @@ import MPage from '../components/MPage.vue'
 import MSegmented from '../components/MSegmented.vue'
 import MPicker from '../components/MPicker.vue'
 import MSheet from '../components/MSheet.vue'
+import MDDNSHistoryList from '../components/MDDNSHistoryList.vue'
 import {
   AUDIT_MODULES, TARGET_NAMES, TASK_KINDS, STATUS_MAP,
   getModuleInfo, formatAuditTitle, parseJsonDetail
@@ -18,11 +19,13 @@ const isAdmin = inject('isAdmin')
 const loadNodes = inject('loadNodes')
 
 const loading = ref(false)
-const tab = ref('tasks') // 'tasks' | 'audit'
+const tab = ref('tasks') // 'tasks' | 'audit' | 'ddns'
+const ddnsTotal = ref(0)
 
 // Tasks State
 const tasks = ref([])
 const taskKeyword = ref('')
+const selectedNodeId = ref('')
 const selectedTaskStatus = ref('')
 const taskQuery = reactive({ page: 1, pageSize: 20, total: 0 })
 
@@ -40,6 +43,11 @@ const activeType = ref('task')
 
 const nodeNames = computed(() => Object.fromEntries(appState.nodes.map((n) => [n.id, n.name])))
 const timeZoneLabel = localTimeZoneLabel()
+
+const nodeFilterOptions = computed(() => [
+  { value: '', label: '全部服务器' },
+  ...(appState.nodes || []).map((n) => ({ value: n.id, label: n.name })),
+])
 
 const taskStatusOptions = [
   { value: '', label: '全部状态' },
@@ -63,6 +71,7 @@ async function loadTasks() {
       page_size: taskQuery.pageSize,
     })
     if (taskKeyword.value.trim()) params.set('keyword', taskKeyword.value.trim())
+    if (selectedNodeId.value) params.set('node_id', selectedNodeId.value)
     if (selectedTaskStatus.value) params.set('status', selectedTaskStatus.value)
 
     const res = await api(`/tasks?${params.toString()}`)
@@ -95,13 +104,16 @@ async function loadAudit() {
   }
 }
 
+const ddnsListRef = ref(null)
+
 function refreshCurrent() {
   if (tab.value === 'tasks') loadTasks()
-  else loadAudit()
+  else if (tab.value === 'audit') loadAudit()
+  else ddnsListRef.value?.reload?.(false)
 }
 
 let debounceTimer = null
-watch([taskKeyword, selectedTaskStatus], () => {
+watch([taskKeyword, selectedNodeId, selectedTaskStatus], () => {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     taskQuery.page = 1
@@ -149,18 +161,33 @@ function openSheet(row, type) {
   sheetOpen.value = true
 }
 
-const tabs = computed(() => (isAdmin.value
-  ? [{ value: 'tasks', label: '系统操作' }, { value: 'audit', label: '管理员修改记录' }]
-  : [{ value: 'tasks', label: '系统操作' }]))
+const tabs = computed(() => {
+  const list = [
+    { value: 'tasks', label: `系统操作 (${taskQuery.total})` },
+    { value: 'ddns', label: `DDNS 变更 (${ddnsTotal.value})` },
+  ]
+  if (isAdmin.value) {
+    list.push({ value: 'audit', label: `管理员修改 (${auditQuery.total})` })
+  }
+  return list
+})
 
 onMounted(async () => {
   await loadNodes?.().catch(() => {})
+  api('/ddns/history?page=1&page_size=1').then((res) => {
+    ddnsTotal.value = res.total || 0
+  }).catch(() => {})
+  if (isAdmin.value) {
+    api('/audit-events?page=1&page_size=1').then((res) => {
+      auditQuery.total = res.total || 0
+    }).catch(() => {})
+  }
   refreshCurrent()
 })
 </script>
 
 <template>
-  <MPage title="操作审计与任务" :loading="loading">
+  <MPage title="操作记录" :loading="loading">
     <template #actions>
       <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="refreshCurrent">
         <el-icon><Refresh /></el-icon>
@@ -178,6 +205,14 @@ onMounted(async () => {
         placeholder="搜索操作、服务器或结果"
       />
       <div class="m-filters">
+        <MPicker
+          :model-value="selectedNodeId"
+          chip
+          :options="nodeFilterOptions"
+          title="按服务器筛选"
+          placeholder="全部服务器"
+          @update:model-value="selectedNodeId = $event"
+        />
         <MPicker
           :model-value="selectedTaskStatus"
           chip
@@ -228,7 +263,12 @@ onMounted(async () => {
       </div>
     </template>
 
-    <!-- 2. 管理员修改记录 -->
+    <!-- 2. DDNS 变更 -->
+    <template v-else-if="tab === 'ddns'">
+      <MDDNSHistoryList ref="ddnsListRef" @loaded="ddnsTotal = $event" />
+    </template>
+
+    <!-- 3. 管理员修改记录 -->
     <template v-else>
       <el-input
         v-model="auditKeyword"
