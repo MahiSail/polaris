@@ -72,11 +72,12 @@
           </div>
 
           <div class="m-filter-bar" style="margin-bottom: 6px;">
-            <span class="m-note">{{ row.source_location || '归属地未知' }}</span>
+            <span class="m-note truncate" style="flex: 1; min-width: 0;">{{ row.source_location || '归属地未知' }}</span>
             <button
               v-if="row.user"
               type="button"
               class="m-pill"
+              style="max-width: 58%; overflow: hidden; text-overflow: ellipsis;"
               @click.stop="filterByUser(row.user)"
             >
               接入节点：{{ row.user }}

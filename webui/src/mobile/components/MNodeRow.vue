@@ -199,10 +199,22 @@ const expiry = computed(() => nodeExpiryInfo(props.node) || { label: '永久免�
 .m-node-row__sub {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 5px;
   font-size: 11.5px;
   color: var(--sb-muted);
+  min-width: 0;
+  overflow: hidden;
+}
+.m-node-row__sub > span:last-child,
+.m-node-row__sys {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.m-node-row__sub > span:not(.m-node-row__sys) {
+  flex: none;
+  white-space: nowrap;
 }
 .m-node-row__os {
   width: 13px;

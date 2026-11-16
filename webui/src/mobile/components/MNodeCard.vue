@@ -34,13 +34,18 @@
       </div>
     </div>
 
-    <!-- Row 2: Location, System & Capability Tags -->
+    <!-- Row 2: Location & System (single crisp baseline) + Separate Capability Tags -->
     <div class="m-node-card__meta">
       <span v-if="locationName" class="m-node-card__loc">{{ locationName }}</span>
       <span v-if="locationName" class="m-node-card__dot">·</span>
       <OsIcon :os="osLabel" class="m-node-card__os-icon" />
-      <span class="m-node-card__sys">{{ systemInfoText }}</span>
+      <span class="m-node-card__sys truncate">{{ systemInfoText }}</span>
+    </div>
 
+    <div
+      v-if="agentUpdateAvailable || singBoxUpdateAvailable || node.ddns_enabled || node.bandwidth"
+      class="m-node-card__tags"
+    >
       <button
         v-if="canUpgrade && (agentUpdateAvailable || singBoxUpdateAvailable)"
         type="button"
@@ -68,7 +73,7 @@
       </span>
     </div>
 
-    <!-- Row 3: 2x2 Meter Grid (CPU / Memory / Disk / Traffic with Tap Breakdown) -->
+    <!-- Row 3: 2x2 Meter Grid (aligned identical heights; tap Traffic for breakdown) -->
     <div class="m-node-meters">
       <Meter label="CPU" tone="cpu" :pct="cpuPercent" :foot="cpuFootText" />
       <Meter label="内存" tone="mem" :pct="memPercent" :foot="memFootText" />
@@ -86,7 +91,7 @@
           :empty="isShareMode ? '已隐藏' : '∞'"
         />
         <span v-if="!isShareMode" class="m-traffic-hint">
-          {{ showTrafficBreakdown ? '收起明细 ▲' : '点击看明细 ▼' }}
+          {{ showTrafficBreakdown ? '收起 ▲' : '明细 ▾' }}
         </span>
       </div>
     </div>
@@ -134,9 +139,9 @@
       <span class="m-node-expiry__val font-mono" :class="expiryToneClass">{{ expiryText }}</span>
     </div>
 
-    <!-- Row 6: Provider, Connections & Price -->
-    <dl class="m-node-facts font-mono" :class="{ 'has-provider': Boolean(node.provider) }">
-      <div v-if="node.provider" class="m-node-fact">
+    <!-- Row 6: Consistent Provider Row + Aligned Connections & Price -->
+    <dl class="m-node-facts font-mono">
+      <div v-if="node.provider" class="m-node-fact m-node-fact--provider">
         <dt>厂商</dt>
         <dd>
           <a
@@ -399,15 +404,20 @@ const priceText = computed(() => {
 .m-node-card__meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 5px;
   font-size: 12px;
   color: var(--sb-muted);
   line-height: 1.35;
+  min-width: 0;
+  overflow: hidden;
 }
 .m-node-card__loc {
+  flex: none;
   color: var(--sb-text-2);
   font-weight: 550;
+}
+.m-node-card__dot {
+  flex: none;
 }
 .m-node-card__os-icon {
   width: 14px;
@@ -415,8 +425,15 @@ const priceText = computed(() => {
   flex: none;
 }
 .m-node-card__sys {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--sb-muted);
-  margin-right: 4px;
+}
+.m-node-card__tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .m-node-tag {
@@ -473,10 +490,17 @@ const priceText = computed(() => {
   cursor: pointer;
 }
 .m-traffic-hint {
-  margin-top: 3px;
-  font-size: 10.5px;
+  position: absolute;
+  top: 0;
+  left: 28px;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 15px;
   color: var(--sb-muted);
-  text-align: right;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--sb-surface-2);
+  pointer-events: none;
 }
 
 .m-traffic-drawer {
@@ -539,11 +563,24 @@ const priceText = computed(() => {
   gap: 8px;
   padding: 0 2px;
 }
-.m-node-facts.has-provider {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
 .m-node-fact {
   min-width: 0;
+}
+.m-node-fact--provider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-line);
+}
+.m-node-fact--provider dt {
+  margin-bottom: 0;
+  flex: none;
+}
+.m-node-fact--provider dd {
+  text-align: right;
 }
 .m-node-fact dt {
   font-size: 11px;

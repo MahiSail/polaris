@@ -110,14 +110,14 @@
           style="cursor: pointer;"
           @click="openDetail(row)"
         >
-          <div class="m-filter-bar" style="margin-bottom: 6px;">
-            <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;">
-              <strong class="m-mono-wrap" style="font-size: 14px;">
+          <div class="m-filter-bar" style="margin-bottom: 6px; align-items: flex-start;">
+            <div style="display: flex; align-items: flex-start; gap: 6px; min-width: 0; flex: 1;">
+              <strong class="m-mono-wrap" style="font-size: 14px; line-height: 1.35;">
                 {{ row.host || row.destination || '—' }}
               </strong>
-              <el-tag size="small" effect="plain">{{ (row.network || 'tcp').toUpperCase() }}</el-tag>
+              <el-tag size="small" effect="plain" style="flex: none;">{{ (row.network || 'tcp').toUpperCase() }}</el-tag>
             </div>
-            <strong style="font-size: 13px; white-space: nowrap;">
+            <strong style="font-size: 13px; white-space: nowrap; flex: none;">
               {{ formatBytes(Number(row.upload || 0) + Number(row.download || 0)) }}
             </strong>
           </div>

@@ -212,44 +212,45 @@ onBeforeUnmount(() => {
       v-for="row in shown"
       :key="`${row.node_id}/${row.id}`"
       class="m-conn-card"
-      role="button"
       tabindex="0"
       @click="openDetail(row)"
+      @keydown.enter="openDetail(row)"
     >
-      <!-- Top: Host & Badges -->
+      <!-- Row 1: Host (left, spacious) + Compact Protocol / Hop Tags (right, never wrap-squashing host) -->
       <div class="m-conn-head">
-        <div class="m-conn-target">
-          <div class="m-conn-host font-mono" :title="row.target">{{ row.target }}</div>
-          <div v-if="row.destination_location" class="m-conn-geo">
-            <span class="geo-dot" />
-            <span>{{ row.destination_location }}</span>
-          </div>
-        </div>
+        <div class="m-conn-host font-mono" :title="row.target">{{ row.target }}</div>
         <div class="m-conn-badges">
-          <span v-if="row.chain_hop_count > 1" class="m-conn-tag m-conn-tag--chain">{{ row.chain_hop_count }}跳链路</span>
+          <span v-if="row.chain_hop_count > 1" class="m-conn-tag m-conn-tag--chain">{{ row.chain_hop_count }}跳</span>
           <span class="m-conn-tag font-mono">{{ (row.network || 'TCP').toUpperCase() }}</span>
-          <span
-            class="m-conn-tag"
-            :class="isDirect(row.exit) ? 'm-conn-tag--direct' : 'm-conn-tag--exit'"
-            :title="row.exit"
-          >
-            {{ row.exit }}
-          </span>
         </div>
       </div>
 
-      <!-- Middle: Symmetric 3-column metrics -->
+      <!-- Row 2: Destination Location & Exit Policy (aligned dedicated row, handles ultra-short to ultra-long exits gracefully) -->
+      <div class="m-conn-route">
+        <span class="m-conn-geo truncate">
+          {{ row.destination_location || '归属地未知' }}
+        </span>
+        <span
+          class="m-conn-exit"
+          :class="isDirect(row.exit) ? 'is-direct' : 'is-exit'"
+          :title="row.exit"
+        >
+          {{ row.exit }}
+        </span>
+      </div>
+
+      <!-- Row 3: Symmetric 3-column metrics (arrow inside label so full KB/s & MB/s values never truncate) -->
       <div class="m-conn-rates">
         <div class="rate-col">
-          <span class="rate-lbl">实时下行</span>
+          <span class="rate-lbl">↓ 实时下行</span>
           <div class="rate-val font-mono" :class="{ 'is-down-active': row.has_rates && Number(row.download_rate) > 0 }">
-            ↓ {{ row.has_rates ? formatBytes(row.download_rate, '/s') : '—' }}
+            {{ row.has_rates ? formatBytes(row.download_rate, '/s') : '—' }}
           </div>
         </div>
         <div class="rate-col">
-          <span class="rate-lbl">实时上行</span>
+          <span class="rate-lbl">↑ 实时上行</span>
           <div class="rate-val font-mono" :class="{ 'is-up-active': row.has_rates && Number(row.upload_rate) > 0 }">
-            ↑ {{ row.has_rates ? formatBytes(row.upload_rate, '/s') : '—' }}
+            {{ row.has_rates ? formatBytes(row.upload_rate, '/s') : '—' }}
           </div>
         </div>
         <div class="rate-col">
@@ -260,7 +261,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- Bottom: 2 structured rows (entry + node, source IP/geo + start time) -->
+      <!-- Row 4 & 5: Entry + Server/Chain Tag, Source IP/Geo + Start Time -->
       <div class="m-conn-footer">
         <div class="m-conn-footer__row">
           <span class="source-client truncate">{{ row.entry !== '—' ? row.entry : '未知客户端' }}</span>
@@ -313,41 +314,61 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-}
-.m-conn-target {
-  flex: 1;
   min-width: 0;
 }
 .m-conn-host {
+  flex: 1;
+  min-width: 0;
   color: var(--sb-text);
   font-size: 14.5px;
   font-weight: 650;
   line-height: 1.35;
-  word-break: break-all;
-}
-.m-conn-geo {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 3px;
-  font-size: 11.5px;
-  color: var(--sb-muted);
-}
-.geo-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--sb-muted);
-  flex-shrink: 0;
+  overflow-wrap: anywhere;
 }
 .m-conn-badges {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 5px;
-  flex-shrink: 0;
-  max-width: 56%;
+  gap: 4px;
+  flex: none;
+  white-space: nowrap;
+}
+.m-conn-route {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+.m-conn-geo {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--sb-muted);
+  line-height: 1.35;
+}
+.m-conn-exit {
+  flex: 0 1 auto;
+  max-width: 66%;
+  padding: 2px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid var(--sb-line);
+}
+.m-conn-exit.is-direct {
+  background: color-mix(in oklab, var(--sb-success) 10%, transparent);
+  color: var(--sb-success);
+  border-color: color-mix(in oklab, var(--sb-success) 24%, transparent);
+}
+.m-conn-exit.is-exit {
+  background: var(--sb-accent-soft);
+  color: var(--sb-text);
+  border-color: var(--sb-line-strong);
 }
 .m-conn-tag {
   display: inline-flex;
@@ -362,19 +383,6 @@ onBeforeUnmount(() => {
   color: var(--sb-text-2);
   border: 1px solid var(--sb-line);
   white-space: nowrap;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.m-conn-tag--direct {
-  background: color-mix(in oklab, var(--sb-success) 10%, transparent);
-  color: var(--sb-success);
-  border-color: color-mix(in oklab, var(--sb-success) 24%, transparent);
-}
-.m-conn-tag--exit {
-  background: var(--sb-accent-soft);
-  color: var(--sb-text);
-  border-color: var(--sb-line-strong);
 }
 .m-conn-tag--chain {
   background: color-mix(in oklab, var(--sb-warning) 14%, transparent);
@@ -387,14 +395,14 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 10px;
-  padding: 8px 4px;
+  padding: 8px 2px;
   border-radius: 10px;
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
 }
 .rate-col {
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -406,12 +414,13 @@ onBeforeUnmount(() => {
   font-size: 10.5px;
   color: var(--sb-muted);
   line-height: 1.3;
+  white-space: nowrap;
 }
 .rate-val {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--sb-text);
   white-space: nowrap;
   overflow: hidden;
@@ -451,7 +460,7 @@ onBeforeUnmount(() => {
 }
 .m-conn-node-tag {
   flex: 0 1 auto;
-  max-width: 48%;
+  max-width: 54%;
   padding: 2px 7px;
   border-radius: 6px;
   font-size: 11px;

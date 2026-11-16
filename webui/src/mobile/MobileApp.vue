@@ -277,6 +277,7 @@ provide('isDark', isDark)
 provide('toggleTheme', toggleTheme)
 
 onMounted(() => {
+  document.documentElement.classList.add('is-mobile-ui')
   if (location.hash) {
     const raw = location.hash.replace(/^#\/?/, '')
     const [hView, hQuery] = raw.split('?')
@@ -294,6 +295,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.documentElement.classList.remove('is-mobile-ui')
   window.removeEventListener('popstate', onUrlChange)
   window.removeEventListener('hashchange', onUrlChange)
   window.removeEventListener('sb:unauthorized', clearSession)

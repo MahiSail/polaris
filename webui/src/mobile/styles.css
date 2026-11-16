@@ -39,24 +39,102 @@
   padding: 9px 14px;
 }
 
-/* 确认框和提示条在窄屏上按视口自适应 */
-.el-message-box {
-  width: min(360px, calc(100vw - 32px)) !important;
-  border-radius: var(--m-radius) !important;
+/* 确认框和提示条在移动端的原生 App 化改造 */
+html.is-mobile-ui .el-overlay {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+html.is-mobile-ui .el-message-box {
+  width: min(340px, calc(100vw - 36px)) !important;
+  padding: 20px 18px 16px !important;
+  border-radius: 18px !important;
   background: var(--sb-panel-solid) !important;
   border: 1px solid var(--sb-line-strong) !important;
-  box-shadow: var(--sb-shadow) !important;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.36) !important;
 }
-.el-message-box__btns .el-button {
-  min-height: 40px;
+html.is-mobile-ui .el-message-box__header {
+  padding: 0 0 8px !important;
 }
-.el-message {
-  width: min(92vw, 420px);
-  top: calc(var(--m-safe-top) + 12px) !important;
-  border-radius: 10px !important;
+html.is-mobile-ui .el-message-box__title {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  color: var(--sb-text) !important;
 }
-.el-message__content {
+html.is-mobile-ui .el-message-box__content {
+  padding: 4px 0 14px !important;
+  font-size: 13.5px !important;
+  line-height: 1.55 !important;
+  color: var(--sb-text-2) !important;
+}
+html.is-mobile-ui .el-message-box__btns {
+  display: flex !important;
+  gap: 10px !important;
+  padding: 0 !important;
+}
+html.is-mobile-ui .el-message-box__btns .el-button {
+  flex: 1 !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  margin: 0 !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+
+/* 移动端原生 HUD 胶囊轻提示：固定于底部 Tab 栏上方安全区，绝不遮挡顶栏按钮或通栏发绿 */
+html.is-mobile-ui .el-message {
+  top: auto !important;
+  bottom: calc(var(--m-tabbar) + var(--m-safe-bottom) + 18px) !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(86vw, 340px) !important;
+  padding: 10px 16px !important;
+  gap: 8px !important;
+  border-radius: 999px !important;
+  background: var(--sb-panel-solid) !important;
+  border: 1px solid var(--sb-line-strong) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+html.is-mobile-ui .el-message--success {
+  --el-message-text-color: var(--sb-text);
+}
+html.is-mobile-ui .el-message--success .el-message__icon {
+  color: var(--sb-success) !important;
+}
+html.is-mobile-ui .el-message--warning {
+  --el-message-text-color: var(--sb-text);
+}
+html.is-mobile-ui .el-message--warning .el-message__icon {
+  color: var(--sb-warning) !important;
+}
+html.is-mobile-ui .el-message--error {
+  --el-message-text-color: var(--sb-text);
+}
+html.is-mobile-ui .el-message--error .el-message__icon {
+  color: var(--sb-danger) !important;
+}
+html.is-mobile-ui .el-message--info {
+  --el-message-text-color: var(--sb-text);
+}
+html.is-mobile-ui .el-message__content {
+  color: var(--sb-text) !important;
+  font-size: 13.5px !important;
+  font-weight: 550 !important;
+  line-height: 1.35 !important;
   word-break: break-word;
+}
+html.is-mobile-ui .el-notification {
+  top: calc(var(--m-header) + var(--m-safe-top) + 10px) !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: calc(100vw - 24px) !important;
+  max-width: 360px !important;
+  border-radius: 14px !important;
+  background: var(--sb-panel-solid) !important;
+  border: 1px solid var(--sb-line-strong) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* ── 移动端导航顶栏 (MPageHeader) ────────────────────────────── */
@@ -279,6 +357,21 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.m-item__head .m-pill {
+  max-width: 44%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-item__meta--mono {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: var(--sb-text-2);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .m-item__title {
   flex: 1;
@@ -558,6 +651,17 @@ html.dark .m-native-input {
   box-shadow: 0 2px 8px color-mix(in oklab, var(--sb-text) 5%, transparent);
   --el-input-bg-color: var(--sb-surface);
   --el-fill-color-blank: var(--sb-surface);
+}
+/* 防止 iOS Safari 橡皮筋回弹或子像素缩放时吸顶栏顶部露出下方卡片边缘 */
+.m-listbar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -16px;
+  height: 16px;
+  background: var(--sb-bg);
+  pointer-events: none;
 }
 .m-listbar--sub {
   margin-top: 0;

@@ -460,6 +460,8 @@ onMounted(load)
   min-width: 0;
 }
 .m-inbound-name {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--sb-text);
   font-size: 15px;
   font-weight: 650;
@@ -533,7 +535,11 @@ onMounted(load)
   font-size: 11.5px;
 }
 .inbound-node-tag {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 6px;
   border-radius: 5px;
   font-size: 11px;
