@@ -772,7 +772,18 @@ onMounted(() => { load(); loadAccess() })
     </template>
 
     <template v-else-if="activeSection === 'rules'">
-      <MSegmented :model-value="form.rule_mode" :options="[{ value: 'table', label: '表格配置' }, { value: 'text', label: '高级纯文本' }]" @update:model-value="setRuleMode" />
+      <div class="m-filter-bar" style="margin-bottom: 0.75rem;">
+        <span class="m-note">{{ form.rule_mode === 'table' ? '卡片列表编辑（按顺序匹配）' : '高级纯文本编辑' }}</span>
+        <button
+          type="button"
+          class="m-pill is-toggle"
+          :class="{ 'is-active': form.rule_mode === 'text' }"
+          @click="setRuleMode(form.rule_mode === 'table' ? 'text' : 'table')"
+        >
+          <span>{{ form.rule_mode === 'table' ? '纯文本模式' : '卡片模式' }}</span>
+          <span class="m-view-toggle__swap" aria-hidden="true">⇄</span>
+        </button>
+      </div>
       <template v-if="form.rule_mode === 'table'">
         <!-- 桌面版是一张五列表格，手机上一条规则一张卡：点卡片改内容，
              卡片右侧留出上下移动，顺序就是匹配顺序。 -->
@@ -818,8 +829,8 @@ onMounted(() => { load(); loadAccess() })
       <div class="m-field">
         <label class="m-field__label">允许访问的时间段</label>
         <div class="access-actions" style="flex-wrap: wrap;">
-          <input v-model="form.access_window_start" type="time" aria-label="时间段开始" class="m-native-input" style="flex: 1 1 110px; min-width: 0;" />
-          <input v-model="form.access_window_end" type="time" aria-label="时间段结束" class="m-native-input" style="flex: 1 1 110px; min-width: 0;" />
+          <input v-model="form.access_window_start" type="time" aria-label="时间段开始" class="m-native-input" style="flex: 1 1 7rem; min-width: 0;" />
+          <input v-model="form.access_window_end" type="time" aria-label="时间段结束" class="m-native-input" style="flex: 1 1 7rem; min-width: 0;" />
           <el-button @click="form.access_window_start = ''; form.access_window_end = ''">清除</el-button>
         </div>
         <div class="m-field__hint">
@@ -841,7 +852,18 @@ onMounted(() => { load(); loadAccess() })
     </template>
 
     <template v-else>
-      <MSegmented :model-value="form.dns_mode" :options="[{ value: 'form', label: '表单配置' }, { value: 'text', label: '高级纯文本' }]" @update:model-value="setDNSMode" />
+      <div class="m-filter-bar" style="margin-bottom: 0.75rem;">
+        <span class="m-note">{{ form.dns_mode === 'form' ? '表单向导配置' : '高级纯文本编辑' }}</span>
+        <button
+          type="button"
+          class="m-pill is-toggle"
+          :class="{ 'is-active': form.dns_mode === 'text' }"
+          @click="setDNSMode(form.dns_mode === 'form' ? 'text' : 'form')"
+        >
+          <span>{{ form.dns_mode === 'form' ? '纯文本模式' : '表单模式' }}</span>
+          <span class="m-view-toggle__swap" aria-hidden="true">⇄</span>
+        </button>
+      </div>
       <template v-if="form.dns_mode === 'form'">
         <div class="m-field m-field--inline">
           <label class="m-field__label">下发 DNS 配置</label>
@@ -949,7 +971,7 @@ onMounted(() => { load(); loadAccess() })
 .rule__action i { margin-left: 6px; padding: 1px 5px; background: rgba(148, 163, 184, .14); border-radius: 5px; font-style: normal; font-size: 11px; }
 .rule__order { flex: none; display: flex; flex-direction: column; gap: 4px; }
 .rule__order button {
-  width: 38px;
+  min-width: 2.375rem;
   flex: 1;
   color: var(--sb-text-2);
   background: rgba(148, 163, 184, .07);

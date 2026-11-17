@@ -430,16 +430,18 @@ onBeforeUnmount(() => {
   opacity: 0.8;
 }
 
-/* 四格指标卡：优雅微拟态 + 响应式布局 */
+/* 指标卡：Flex 自适应两列/多列换行 */
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-bottom: 0.75rem;
 }
 .metric {
   position: relative;
-  padding: 12px 14px;
+  flex: 1 1 clamp(8.25rem, calc(50% - 0.3125rem), 100%);
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
   overflow: hidden;
   text-align: left;
   border-radius: var(--m-radius);
@@ -490,12 +492,23 @@ onBeforeUnmount(() => {
 }
 
 .chart {
-  height: 195px;
-  margin-bottom: 10px;
+  height: clamp(11rem, 24dvh, 15rem);
+  margin-bottom: 0.625rem;
   border-radius: var(--m-radius);
   overflow: hidden;
 }
-.chart--tall { height: 215px; }
-.chart--bars { height: 225px; }
-.chart-pair .chart { height: 190px; }
+.chart--tall { height: clamp(12rem, 27dvh, 16.5rem); }
+.chart--bars { height: clamp(12.5rem, 28dvh, 17.5rem); }
+.chart-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+}
+.chart-pair .chart {
+  flex: 1 1 clamp(14rem, calc(50% - 0.3125rem), 100%);
+  min-width: 0;
+  margin-bottom: 0;
+  height: clamp(11rem, 23dvh, 15rem);
+}
 </style>

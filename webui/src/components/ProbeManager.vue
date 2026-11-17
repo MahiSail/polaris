@@ -269,7 +269,7 @@ onMounted(load)
     <el-dialog
       v-model="dialogVisible"
       :title="editingID ? '编辑探针' : '添加探针'"
-      width="540px"
+      width="min(540px, 94vw)"
       class="probe-dialog"
       append-to-body
     >
@@ -327,7 +327,7 @@ onMounted(load)
         </el-form-item>
 
         <el-form-item label="探测间隔（秒）">
-          <el-input-number v-model="form.interval" :min="5" :max="3600" :step="5" controls-position="right" style="width: 160px" />
+          <el-input-number v-model="form.interval" :min="5" :max="3600" :step="5" controls-position="right" style="width: min(10rem, 100%)" />
         </el-form-item>
       </el-form>
 

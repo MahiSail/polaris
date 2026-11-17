@@ -124,7 +124,7 @@ onMounted(refresh)
 .account-security__setup { padding-top: 16px; border-top: 1px solid var(--sb-line); text-align: center; }
 .account-security__setup > p { margin: 0 0 14px; color: var(--sb-muted); line-height: 1.7; text-align: left; }
 .account-security__qr { display: inline-block; padding: 8px; margin-bottom: 14px; background: #fff; border-radius: 10px; line-height: 0; }
-.account-security__qr img { display: block; width: 200px; height: 200px; }
+.account-security__qr img { display: block; width: min(12.5rem, 60vw); height: min(12.5rem, 60vw); }
 .account-security__setup :deep(.el-form-item) { text-align: left; }
 .account-security__setup-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 

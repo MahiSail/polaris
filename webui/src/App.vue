@@ -404,7 +404,7 @@ onBeforeUnmount(() => {
   />
 
   <el-container v-else class="app-layout">
-    <el-aside :width="sidebarCollapsed ? '64px' : '224px'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
+    <el-aside :width="sidebarCollapsed ? '4rem' : 'clamp(13.25rem, 15vw, 15rem)'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
       <div class="sidebar-header">
         <el-popover placement="right-start" :width="308" trigger="click" :disabled="isShareMode" popper-class="update-popover">
           <template #reference>
@@ -529,7 +529,7 @@ onBeforeUnmount(() => {
       </transition>
     </el-main>
 
-    <el-dialog v-model="accountOpen" title="账户安全" width="520px" destroy-on-close>
+    <el-dialog v-model="accountOpen" title="账户安全" width="min(520px, 94vw)" destroy-on-close>
       <AccountSecurityPanel />
     </el-dialog>
   </el-container>
@@ -552,12 +552,13 @@ onBeforeUnmount(() => {
   padding: 24px;
 }
 .share-error strong { color: var(--sb-text); font-size: 16px; }
-.share-error span { max-width: 420px; font-size: 13px; line-height: 1.6; }
+.share-error span { max-width: min(26.25rem, 90vw); font-size: 13px; line-height: 1.6; }
 .app-layout { width: 100%; height: 100%; }
 .app-sidebar {
   position: relative;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   overflow: hidden;
   color: var(--sb-text-2);
   background: var(--sb-sidebar-bg) !important;
@@ -570,10 +571,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--sb-line);
-  min-height: 64px;
-  height: 64px;
-  padding: 0 10px 0 14px;
-  gap: 8px;
+  min-height: 3.75rem;
+  height: auto;
+  padding: 0 0.625rem 0 0.875rem;
+  gap: 0.5rem;
 }
 .sidebar-toggle-btn {
   width: 28px;
@@ -807,7 +808,7 @@ onBeforeUnmount(() => {
 .app-main > * { position: relative; }
 .app-main > :last-child { flex: 1; min-height: 0; }
 @media (max-width: 900px) {
-  .app-sidebar { width: 72px !important; }
+  .app-sidebar { width: 4.5rem !important; }
   .app-brand { justify-content: center; padding: 0; }
   .app-brand__text, .menu-group__label, .menu-item span, .operator-info { display: none; }
   .menu-group { padding: 4px 8px 7px; }
@@ -818,7 +819,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 520px) {
-  .app-sidebar { width: 60px !important; }
-  .app-brand__mark { width: 32px; height: 32px; }
+  .app-sidebar { width: 3.75rem !important; }
+  .app-brand__mark { width: 2rem; height: 2rem; }
 }
 </style>

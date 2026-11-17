@@ -171,8 +171,8 @@ onMounted(load)
     </PageHeader>
     <main class="page-content">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" style="width: 260px" />
-        <el-select v-model="selectedStrategy" clearable placeholder="全部策略" style="width: 160px"><el-option v-for="(label, value) in strategyNames" :key="value" :label="label" :value="value" /></el-select>
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" class="filter-search" />
+        <el-select v-model="selectedStrategy" clearable placeholder="全部策略" class="filter-select"><el-option v-for="(label, value) in strategyNames" :key="value" :label="label" :value="value" /></el-select>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredGroups" :loading="loading" :empty-text="loading ? '' : '还没有代理分组'">
@@ -304,7 +304,7 @@ onMounted(load)
   gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 210px;
+  max-width: min(14rem, 32vw);
   height: 24px;
   padding: 0 9px;
   border: 1px solid var(--sb-line);

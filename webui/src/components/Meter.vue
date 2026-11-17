@@ -6,6 +6,7 @@
           <component :is="icon" v-if="icon" class="meter-icon" />
         </slot>
         <span class="meter-title truncate">{{ label }}</span>
+        <slot name="label-extra" />
       </span>
       <span class="meter-val font-mono" :class="{ 'is-danger': danger }">
         {{ displayPercent }}

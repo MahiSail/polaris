@@ -133,14 +133,14 @@ defineExpose({ refresh: loadRecords })
         clearable
         :prefix-icon="Search"
         placeholder="搜索域名、服务器、IP"
-        style="width: 230px"
+        class="filter-search"
       />
       <el-select
         v-if="!props.hideNodeFilter && !props.nodeId"
         v-model="selectedNodeId"
         clearable
         placeholder="全部服务器"
-        style="width: 170px"
+        class="filter-select"
       >
         <el-option
           v-for="node in appState.nodes"
@@ -153,7 +153,7 @@ defineExpose({ refresh: loadRecords })
         v-model="selectedStatus"
         clearable
         placeholder="全部状态"
-        style="width: 110px"
+        class="filter-select--sm"
       >
         <el-option label="成功" value="succeeded" />
         <el-option label="失败" value="failed" />
@@ -162,7 +162,7 @@ defineExpose({ refresh: loadRecords })
         v-model="selectedTrigger"
         clearable
         placeholder="全部方式"
-        style="width: 110px"
+        class="filter-select--sm"
       >
         <el-option label="自动同步" value="auto" />
         <el-option label="手动同步" value="manual" />

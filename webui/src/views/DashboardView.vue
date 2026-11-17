@@ -362,10 +362,11 @@ onBeforeUnmount(() => {
 .dashboard-content :deep(.el-alert) { flex: none; }
 /* The chart rows share whatever height is left rather than each claiming a
    fixed one, so the overview fits the window instead of scrolling. */
-.chart-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(190px, 1fr)); gap: 14px; }
+.chart-grid { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-content: stretch; gap: 0.875rem; }
 .chart-panel {
+  flex: 1 1 clamp(17rem, calc(33.333% - 0.7rem), 100%);
   min-width: 0;
-  min-height: 0;
+  min-height: clamp(12.5rem, 26dvh, 22rem);
   border-radius: var(--sb-radius);
   overflow: hidden;
   transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
@@ -375,7 +376,7 @@ onBeforeUnmount(() => {
   border-color: color-mix(in oklab, var(--sb-accent) 40%, transparent);
   box-shadow: var(--sh-neu), 0 0 20px color-mix(in oklab, var(--sb-accent) 10%, transparent);
 }
-.chart-panel--wide { grid-column: span 2; }
-@media (max-width: 1180px) { .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(190px, 1fr)); } .chart-panel--wide { grid-column: span 2; } }
-@media (max-width: 720px) { .chart-grid { grid-template-columns: 1fr; grid-template-rows: repeat(5, minmax(220px, 1fr)); } .chart-panel--wide { grid-column: auto; } }
+.chart-panel--wide { flex: 2 1 clamp(26rem, calc(66.666% - 0.7rem), 100%); }
+@media (max-width: 1180px) { .chart-panel { flex: 1 1 clamp(16rem, calc(50% - 0.5rem), 100%); } .chart-panel--wide { flex: 1 0 100%; } }
+@media (max-width: 720px) { .chart-panel, .chart-panel--wide { flex: 1 0 100%; min-height: clamp(13rem, 30dvh, 18rem); } }
 </style>

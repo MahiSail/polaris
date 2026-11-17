@@ -89,10 +89,13 @@
           :pct="trafficPercent"
           :foot="trafficFootText"
           :empty="isShareMode ? '已隐藏' : '∞'"
-        />
-        <span v-if="!isShareMode" class="m-traffic-hint">
-          {{ showTrafficBreakdown ? '收起 ▲' : '明细 ▾' }}
-        </span>
+        >
+          <template v-if="!isShareMode" #label-extra>
+            <span class="m-traffic-hint">
+              {{ showTrafficBreakdown ? '收起 ▲' : '明细 ▾' }}
+            </span>
+          </template>
+        </Meter>
       </div>
     </div>
 
@@ -477,9 +480,13 @@ const priceText = computed(() => {
 }
 
 .m-node-meters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.m-node-meters > * {
+  flex: 1 1 clamp(8.25rem, calc(50% - 0.25rem), 100%);
+  min-width: 0;
 }
 .m-traffic-meter {
   position: relative;
@@ -490,17 +497,15 @@ const priceText = computed(() => {
   cursor: pointer;
 }
 .m-traffic-hint {
-  position: absolute;
-  top: 0;
-  left: 28px;
+  flex: none;
   font-size: 10px;
   font-weight: 550;
-  line-height: 15px;
+  line-height: 1.3;
   color: var(--sb-muted);
-  padding: 0 5px;
+  padding: 1px 5px;
   border-radius: 4px;
   background: var(--sb-surface-2);
-  pointer-events: none;
+  white-space: nowrap;
 }
 
 .m-traffic-drawer {
@@ -558,21 +563,22 @@ const priceText = computed(() => {
 
 .m-node-facts {
   margin: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding: 0 2px;
 }
 .m-node-fact {
+  flex: 1 1 clamp(7.5rem, calc(50% - 0.25rem), 100%);
   min-width: 0;
 }
 .m-node-fact--provider {
-  grid-column: 1 / -1;
+  flex: 1 0 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 6px;
+  gap: 0.625rem;
+  padding-bottom: 0.375rem;
   border-bottom: 1px solid var(--sb-line);
 }
 .m-node-fact--provider dt {
@@ -608,17 +614,19 @@ const priceText = computed(() => {
 }
 
 .m-node-rates {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 .m-node-rate-pill {
+  flex: 1 1 clamp(8rem, calc(50% - 0.25rem), 100%);
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 10px;
+  gap: 0.375rem;
+  padding: 0.4375rem 0.625rem;
+  border-radius: 0.625rem;
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
   font-size: 12px;

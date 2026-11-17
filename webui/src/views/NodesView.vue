@@ -1092,7 +1092,7 @@ onBeforeUnmount(() => {
 
     <ShareDialog v-model="shareOpen" page="nodes" />
 
-    <el-dialog v-model="probesDialog" title="探针" width="960px" destroy-on-close>
+    <el-dialog v-model="probesDialog" title="探针" width="min(960px, 95vw)" destroy-on-close>
       <ProbeManager v-if="probesDialog" @change="loadPingTasks" />
     </el-dialog>
 
@@ -1124,7 +1124,7 @@ onBeforeUnmount(() => {
               clearable
               :prefix-icon="Search"
               placeholder="搜索服务器名称、IP地址、系统或架构..."
-              style="width: 280px"
+              class="filter-search"
             />
 
             <!-- 快速状态分段筛选胶囊 -->
@@ -1153,7 +1153,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <el-select v-model="sortBy" placeholder="排序方式" style="width: 140px">
+            <el-select v-model="sortBy" placeholder="排序方式" class="filter-select--sm">
               <el-option label="服务器名称" value="name" />
               <el-option label="活跃时间优先" value="last_seen" />
               <el-option label="连接数最高" value="conn" />
@@ -1162,26 +1162,19 @@ onBeforeUnmount(() => {
             </el-select>
           </div>
 
-          <!-- 卡片 / 列表视图切换器 与 主题切换 -->
+          <!-- 卡片 / 列表 单按钮视图切换 -->
           <div class="toolbar-right">
-            <div class="view-switcher neu-track">
-              <button
-                class="view-btn neu-press"
-                :class="{ active: viewMode === 'card' }"
-                title="卡片视图"
-                @click="viewMode = 'card'"
-              >
-                <el-icon><Grid /></el-icon>
-              </button>
-              <button
-                class="view-btn neu-press"
-                :class="{ active: viewMode === 'list' }"
-                title="列表视图"
-                @click="viewMode = 'list'"
-              >
-                <el-icon><Tickets /></el-icon>
-              </button>
-            </div>
+            <button
+              type="button"
+              class="view-toggle-pill neu-press"
+              :title="viewMode === 'card' ? '当前为卡片视图，点击切换为列表视图' : '当前为列表视图，点击切换为卡片视图'"
+              :aria-label="viewMode === 'card' ? '切换为列表视图' : '切换为卡片视图'"
+              @click="viewMode = viewMode === 'card' ? 'list' : 'card'"
+            >
+              <el-icon><component :is="viewMode === 'card' ? Grid : Tickets" /></el-icon>
+              <span>{{ viewMode === 'card' ? '卡片' : '列表' }}</span>
+              <span class="view-toggle-pill__swap" aria-hidden="true">⇄</span>
+            </button>
           </div>
         </div>
 
@@ -1313,7 +1306,7 @@ onBeforeUnmount(() => {
     </main>
 
     <!-- 添加节点 Token 弹窗 -->
-    <el-dialog v-model="tokenDialog" title="新增服务器" width="560px" append-to-body>
+    <el-dialog v-model="tokenDialog" title="新增服务器" width="min(560px, 94vw)" append-to-body>
       <div style="margin-bottom: 14px">
         <div style="font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--sb-text-1)">
           Master 地址（Agent 拨号连接的主机或 IP）
@@ -1339,7 +1332,7 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <!-- 配置服务器弹窗 -->
-    <el-dialog v-model="editDialog" width="680px" class="srv-dialog" :show-close="false" align-center append-to-body>
+    <el-dialog v-model="editDialog" width="min(680px, 94vw)" class="srv-dialog" :show-close="false" align-center append-to-body>
       <template #header="{ close }">
         <div v-if="editHeader" class="dlg-hero" :class="`is-${editHeader.status}`">
           <div class="srv-avatar" :class="{ 'is-flag': editHeader.isFlag }">{{ editHeader.avatar }}</div>
@@ -1419,7 +1412,7 @@ onBeforeUnmount(() => {
             <el-form-item label="价格">
               <div class="dlg-inline">
                 <el-input v-model="editForm.price" :disabled="editForm.price_period === 'free'" placeholder="价格" />
-                <el-select v-model="editForm.currency" :disabled="editForm.price_period === 'free'" style="width: 120px">
+                <el-select v-model="editForm.currency" :disabled="editForm.price_period === 'free'" class="dlg-unit-select">
                   <el-option label="美元 USD" value="USD" />
                   <el-option label="人民币 CNY" value="CNY" />
                   <el-option label="欧元 EUR" value="EUR" />
@@ -1430,7 +1423,7 @@ onBeforeUnmount(() => {
             <el-form-item label="流量套餐（按月）">
               <div class="dlg-inline">
                 <el-input v-model="editForm.traffic_value" placeholder="例如：2" />
-                <el-select v-model="editForm.traffic_unit" style="width: 110px">
+                <el-select v-model="editForm.traffic_unit" class="dlg-unit-select--sm">
                   <el-option label="MB" value="MB" />
                   <el-option label="GB" value="GB" />
                   <el-option label="TB" value="TB" />
@@ -1440,7 +1433,7 @@ onBeforeUnmount(() => {
             <el-form-item label="带宽大小">
               <div class="dlg-inline">
                 <el-input v-model="editForm.bandwidth_value" placeholder="例如：1" />
-                <el-select v-model="editForm.bandwidth_unit" style="width: 110px">
+                <el-select v-model="editForm.bandwidth_unit" class="dlg-unit-select--sm">
                   <el-option label="Mbps" value="Mbps" />
                   <el-option label="Gbps" value="Gbps" />
                 </el-select>
@@ -1629,7 +1622,7 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <!-- 线路与丢包排查弹窗 -->
-    <el-dialog v-model="probeDialog" width="820px" class="probe-dialog" align-center append-to-body>
+    <el-dialog v-model="probeDialog" width="min(820px, 94vw)" class="probe-dialog" align-center append-to-body>
       <template #header>
         <div v-if="probeNode" class="probe-hero">
           <div class="probe-hero-title">
@@ -1731,7 +1724,7 @@ onBeforeUnmount(() => {
     <el-dialog
       v-model="ddnsHistoryVisible"
       :title="`DDNS 变更记录 · ${ddnsHistoryNode?.name || ''}`"
-      width="920px"
+      width="min(920px, 95vw)"
       append-to-body
       destroy-on-close
     >
@@ -1814,22 +1807,27 @@ onBeforeUnmount(() => {
 /* ── 工具栏与视图切换 ───────────────────────────────────── */
 .nodes-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  gap: 0.75rem;
+  margin-bottom: 1.125rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
 }
 .toolbar-left {
+  flex: 1 1 20rem;
+  min-width: 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 0.625rem;
 }
 .toolbar-right {
+  flex: none;
   display: flex;
   align-items: center;
+  margin-left: auto;
 }
 .status-segmented {
   display: inline-flex;
@@ -1883,32 +1881,29 @@ onBeforeUnmount(() => {
   color: var(--sb-accent);
   border-color: var(--sb-accent);
 }
-.view-switcher {
+.view-toggle-pill {
   display: inline-flex;
   align-items: center;
-  padding: 3px;
-  border-radius: 9px;
-  gap: 3px;
-}
-.view-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: var(--sb-muted);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.view-btn:hover {
-  color: var(--sb-text);
-}
-.view-btn.active {
-  background: rgba(56, 189, 248, 0.22);
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5625rem;
+  border: 1px solid var(--sb-line);
+  background: rgba(56, 189, 248, 0.14);
   color: var(--sb-accent);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.view-toggle-pill:hover {
+  border-color: var(--sb-accent);
+  background: rgba(56, 189, 248, 0.22);
+}
+.view-toggle-pill__swap {
+  font-size: 0.7rem;
+  opacity: 0.65;
 }
 
 /* ── 3. 待接入横幅 (Pending Section) ────────────────────── */
@@ -1978,10 +1973,14 @@ onBeforeUnmount(() => {
 }
 
 .pending-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 14px;
-  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+.pending-grid > .pending-card {
+  flex: 1 1 clamp(19rem, calc(33.333% - 0.875rem), 100%);
+  min-width: 0;
 }
 .pending-card {
   position: relative;
@@ -2133,21 +2132,29 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-/* ── 服务器卡片与列表视图 (Openlat micro-neomorphic) ─────── */
+/* ── 服务器卡片与列表视图 (Responsive Flex Micro-neomorphic) ─────── */
 .openlat-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.openlat-cards-grid > * {
+  flex: 1 1 clamp(20rem, calc(33.333% - 1rem), 100%);
+  min-width: 0;
 }
 .openlat-list-rows {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.625rem;
 }
 .n-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.875rem;
+}
+.n-grid > * {
+  flex: 1 1 clamp(19rem, calc(33.333% - 0.875rem), 100%);
+  min-width: 0;
 }
 .n-card {
   --tone: var(--sb-success);
@@ -2324,11 +2331,12 @@ onBeforeUnmount(() => {
 }
 
 .n-gauges {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
 }
 .n-gauge {
+  flex: 1 1 clamp(5rem, calc(33.333% - 0.5rem), 100%);
   min-width: 0;
   cursor: default;
 }
@@ -2405,20 +2413,63 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 .n-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(0, 0.85fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.7fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 9px 14px;
-  border-radius: 12px;
+  gap: 0.75rem;
+  padding: 0.5625rem 0.875rem;
+  border-radius: 0.75rem;
+}
+.n-row-node {
+  flex: 1.3 1 11rem;
+  min-width: 0;
+}
+.n-row-hard {
+  flex: 1.5 1 12.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.n-row-traffic {
+  flex: 0.85 1 7.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.n-row-net {
+  flex: 0.8 1 7.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 10px;
+}
+.n-row-latency {
+  flex: 1 1 9.5rem;
+  min-width: 0;
+}
+.n-row-expiry {
+  flex: 0.7 1 5.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 10.5px;
+  text-align: right;
+}
+.n-row-ops {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 .n-row.is-offline {
   opacity: 0.7;
 }
 
-.n-row-node {
-  min-width: 0;
-}
 .n-row-head {
   display: flex;
   align-items: center;
@@ -2455,12 +2506,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.n-row-hard {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
 .hard-row {
   display: flex;
   align-items: center;
@@ -2493,8 +2538,8 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .hard-detail {
-  width: 90px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  max-width: 6.25rem;
   text-align: right;
   color: var(--sb-muted);
   overflow: hidden;
@@ -2502,12 +2547,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.n-row-traffic {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
 .row-meta-top {
   display: flex;
   align-items: center;
@@ -2516,13 +2555,6 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-.n-row-net {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  font-size: 10px;
-}
 .net-line {
   display: flex;
   align-items: center;
@@ -2534,18 +2566,6 @@ onBeforeUnmount(() => {
 .net-line.is-up { color: #f59e0b; }
 .net-line.is-sockets { color: var(--sb-muted); }
 
-.n-row-latency {
-  min-width: 0;
-}
-
-.n-row-expiry {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  font-size: 10.5px;
-  text-align: right;
-}
 .expiry-line {
   font-weight: 550;
   white-space: nowrap;
@@ -2554,34 +2574,15 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.n-row-ops {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
 .n-row-ops .srv-icon-btn {
   width: 28px;
   height: 28px;
   border-radius: 8px;
 }
 
-@media (max-width: 1200px) {
-  .n-row {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
-  }
-  .n-row-traffic,
+@media (max-width: 720px) {
   .n-row-expiry {
-    display: none;
-  }
-}
-@media (max-width: 800px) {
-  .n-row {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) auto;
-  }
-  .n-row-net,
-  .n-row-latency {
-    display: none;
+    text-align: left;
   }
 }
 
@@ -2932,19 +2933,20 @@ onBeforeUnmount(() => {
 .dlg-pick-chip { cursor: pointer; }
 .dlg-pick-chip:hover { border-color: rgba(56, 189, 248, .4); }
 .dlg-facts {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, .1);
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: rgba(148, 163, 184, .04);
 }
 .dlg-facts > div {
+  flex: 1 1 clamp(8rem, 25%, 100%);
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
 }
 .dlg-facts > div + div { border-left: 1px solid rgba(148, 163, 184, .1); }
 .dlg-facts span { color: var(--sb-muted); font-size: 11px; }
@@ -2957,15 +2959,32 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 .dlg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
 }
-.dlg-span-2 { grid-column: 1 / -1; }
+.dlg-grid > * {
+  flex: 1 1 clamp(14rem, calc(50% - 0.5rem), 100%);
+  min-width: 0;
+}
+.dlg-span-2 { flex: 1 0 100%; }
 .dlg-inline {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   width: 100%;
+}
+.dlg-inline > :first-child {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.dlg-unit-select {
+  flex: 0 1 clamp(6.5rem, 32%, 8.5rem);
+  min-width: 6rem;
+}
+.dlg-unit-select--sm {
+  flex: 0 1 clamp(5.75rem, 28%, 7.5rem);
+  min-width: 5.5rem;
 }
 .dlg-preview {
   display: flex;
@@ -3060,19 +3079,19 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 .dlg-probe-edit-row {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .dlg-probe-input-name {
-  width: 150px;
-  flex-shrink: 0;
+  flex: 1 1 clamp(7.5rem, 28%, 11rem);
+  min-width: 0;
 }
 .dlg-probe-input-target {
-  flex: 1;
-  min-width: 160px;
+  flex: 2 1 clamp(10rem, 45%, 100%);
+  min-width: 0;
 }
 .dlg-probe-input-interval {
-  width: 96px;
-  flex-shrink: 0;
+  flex: 0 1 clamp(5.5rem, 18%, 7rem);
+  min-width: 5.25rem;
 }
 .dlg-empty {
   padding: 14px;
@@ -3091,7 +3110,7 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 @media (max-width: 700px) {
-  .dlg-grid, .dlg-facts { grid-template-columns: minmax(0, 1fr); }
+  .dlg-grid > *, .dlg-facts > div { flex: 1 0 100%; }
   .dlg-facts > div + div { border-left: none; border-top: 1px solid rgba(148, 163, 184, .1); }
   .dlg-foot-hint { display: none; }
 }

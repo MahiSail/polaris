@@ -204,9 +204,9 @@ onMounted(load)
     </PageHeader>
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索匹配条件或处理方式" style="width: 280px" />
-        <el-select v-model="selectedNode" clearable placeholder="全部服务器" style="width: 180px"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select>
-        <el-select v-model="selectedAction" clearable placeholder="全部处理方式" style="width: 160px"><el-option label="服务器直连" value="direct" /><el-option label="使用出口" value="outbound" /><el-option label="阻断连接" value="reject" /></el-select>
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索匹配条件或处理方式" class="filter-search" />
+        <el-select v-model="selectedNode" clearable placeholder="全部服务器" class="filter-select"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select>
+        <el-select v-model="selectedAction" clearable placeholder="全部处理方式" class="filter-select"><el-option label="服务器直连" value="direct" /><el-option label="使用出口" value="outbound" /><el-option label="阻断连接" value="reject" /></el-select>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredRows" :loading="loading" empty-text="还没有访问规则">
@@ -220,7 +220,7 @@ onMounted(load)
       </div>
     </main>
 
-    <el-dialog v-model="dialogOpen" :title="editing ? '编辑服务器访问规则' : '新建服务器访问规则'" width="680px">
+    <el-dialog v-model="dialogOpen" :title="editing ? '编辑服务器访问规则' : '新建服务器访问规则'" width="min(680px, 94vw)">
       <el-form label-position="top">
         <el-form-item label="服务器" required>
           <div class="node-select-bar">

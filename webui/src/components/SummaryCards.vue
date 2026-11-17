@@ -336,37 +336,43 @@ const monthlySpendText = computed(() => {
 
 <style scoped>
 .summary-deck {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   align-items: stretch;
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
 }
 
 .summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  flex: 1.15 1 clamp(18rem, 52%, 100%);
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.summary-grid > .summary-tile {
+  flex: 1 1 clamp(9.5rem, calc(50% - 0.375rem), 100%);
+  min-width: 0;
 }
 
 .summary-map {
-  min-height: 220px;
-}
-
-@media (max-width: 1100px) {
-  .summary-deck {
-    grid-template-columns: 1fr;
-  }
+  flex: 1 1 clamp(18rem, 42%, 100%);
+  min-width: 0;
+  min-height: clamp(13rem, 24dvh, 17rem);
 }
 
 @media (max-width: 600px) {
   .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 0.5rem;
+  }
+
+  .summary-grid > .summary-tile {
+    flex: 1 1 clamp(8.5rem, calc(50% - 0.25rem), 100%);
   }
 
   .summary-tile {
-    padding: 12px 10px;
+    padding: 0.75rem 0.625rem;
   }
 
   .tile-head {

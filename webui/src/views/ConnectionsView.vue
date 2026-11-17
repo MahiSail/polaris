@@ -106,11 +106,11 @@ onBeforeUnmount(() => {
     </PageHeader>
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索 IP、目标、入站节点或出口" style="width: 280px" />
-        <el-select v-model="selectedNode" clearable placeholder="全部服务器" style="width: 190px">
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索 IP、目标、入站节点或出口" class="filter-search" />
+        <el-select v-model="selectedNode" clearable placeholder="全部服务器" class="filter-select">
           <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" />
         </el-select>
-        <el-select v-model="selectedOutbound" clearable placeholder="全部出口" style="width: 180px">
+        <el-select v-model="selectedOutbound" clearable placeholder="全部出口" class="filter-select">
           <el-option v-for="exit in outboundOptions" :key="exit" :label="exit" :value="exit" />
         </el-select>
         <span class="toolbar__spacer" />

@@ -1286,7 +1286,7 @@ onUnmounted(() => {
 .place-popup {
   position: fixed;
   z-index: 2200;
-  width: 248px;
+  width: min(15.5rem, 84vw);
   border-radius: 12px;
   padding: 10px 12px;
   box-shadow: var(--sh-neu);

@@ -68,26 +68,30 @@
 
         <div class="m-filter-row" style="justify-content: space-between;">
           <span class="m-count" style="padding: 0;">共 {{ filteredNodes.length }} / {{ mappedNodes.length }} 台节点</span>
-          <div class="m-filter-row" style="gap: 6px;">
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': viewMode === 'card' }"
-              aria-label="卡片视图"
-              @click="viewMode = 'card'"
-            >
-              卡片
-            </button>
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': viewMode === 'list' }"
-              aria-label="列表视图"
-              @click="viewMode = 'list'"
-            >
-              列表
-            </button>
-          </div>
+          <button
+            type="button"
+            class="m-pill is-toggle is-active"
+            :aria-label="viewMode === 'card' ? '切换为列表视图' : '切换为卡片视图'"
+            :title="viewMode === 'card' ? '当前为卡片视图，点击切换为列表视图' : '当前为列表视图，点击切换为卡片视图'"
+            @click="viewMode = viewMode === 'card' ? 'list' : 'card'"
+          >
+            <svg v-if="viewMode === 'card'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            <span>{{ viewMode === 'card' ? '卡片' : '列表' }}</span>
+            <span class="m-view-toggle__swap" aria-hidden="true">⇄</span>
+          </button>
         </div>
       </div>
 
@@ -99,7 +103,7 @@
           <span>在线 {{ groupOnline(grp) }} / {{ grp.nodes.length }}</span>
         </div>
 
-        <div v-if="viewMode === 'card'" class="m-list">
+        <div v-if="viewMode === 'card'" class="m-cards-flex">
           <MNodeCard
             v-for="node in grp.nodes"
             :key="node.id"

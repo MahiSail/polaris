@@ -94,7 +94,7 @@ function onOpen() {
   <el-dialog
     v-model="visible"
     title="分享页面"
-    width="600px"
+    width="min(600px, 94vw)"
     destroy-on-close
     @open="onOpen"
   >

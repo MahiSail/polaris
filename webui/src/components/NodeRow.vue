@@ -397,10 +397,11 @@ function formatRate(bps) {
 <style scoped>
 .openlat-node-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
-  border-radius: 12px;
-  padding: 10px 16px;
+  gap: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
@@ -417,8 +418,7 @@ function formatRate(bps) {
 }
 
 .col-name {
-  width: 220px;
-  flex-shrink: 0;
+  flex: 1.4 1 clamp(12rem, 20%, 18rem);
 }
 
 .name-line {
@@ -514,8 +514,7 @@ function formatRate(bps) {
 }
 
 .col-meters {
-  width: 240px;
-  flex-shrink: 0;
+  flex: 1.5 1 clamp(13rem, 22%, 18rem);
   gap: 4px;
 }
 
@@ -526,26 +525,25 @@ function formatRate(bps) {
   font-size: 10px;
 }
 
-.meter-tag { width: 24px; flex-shrink: 0; color: var(--sb-muted); }
+.meter-tag { flex: 0 0 1.625rem; color: var(--sb-muted); }
 .meter-bar-track {
   height: 5px;
-  flex: 1;
+  flex: 1 1 3rem;
+  min-width: 2rem;
   border-radius: 999px;
   overflow: hidden;
   background: var(--neu-inset-bg, rgba(15, 23, 42, 0.45));
 }
 .meter-bar-fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
-.meter-pct { width: 28px; text-align: right; flex-shrink: 0; color: var(--sb-text); }
-.meter-detail { width: 75px; text-align: right; flex-shrink: 0; color: var(--sb-muted); }
+.meter-pct { flex: 0 0 2rem; text-align: right; color: var(--sb-text); }
+.meter-detail { flex: 0 1 auto; max-width: 6rem; text-align: right; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .col-traffic {
-  width: 100px;
-  flex-shrink: 0;
+  flex: 0.7 1 clamp(5.5rem, 9%, 8rem);
 }
 
 .col-rates {
-  width: 110px;
-  flex-shrink: 0;
+  flex: 0.8 1 clamp(6.25rem, 10%, 9rem);
   gap: 2px;
   font-size: 11px;
 }
@@ -555,21 +553,20 @@ function formatRate(bps) {
 .arrow-up { color: var(--sb-warning); font-weight: bold; }
 
 .col-conns {
-  width: 80px;
-  flex-shrink: 0;
+  flex: 0.6 1 clamp(4.75rem, 7%, 7rem);
   font-size: 11px;
 }
 
 .col-label { font-size: 10px; color: var(--sb-muted); }
 
 .col-latency {
-  flex: 1;
-  min-width: 180px;
+  flex: 1.2 1 clamp(10.5rem, 18%, 20rem);
 }
 
 .col-action {
-  flex-shrink: 0;
-  padding-left: 8px;
+  flex: none;
+  margin-left: auto;
+  padding-left: 0.5rem;
 }
 
 .action-chevron {
@@ -579,48 +576,30 @@ function formatRate(bps) {
 
 @media (max-width: 767px) {
   .openlat-node-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 10px;
-    padding: 12px 13px;
-    align-items: start;
+    gap: 0.5rem 0.625rem;
+    padding: 0.75rem 0.8125rem;
+    align-items: flex-start;
   }
 
-  .col-name {
-    grid-column: 1 / -1;
-    width: 100%;
+  .col-name,
+  .col-meters,
+  .col-latency {
+    flex: 1 0 100%;
   }
 
-  .name-line {
-    flex-wrap: wrap;
-  }
-
+  .name-line,
   .os-line {
-    padding-left: 13px;
     flex-wrap: wrap;
-  }
-
-  .col-meters {
-    grid-column: 1 / -1;
-    width: 100%;
-    gap: 5px;
   }
 
   .meter-detail {
-    width: auto;
-    max-width: 135px;
+    max-width: 8.5rem;
   }
 
   .col-traffic,
   .col-rates,
   .col-conns {
-    width: 100%;
-  }
-
-  .col-latency {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-width: 0;
+    flex: 1 1 clamp(5.5rem, 30%, 100%);
   }
 
   .col-action {

@@ -112,8 +112,7 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await expect(sortSheet).toBeVisible()
   await sortSheet.getByRole('button', { name: '按 CPU 占用' }).click()
   await expect(sortSheet).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '卡片视图' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '列表视图' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '切换为列表视图' })).toBeVisible()
   await expectNoSideways('服务器页(含地图与统计卡)')
 
   const nodeCards = page.locator('.m-node-card')
@@ -134,10 +133,11 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   await expect(nodeActionSheet.getByText('本月流量')).toBeVisible()
   await nodeActionSheet.getByRole('button', { name: '关闭', exact: true }).click()
 
-  await page.getByRole('button', { name: '列表视图' }).click()
+  await page.getByRole('button', { name: '切换为列表视图' }).click()
   await expect(page.locator('.m-node-row').first()).toBeVisible()
   await expectNoSideways('服务器列表视图')
-  await page.getByRole('button', { name: '卡片视图' }).click()
+  await page.getByRole('button', { name: '切换为卡片视图' }).click()
+  await expect(page.locator('.m-node-card').first()).toBeVisible()
 
   // 服务器只读分享页应正常加载监控指标（不得双倍拼接分享 API 前缀）
   await page.getByRole('button', { name: '分享服务器', exact: true }).click()
@@ -306,9 +306,10 @@ test('移动端全功能与 PC 对齐验证：分享/探针/筛选/工具/IP库/
   const grpSheet = page.locator('.m-sheet').filter({ hasText: '分组方式' })
   await grpSheet.getByRole('button', { name: '按地区分组' }).click()
   await expectNoSideways('实时节点状态看板-分组')
-  await page.getByRole('button', { name: '列表视图' }).click()
+  await page.getByRole('button', { name: '切换为列表视图' }).click()
   await expect(page.locator('.m-node-row').first()).toBeVisible()
-  await page.getByRole('button', { name: '卡片视图' }).click()
+  await page.getByRole('button', { name: '切换为卡片视图' }).click()
+  await expect(page.locator('.m-node-card').first()).toBeVisible()
   await expectNoSideways('实时节点状态看板')
 
   for (const [path, headingText] of [

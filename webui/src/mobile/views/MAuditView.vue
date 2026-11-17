@@ -506,8 +506,7 @@ onMounted(async () => {
 
 .m-kv-lbl {
   color: var(--sb-muted);
-  flex: none;
-  width: 90px;
+  flex: 0 0 clamp(4.75rem, 24%, 7rem);
 }
 
 .m-kv-val {
@@ -526,7 +525,7 @@ onMounted(async () => {
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 140px;
+  max-height: min(32dvh, 14rem);
   overflow-y: auto;
 }
 

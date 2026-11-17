@@ -284,9 +284,9 @@ onMounted(load)
 
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务、协议或端口" style="width: 260px" />
-        <el-select v-model="selectedNode" clearable placeholder="全部服务器" style="width: 180px"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select>
-        <el-select v-model="selectedStatus" clearable placeholder="全部状态" style="width: 140px"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务、协议或端口" class="filter-search" />
+        <el-select v-model="selectedNode" clearable placeholder="全部服务器" class="filter-select"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select>
+        <el-select v-model="selectedStatus" clearable placeholder="全部状态" class="filter-select--sm"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredListeners" :loading="loading" empty-text="还没有接入服务">

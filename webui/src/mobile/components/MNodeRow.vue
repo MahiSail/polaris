@@ -222,15 +222,16 @@ const expiry = computed(() => nodeExpiryInfo(props.node) || { label: '永久免�
   flex: none;
 }
 .m-node-row__kpis {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  padding: 8px;
-  border-radius: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.5625rem;
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
 }
 .m-row-kpi {
+  flex: 1 1 clamp(3.75rem, calc(25% - 0.5rem), 100%);
   display: flex;
   flex-direction: column;
   gap: 2px;

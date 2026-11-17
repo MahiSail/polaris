@@ -264,12 +264,12 @@ onMounted(load)
         description="请点击「设置」检查区域编号与访问令牌，并确认这台控制机可以访问 api.cloudflare.com。"
         type="error" show-icon :closable="false" style="margin-bottom: 12px" />
       <div v-if="tab !== 'ddns-history'" class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" :placeholder="tab === 'records' ? '搜索域名、内容或服务器' : '搜索域名或证书'" style="width: 260px" />
+        <el-input v-model="keyword" clearable :prefix-icon="Search" :placeholder="tab === 'records' ? '搜索域名、内容或服务器' : '搜索域名或证书'" class="filter-search" />
         <template v-if="tab === 'records'">
-          <el-select v-model="selectedNode" clearable placeholder="全部服务器" style="width: 180px">
+          <el-select v-model="selectedNode" clearable placeholder="全部服务器" class="filter-select">
             <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.name" />
           </el-select>
-          <el-select v-model="selectedType" clearable placeholder="全部类型" style="width: 130px"><el-option v-for="type in ['A','AAAA','CNAME','TXT']" :key="type" :label="type" :value="type" /></el-select>
+          <el-select v-model="selectedType" clearable placeholder="全部类型" class="filter-select--sm"><el-option v-for="type in ['A','AAAA','CNAME','TXT']" :key="type" :label="type" :value="type" /></el-select>
         </template>
       </div>
       <div class="table-panel">
@@ -334,7 +334,7 @@ onMounted(load)
       </div>
     </main>
 
-    <el-dialog v-model="settingsOpen" title="连接 Cloudflare" width="620px">
+    <el-dialog v-model="settingsOpen" title="连接 Cloudflare" width="min(620px, 94vw)">
       <div class="zone-list">
         <div v-for="zone in zones" :key="zone.zone_id" class="zone-row">
           <div class="zone-main">
@@ -362,7 +362,7 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="recordOpen" :title="record.id ? '修改域名记录' : '新建域名记录'" width="620px">
+    <el-dialog v-model="recordOpen" :title="record.id ? '修改域名记录' : '新建域名记录'" width="min(620px, 94vw)">
       <el-form label-position="top">
         <el-row :gutter="16">
           <el-col :span="8"><el-form-item label="记录类型"><el-select v-model="record.type"><el-option v-for="type in ['A','AAAA','CNAME','TXT']" :key="type" :label="type" :value="type" /></el-select></el-form-item></el-col>

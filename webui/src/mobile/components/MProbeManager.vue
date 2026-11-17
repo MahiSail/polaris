@@ -117,7 +117,7 @@
               {{ form.node_ids.length === nodes.length ? '清空全选' : '全选服务器' }}
             </el-button>
           </div>
-          <div class="m-list" style="max-height: 220px; overflow-y: auto;">
+          <div class="m-list" style="max-height: min(35dvh, 15rem); overflow-y: auto;">
             <label
               v-for="n in nodes"
               :key="n.id"

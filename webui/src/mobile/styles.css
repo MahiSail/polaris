@@ -7,12 +7,14 @@
 ─────────────────────────────────────────────────────────────────── */
 
 :root {
-  --m-gap: 12px;
-  --m-radius: 14px;
-  --m-radius-sm: 8px;
-  --m-tap: 44px;
-  --m-tabbar: 56px;
-  --m-header: 48px;
+  --m-px: clamp(0.75rem, 3.2vw, 1rem);
+  --m-py: clamp(0.625rem, 2.4vw, 0.875rem);
+  --m-gap: clamp(0.625rem, 2.6vw, 0.875rem);
+  --m-radius: 0.875rem;
+  --m-radius-sm: 0.5rem;
+  --m-tap: 2.75rem;
+  --m-tabbar: 3.5rem;
+  --m-header: 3rem;
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);
   --m-safe-left: env(safe-area-inset-left, 0px);
@@ -45,9 +47,9 @@ html.is-mobile-ui .el-overlay {
   -webkit-backdrop-filter: blur(4px);
 }
 html.is-mobile-ui .el-message-box {
-  width: min(340px, calc(100vw - 36px)) !important;
-  padding: 20px 18px 16px !important;
-  border-radius: 18px !important;
+  width: min(22.5rem, calc(100vw - 1.5rem)) !important;
+  padding: 1.25rem 1.125rem 1rem !important;
+  border-radius: 1.125rem !important;
   background: var(--sb-panel-solid) !important;
   border: 1px solid var(--sb-line-strong) !important;
   box-shadow: 0 20px 44px rgba(0, 0, 0, 0.36) !important;
@@ -83,12 +85,12 @@ html.is-mobile-ui .el-message-box__btns .el-button {
 /* 移动端原生 HUD 胶囊轻提示：固定于底部 Tab 栏上方安全区，绝不遮挡顶栏按钮或通栏发绿 */
 html.is-mobile-ui .el-message {
   top: auto !important;
-  bottom: calc(var(--m-tabbar) + var(--m-safe-bottom) + 18px) !important;
+  bottom: calc(var(--m-tabbar) + var(--m-safe-bottom) + 1.125rem) !important;
   width: fit-content !important;
   min-width: 0 !important;
-  max-width: min(86vw, 340px) !important;
-  padding: 10px 16px !important;
-  gap: 8px !important;
+  max-width: min(90vw, 24rem) !important;
+  padding: 0.625rem 1rem !important;
+  gap: 0.5rem !important;
   border-radius: 999px !important;
   background: var(--sb-panel-solid) !important;
   border: 1px solid var(--sb-line-strong) !important;
@@ -125,13 +127,12 @@ html.is-mobile-ui .el-message__content {
   word-break: break-word;
 }
 html.is-mobile-ui .el-notification {
-  top: calc(var(--m-header) + var(--m-safe-top) + 10px) !important;
+  top: calc(var(--m-header) + var(--m-safe-top) + 0.625rem) !important;
   left: 50% !important;
   right: auto !important;
   transform: translateX(-50%) !important;
-  width: calc(100vw - 24px) !important;
-  max-width: 360px !important;
-  border-radius: 14px !important;
+  width: min(calc(100vw - 1.5rem), 24rem) !important;
+  border-radius: 0.875rem !important;
   background: var(--sb-panel-solid) !important;
   border: 1px solid var(--sb-line-strong) !important;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3) !important;
@@ -227,7 +228,20 @@ html.is-mobile-ui .el-notification {
 .m-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.m-cards-flex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.m-cards-flex > * {
+  flex: 1 1 clamp(18rem, calc(50% - 0.3125rem), 100%);
   min-width: 0;
 }
 
@@ -541,13 +555,16 @@ html.is-mobile-ui .el-notification {
 /* 可交互筛选胶囊按钮（满足 >=44px 有效触控热区与明确选中态对比） */
 button.m-pill {
   position: relative;
-  min-height: 36px;
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.375rem clamp(0.625rem, 2.5vw, 0.875rem);
   color: var(--sb-text-2);
   background: var(--sb-surface);
   border: 1px solid var(--sb-line-strong);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 550;
   line-height: 1.3;
   cursor: pointer;
@@ -568,19 +585,32 @@ button.m-pill.is-active {
   font-weight: 600;
 }
 
+.m-pill.is-toggle {
+  gap: 0.375rem;
+}
+.m-pill.is-toggle svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+.m-view-toggle__swap {
+  font-size: 0.7rem;
+  opacity: 0.55;
+  margin-left: 0.0625rem;
+}
+
 /* 原生移动端日期/时间输入框 */
 .m-native-input {
   width: 100%;
-  height: var(--m-tap);
   min-height: var(--m-tap);
-  padding: 0 12px;
+  padding: 0.5rem 0.75rem;
   color: var(--sb-text);
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line-strong);
   border-radius: var(--sb-radius-sm);
   font: inherit;
-  font-size: 14px;
-  line-height: var(--m-tap);
+  font-size: 0.875rem;
+  line-height: 1.4;
   box-sizing: border-box;
   outline: none;
   color-scheme: light;
@@ -642,10 +672,10 @@ html.dark .m-native-input {
    否则下方滚动的卡片文字会穿透搜索框与筛选按钮形成重影。 */
 .m-listbar {
   position: sticky;
-  top: -12px;
+  top: calc(-1 * var(--m-py));
   z-index: 15;
-  margin: -12px -14px 12px;
-  padding: 12px 14px 10px;
+  margin: calc(-1 * var(--m-py)) calc(-1 * var(--m-px)) var(--m-gap);
+  padding: var(--m-py) var(--m-px) 0.625rem;
   background: var(--sb-bg);
   border-bottom: 1px solid var(--sb-line);
   box-shadow: 0 2px 8px color-mix(in oklab, var(--sb-text) 5%, transparent);
@@ -658,8 +688,8 @@ html.dark .m-native-input {
   position: absolute;
   left: 0;
   right: 0;
-  top: -16px;
-  height: 16px;
+  top: -1rem;
+  height: 1rem;
   background: var(--sb-bg);
   pointer-events: none;
 }
@@ -671,37 +701,38 @@ html.dark .m-native-input {
   box-shadow: 0 0 0 1px var(--sb-line-strong) inset;
 }
 .m-listbar .m-filters {
-  margin: 10px 0 0;
+  margin: 0.625rem 0 0;
 }
 
 /* 筛选工具条（非吸顶场景保留完整上下呼吸间距） */
 .m-filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  gap: 8px;
-  margin: 10px 0 12px;
+  gap: 0.5rem;
+  margin: 0.625rem 0 0.75rem;
   width: 100%;
 }
 .m-filters::-webkit-scrollbar { display: none; }
 .m-filters > .m-picker {
-  flex: 1 1 0%;
+  flex: 1 1 clamp(8rem, 42%, 100%);
   min-width: 0;
-  height: 40px !important;
-  min-height: 40px !important;
+  min-height: 2.5rem !important;
+  height: auto !important;
   box-sizing: border-box;
 }
 .m-filters > .m-seg {
   flex: 0 0 auto;
   margin-bottom: 0;
-  height: 40px;
+  min-height: 2.5rem;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  padding: 3px;
+  padding: 0.1875rem;
 }
 .m-filters > .m-seg:only-child,
 .m-filters[style*="column"] > .m-seg {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   width: 100%;
 }
 
@@ -718,25 +749,29 @@ html.dark .m-native-input {
   margin-top: 6px;
 }
 .m-filters .m-seg .m-seg__item {
-  min-height: 34px;
-  height: 34px;
-  line-height: 34px;
-  padding: 0 12px;
-  font-size: 13px;
+  min-height: 2.125rem;
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.3;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
 }
 
 /* ── 右下角悬浮按钮 (FAB) ─────────────────────────────────────── */
 .m-fab {
   position: absolute;
-  right: 16px;
-  bottom: 20px;
+  right: var(--m-px);
+  bottom: calc(1.125rem + var(--m-safe-bottom));
   z-index: 15;
-  width: 52px;
-  height: 52px;
-  display: grid;
-  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
-  border-radius: 16px;
+  border-radius: 1rem;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -774,8 +809,7 @@ html.light .m-fab, html:not(.dark) .m-fab {
   border-top: 1px solid var(--sb-line);
 }
 .m-detail__row dt {
-  flex: none;
-  width: 92px;
+  flex: 0 0 clamp(4.75rem, 24%, 7.5rem);
   color: var(--sb-muted);
 }
 .m-detail__row dd {
@@ -978,22 +1012,25 @@ button.m-chip {
 
 .m-sort-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   min-width: 0;
 }
 
 .m-sort-row > * {
+  flex: 1 1 clamp(8rem, 44%, 100%);
   min-width: 0;
 }
 
 .m-kv-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 0.75rem;
 }
 
 .m-kv-cell {
+  flex: 1 1 clamp(8.25rem, calc(50% - 0.375rem), 100%);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1028,9 +1065,10 @@ button.m-chip {
 
 .m-filter-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .m-note {
@@ -1054,11 +1092,11 @@ button.m-chip {
 }
 .m-sticky-bar--top {
   position: sticky;
-  top: -12px;
+  top: calc(-1 * var(--m-py));
   bottom: auto;
   z-index: 15;
-  margin: 0 -14px 12px;
-  padding: 12px 14px;
+  margin: 0 calc(-1 * var(--m-px)) var(--m-gap);
+  padding: var(--m-py) var(--m-px);
   border-radius: 0;
   border-left: 0;
   border-right: 0;
@@ -1103,43 +1141,41 @@ button.m-chip {
   transition: width 0.25s ease;
 }
 
-/* Constrain Element Plus poppers, pickers & adapted PC widgets inside 390px mobile viewport */
+/* Constrain Element Plus poppers, pickers & adapted widgets inside variable mobile viewports */
 @media (max-width: 767px) {
   .el-popper,
   .el-select-dropdown,
   .el-picker-panel,
   .el-date-picker,
   .el-date-range-picker {
-    max-width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 1rem) !important;
   }
 
   .el-date-range-picker .el-picker-panel__body-wrapper {
     overflow-x: auto;
-    max-width: calc(100vw - 18px);
+    max-width: calc(100vw - 1.125rem);
   }
 
   .el-date-range-picker .el-date-range-picker__content {
     float: none;
     width: 100% !important;
-    min-width: 260px;
+    min-width: min(16rem, calc(100vw - 2rem));
   }
 
   .el-notification {
-    width: calc(100vw - 24px) !important;
-    max-width: 360px !important;
+    width: min(calc(100vw - 1.5rem), 23rem) !important;
   }
 
   .el-message-box {
-    width: calc(100vw - 32px) !important;
-    max-width: 380px !important;
+    width: min(calc(100vw - 1.5rem), 23rem) !important;
   }
 }
 
 .m-app .openlat-metrics,
 .m-app .openlat-grid {
-  display: grid;
-  grid-template-columns: 1fr !important;
-  gap: 10px;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0.625rem;
 }
 
 .m-app .summary-card,
@@ -1173,8 +1209,7 @@ button.m-chip {
 }
 
 .m-app .openlat-node-card .node-system-text {
-  flex: 1 1 auto;
-  min-width: 120px;
+  flex: 1 1 min(7.5rem, 100%);
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
@@ -1182,8 +1217,7 @@ button.m-chip {
 }
 
 .m-app .openlat-node-card .card-meta-dl.has-provider {
-  grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1.15fr);
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .m-app .openlat-node-card .card-meta-dl dd {

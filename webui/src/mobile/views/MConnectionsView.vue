@@ -390,19 +390,22 @@ onBeforeUnmount(() => {
   border-color: color-mix(in oklab, var(--sb-warning) 30%, transparent);
 }
 
-/* Symmetric 3-column metrics bar */
+/* Responsive Flex metrics bar */
 .m-conn-rates {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 10px;
-  padding: 8px 2px;
-  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.125rem;
+  border-radius: 0.625rem;
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
+  row-gap: 0.375rem;
 }
 .rate-col {
+  flex: 1 1 clamp(5.5rem, 30%, 100%);
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 0.375rem;
   display: flex;
   flex-direction: column;
   gap: 2px;

@@ -365,7 +365,7 @@ onBeforeUnmount(() => {
   padding: 24px;
 }
 .m-share-error strong { color: var(--sb-text); font-size: 15px; }
-.m-share-error span { max-width: 280px; font-size: 12.5px; line-height: 1.6; }
+.m-share-error span { max-width: min(17.5rem, 88vw); font-size: 12.5px; line-height: 1.6; }
 .m-app {
   width: 100%;
   height: 100%;

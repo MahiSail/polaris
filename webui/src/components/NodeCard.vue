@@ -891,7 +891,7 @@ button.upgrade-tag {
 }
 
 .country-name {
-  max-width: 120px;
+  max-width: min(10rem, 48%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -966,10 +966,14 @@ button.upgrade-tag {
 }
 
 .meters-grid {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  margin-top: 0.875rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.meters-grid > * {
+  flex: 1 1 clamp(8.5rem, calc(50% - 0.375rem), 100%);
+  min-width: 0;
 }
 
 .latency-section {
@@ -1004,15 +1008,20 @@ button.upgrade-tag {
 .expiry-val.is-danger { color: var(--sb-danger); }
 
 .card-meta-dl {
-  margin: 8px 0 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   font-size: 11px;
 }
 
-.card-meta-dl.has-provider {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.card-meta-dl .dl-row {
+  flex: 1 1 clamp(7.5rem, calc(45% - 0.25rem), 100%);
+  min-width: 0;
+}
+
+.card-meta-dl.has-provider .dl-row {
+  flex: 1 1 clamp(5.5rem, calc(31% - 0.35rem), 100%);
 }
 
 .dl-row {
@@ -1037,18 +1046,20 @@ button.upgrade-tag {
 }
 
 .rate-tracks-grid {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .rate-pill {
+  flex: 1 1 clamp(7.5rem, calc(50% - 0.25rem), 100%);
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--sb-line);
 }
 

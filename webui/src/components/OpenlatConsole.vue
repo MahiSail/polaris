@@ -390,17 +390,12 @@ onBeforeUnmount(() => {
 
 .header-inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  max-width: 1500px;
+  gap: 0.75rem;
+  max-width: min(96rem, 100%);
   margin: 0 auto;
-  padding: 12px 24px;
-}
-
-@media (max-width: 640px) {
-  .header-inner {
-    padding: 10px 16px;
-  }
+  padding: 0.75rem clamp(1rem, 2.5vw, 1.5rem);
 }
 
 .brand-btn {
@@ -496,18 +491,12 @@ onBeforeUnmount(() => {
 }
 
 .console-main {
-  max-width: 1500px;
+  max-width: min(96rem, 100%);
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: clamp(0.875rem, 2vw, 1.25rem) clamp(1rem, 2.5vw, 1.5rem);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-@media (max-width: 640px) {
-  .console-main {
-    padding: 16px;
-  }
+  gap: 1rem;
 }
 
 .console-error {
@@ -574,27 +563,14 @@ onBeforeUnmount(() => {
 }
 
 .node-grid {
-  display: grid;
-  grid-template-columns: repeat(1, 1fr);
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-@media (min-width: 640px) {
-  .node-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1280px) {
-  .node-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (min-width: 1536px) {
-  .node-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+.node-grid > * {
+  flex: 1 1 clamp(19rem, calc(25% - 0.75rem), 100%);
+  min-width: 0;
 }
 
 .node-list {
@@ -631,7 +607,7 @@ onBeforeUnmount(() => {
 .footer-sub {
   font-size: 11px;
   color: var(--sb-muted);
-  max-width: 208px;
+  max-width: min(15rem, 60vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

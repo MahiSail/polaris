@@ -283,13 +283,13 @@ onBeforeUnmount(() => {
             clearable
             :prefix-icon="Search"
             placeholder="来源 IP"
-            style="width: 170px"
+            class="filter-select"
             @keyup.enter="handleSearch"
           />
-          <el-select v-model="filter.node_id" clearable placeholder="全部服务器" style="width: 150px" @change="handleSearch">
+          <el-select v-model="filter.node_id" clearable placeholder="全部服务器" class="filter-select" @change="handleSearch">
             <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" />
           </el-select>
-          <el-select v-model="filter.network" clearable placeholder="协议" style="width: 100px" @change="handleSearch">
+          <el-select v-model="filter.network" clearable placeholder="协议" class="filter-select--sm" @change="handleSearch">
             <el-option label="TCP" value="tcp" />
             <el-option label="UDP" value="udp" />
           </el-select>
@@ -297,7 +297,7 @@ onBeforeUnmount(() => {
             v-model="filter.user"
             clearable
             placeholder="接入节点 / 设备"
-            style="width: 160px"
+            class="filter-select"
             @keyup.enter="handleSearch"
           />
           <el-input
@@ -305,7 +305,7 @@ onBeforeUnmount(() => {
             clearable
             :prefix-icon="Search"
             placeholder="目标域名、端口或出口"
-            style="width: 220px"
+            class="filter-search"
             @keyup.enter="handleSearch"
           />
           <el-date-picker
@@ -315,7 +315,7 @@ onBeforeUnmount(() => {
             start-placeholder="开始时间"
             end-placeholder="结束时间"
             :shortcuts="dateShortcuts"
-            style="width: 320px"
+            class="filter-daterange"
             @change="handleSearch"
           />
           <div class="toolbar-actions">

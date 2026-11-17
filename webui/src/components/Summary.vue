@@ -262,73 +262,28 @@ function formatRate(bps) {
 
 <style scoped>
 .summary-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 768px) {
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1280px) {
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1536px) {
-  .summary-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: stretch;
 }
 
 .cards-subgrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  flex: 1.15 1 clamp(18rem, 52%, 100%);
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-@media (min-width: 768px) {
-  .cards-subgrid {
-    grid-column: span 2 / span 2;
-  }
-}
-
-@media (min-width: 1280px) {
-  .cards-subgrid {
-    grid-column: span 2 / span 2;
-  }
-}
-
-@media (min-width: 1536px) {
-  .cards-subgrid {
-    grid-column: span 2 / span 2;
-  }
+.cards-subgrid > .summary-tile {
+  flex: 1 1 clamp(9.5rem, calc(50% - 0.375rem), 100%);
+  min-width: 0;
 }
 
 .summary-map {
-  grid-column: span 1 / span 1;
-}
-
-@media (min-width: 768px) {
-  .summary-map {
-    grid-column: span 2 / span 2;
-  }
-}
-
-@media (min-width: 1280px) {
-  .summary-map {
-    grid-column: span 1 / span 1;
-  }
-}
-
-@media (min-width: 1536px) {
-  .summary-map {
-    grid-column: span 2 / span 2;
-  }
+  flex: 1 1 clamp(18rem, 42%, 100%);
+  min-width: 0;
 }
 
 .summary-tile {

@@ -252,11 +252,14 @@ button, input, textarea, select { font: inherit; }
 .page-shell { height: 100%; display: flex; flex-direction: column; min-width: 0; }
 .page-header {
   position: relative;
-  height: 64px;
+  min-height: 3.75rem;
+  height: auto;
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0 32px;
+  gap: 0.625rem 0.75rem;
+  padding: 0.625rem clamp(1rem, 3vw, 2rem);
   background: linear-gradient(180deg, rgba(28, 30, 48, .72), rgba(12, 14, 24, .55));
   border-bottom: 1px solid var(--sb-line);
 }
@@ -279,10 +282,10 @@ html.light .page-header {
 .page-header__title::before {
   display: none;
 }
-.page-header__actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.page-header__actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center; }
 /* 页面自适应视口：表格面板占据剩余高度，行在面板内部滚动，
    分页条和工具栏保持固定位置。 */
-.page-content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: 22px 32px 28px; scrollbar-width: none; }
+.page-content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: clamp(0.875rem, 2vw, 1.375rem) clamp(1rem, 3vw, 2rem) clamp(1.25rem, 2.5vw, 1.75rem); scrollbar-width: none; }
 .page-content::-webkit-scrollbar { display: none; }
 .page-content.el-loading-parent--relative { overflow: hidden !important; position: relative !important; }
 .page-content > .el-loading-mask { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2000; }
@@ -349,10 +352,10 @@ html.light .page-header {
   flex: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 0.625rem;
   align-items: center;
   /* 与表格首列文字左边缘对齐（面板边框 1px + 单元格 20px 留白）。 */
-  padding: 14px 20px;
+  padding: 0.875rem clamp(0.875rem, 2vw, 1.25rem);
   background: rgba(100, 104, 123, .04);
   border: 1px solid var(--sb-line);
   border-bottom: 0;
@@ -360,28 +363,34 @@ html.light .page-header {
 }
 .search-toolbar + .table-panel { border-top-left-radius: 0; border-top-right-radius: 0; }
 /* 独立成块的筛选栏，下方不直接接表格时使用。 */
-.search-toolbar--standalone { border-bottom: 1px solid var(--sb-line); border-radius: var(--sb-radius); margin-bottom: 16px; }
-.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex: none; }
-.toolbar__spacer { flex: 1; }
+.search-toolbar--standalone { border-bottom: 1px solid var(--sb-line); border-radius: var(--sb-radius); margin-bottom: 1rem; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center; margin-bottom: 1rem; flex: none; }
+.toolbar__spacer { flex: 1 1 auto; }
+.filter-search { flex: 1 1 clamp(12rem, 24%, 20rem); min-width: min(12rem, 100%); max-width: 24rem; width: 100%; }
+.filter-select { flex: 0 1 clamp(9rem, 16%, 13.5rem); min-width: min(8.5rem, 100%); width: 100%; }
+.filter-select--sm { flex: 0 1 clamp(7.25rem, 12%, 10rem); min-width: min(7rem, 100%); width: 100%; }
+.filter-daterange { flex: 1 1 clamp(15rem, 26%, 22rem); min-width: min(14rem, 100%); max-width: 100%; width: 100%; }
 .section-title {
   flex: none;
-  margin: 24px 0 12px;
-  font-size: 13px;
+  margin: 1.5rem 0 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: .6px;
   color: var(--sb-muted);
   text-transform: uppercase;
 }
 .section-title:first-child { margin-top: 0; }
-.tab-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--sb-line); }
+.tab-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.625rem; padding: 0.875rem clamp(0.875rem, 2vw, 1.25rem); border-bottom: 1px solid var(--sb-line); }
 .tab-actions--start { justify-content: flex-start; }
-.pagination-bar { flex: none; display: flex; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid var(--sb-line); }
+.pagination-bar { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem clamp(0.875rem, 2vw, 1.25rem); border-top: 1px solid var(--sb-line); }
 
 /* ── 指标卡 ─────────────────────────────────────────────── */
-.metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.metric-strip { display: flex; flex-wrap: wrap; gap: 0.875rem; margin-bottom: 1.125rem; }
 .metric {
   position: relative;
-  padding: 15px 18px;
+  flex: 1 1 clamp(9.5rem, calc(25% - 0.875rem), 100%);
+  min-width: 0;
+  padding: 0.9375rem 1.125rem;
   overflow: hidden;
   background: var(--sb-panel);
   border: 1px solid var(--sb-line);
@@ -453,11 +462,11 @@ html.light .metric__label {
 .protocol-summary__main strong { display: block; margin-bottom: 3px; color: var(--sb-text); }
 .protocol-summary__main span { color: var(--sb-muted); font-size: 12px; }
 
-.el-dialog { max-height: calc(100dvh - 24px); display: flex; flex-direction: column; margin: 0 !important; overflow: hidden; border: 1px solid var(--sb-line-strong); box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .95); }
-.el-dialog__header { padding-bottom: 14px; border-bottom: 1px solid var(--sb-line); }
+.el-dialog { max-width: calc(100vw - 1.5rem); max-height: calc(100dvh - 1.5rem); display: flex; flex-direction: column; margin: 0 !important; overflow: hidden; border: 1px solid var(--sb-line-strong); box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .95); }
+.el-dialog__header { padding-bottom: 0.875rem; border-bottom: 1px solid var(--sb-line); }
 .el-dialog__title { font-weight: 620; letter-spacing: .3px; }
 .el-overlay { overflow: hidden; backdrop-filter: blur(2px); }
-.el-overlay-dialog { display: grid; place-items: center; padding: 12px; overflow: hidden; }
+.el-overlay-dialog { display: flex; align-items: center; justify-content: center; padding: 0.75rem; overflow: hidden; }
 .el-dialog__header, .el-dialog__footer { flex: none; }
 .el-dialog__body { min-width: 0; min-height: 0; padding-top: 18px; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .el-dialog__body::-webkit-scrollbar { display: none; }
@@ -710,11 +719,13 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
 .panel-tabs .el-tab-pane > .pagination-bar { margin-top: auto; }
 
 /* ── 登录与首次改密 ─────────────────────────────────────── */
-.login-page { width: 100%; height: 100%; display: grid; grid-template-columns: minmax(560px, 1.25fr) minmax(460px, .75fr); }
+.login-page { width: 100%; height: 100%; display: flex; flex-wrap: wrap; }
 .login-brand {
   position: relative;
+  flex: 1.25 1 28rem;
+  min-width: 0;
   overflow: hidden;
-  padding: 58px 64px;
+  padding: clamp(2rem, 4vw, 3.625rem) clamp(2rem, 4.5vw, 4rem);
   color: var(--sb-text);
   background:
     radial-gradient(760px 420px at 18% 12%, color-mix(in oklab, var(--sb-accent) 20%, transparent), transparent 60%),
@@ -733,55 +744,56 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
   mask-image: radial-gradient(70% 70% at 30% 30%, #000 30%, transparent 100%);
   pointer-events: none;
 }
-.login-brand__logo { position: relative; display: flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 700; letter-spacing: .6px; }
+.login-brand__logo { position: relative; display: flex; align-items: center; gap: 0.75rem; font-size: 1.1875rem; font-weight: 700; letter-spacing: .6px; }
 .login-brand__mark {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
+  width: 2.375rem;
+  height: 2.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
   background: linear-gradient(135deg, var(--sb-accent), var(--sb-accent-2));
   box-shadow: 0 0 22px -4px color-mix(in oklab, var(--sb-accent) 80%, transparent);
 }
-.login-brand__copy { position: absolute; left: 64px; bottom: 72px; max-width: 520px; }
-.login-brand__copy h1 { margin: 0; font-size: 34px; line-height: 1.3; font-weight: 620; letter-spacing: 1px; }
-.login-brand__copy p { margin: 14px 0 0; color: var(--sb-muted); line-height: 1.75; }
-.login-form-wrap { display: grid; place-items: center; padding: 56px; background: var(--sb-bg); border-left: 1px solid var(--sb-line); }
+.login-brand__copy { position: absolute; left: clamp(2rem, 4.5vw, 4rem); right: clamp(2rem, 4.5vw, 4rem); bottom: clamp(2rem, 5vw, 4.5rem); max-width: 32.5rem; }
+.login-brand__copy h1 { margin: 0; font-size: clamp(1.5rem, 2.6vw, 2.125rem); line-height: 1.3; font-weight: 620; letter-spacing: 1px; }
+.login-brand__copy p { margin: 0.875rem 0 0; color: var(--sb-muted); line-height: 1.75; }
+.login-form-wrap { flex: 1 1 22rem; min-width: 0; display: flex; align-items: center; justify-content: center; padding: clamp(1.5rem, 4vw, 3.5rem); background: var(--sb-bg); border-left: 1px solid var(--sb-line); }
 .login-form {
-  width: min(100%, 400px);
-  padding: 36px 34px 34px;
+  width: min(100%, 25rem);
+  padding: clamp(1.5rem, 3vw, 2.25rem) clamp(1.25rem, 3vw, 2.125rem);
   background: var(--sb-panel);
   border: 1px solid var(--sb-line);
-  border-radius: 16px;
+  border-radius: 1rem;
   box-shadow: var(--sb-shadow);
 }
-.login-form h2 { margin: 0 0 24px; font-size: 24px; font-weight: 620; letter-spacing: .5px; }
-.login-form__sub { color: var(--sb-muted); margin: -16px 0 24px; font-size: 13px; }
-.login-form .el-button { width: 100%; margin-top: 8px; }
-.login-form__back { margin-top: 10px; text-align: center; }
+.login-form h2 { margin: 0 0 1.5rem; font-size: 1.5rem; font-weight: 620; letter-spacing: .5px; }
+.login-form__sub { color: var(--sb-muted); margin: -1rem 0 1.5rem; font-size: 0.8125rem; }
+.login-form .el-button { width: 100%; margin-top: 0.5rem; }
+.login-form__back { margin-top: 0.625rem; text-align: center; }
 
 @media (max-width: 980px) {
-  .page-header { height: auto; min-height: 64px; padding: 12px 20px; }
-  .page-header__actions { flex-wrap: wrap; justify-content: flex-end; }
-  .page-content { padding: 18px 20px 24px; }
-  .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .el-dialog { max-width: calc(100vw - 24px); }
-  .toolbar { align-items: flex-start; flex-wrap: wrap; }
-  .login-page { grid-template-columns: 1fr; }
+  .page-header { min-height: 3.5rem; padding: 0.75rem 1.25rem; }
+  .page-content { padding: 1.125rem 1.25rem 1.5rem; }
+  .toolbar { align-items: flex-start; }
   .login-brand { display: none; }
   .login-form-wrap { border-left: 0; }
 }
 
+@media (max-width: 760px) {
+  .metric-strip > .metric { flex: 1 1 clamp(9.5rem, calc(50% - 0.5rem), 100%); }
+}
+
 @media (max-width: 640px) {
-  .page-header { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .page-header { align-items: flex-start; flex-direction: column; gap: 0.625rem; }
   .page-header__actions { width: 100%; margin-left: 0; justify-content: flex-start; }
-  .page-content { padding: 14px 12px 22px; }
-  .metric-strip { grid-template-columns: 1fr; }
+  .page-content { padding: 0.875rem 0.75rem 1.375rem; }
+  .metric-strip > .metric { flex: 1 1 100%; }
   .protocol-summary { align-items: flex-start; flex-wrap: wrap; }
-  .login-form-wrap { padding: 24px; }
-  .login-form { width: min(100%, 360px); }
+  .login-form-wrap { padding: 1.5rem; }
+  .login-form { width: min(100%, 22.5rem); }
   .pagination-bar { justify-content: flex-start; overflow-x: auto; }
-  .tab-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .tab-actions { justify-content: flex-start; }
 }
 
 /* 侧栏品牌区点开的版本与更新浮层。内容会挂到 body 上，样式必须写在全局。 */

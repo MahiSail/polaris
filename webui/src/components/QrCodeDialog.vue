@@ -85,7 +85,7 @@ async function copy() {
 /* The code itself must stay black on white in both themes, or a dark page
    inverts it and phones stop reading it. */
 .qr-frame { padding: 10px; border-radius: var(--sb-radius); background: #fff; line-height: 0; }
-.qr-frame img { display: block; width: 240px; height: 240px; }
+.qr-frame img { display: block; width: min(15rem, 62vw); height: min(15rem, 62vw); }
 .qr-value { width: 100%; max-height: 96px; overflow-y: auto; color: var(--sb-muted); font-size: 12px; line-height: 1.5; text-align: center; word-break: break-all; }
 .qr-empty { color: var(--sb-muted); font-size: 13px; }
 </style>

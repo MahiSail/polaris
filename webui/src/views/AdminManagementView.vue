@@ -128,11 +128,10 @@ onMounted(load)
 .admin-hero__icon { display:grid; place-items:center; width:44px; height:44px; color:var(--sb-accent); background:var(--sb-accent-soft); border-radius:12px; }
 .admin-hero h2,.admin-card h3 { margin:0; color:var(--sb-text); font-size:16px; font-weight:650; }
 .admin-hero p,.admin-card p { margin:5px 0 0; color:var(--sb-muted); font-size:13px; line-height:1.6; }
-.admin-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-.admin-card { padding:20px; border-radius:16px; }
-.admin-card__head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
-.admin-card__actions,.admin-action-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
-.admin-form-card { max-width:900px; }
-.admin-form { margin-top:20px; max-width:620px; }
-@media (max-width:700px) { .admin-card-grid { grid-template-columns:1fr; } }
+.admin-card-grid { display:flex; flex-wrap:wrap; gap:0.875rem; }
+.admin-card { flex:1 1 clamp(17rem, calc(50% - 0.5rem), 100%); min-width:0; padding:1.25rem; border-radius:1rem; }
+.admin-card__head { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:0.875rem; }
+.admin-card__actions,.admin-action-row { display:flex; flex-wrap:wrap; gap:0.625rem; margin-top:1.125rem; }
+.admin-form-card { max-width:min(56rem, 100%); }
+.admin-form { margin-top:1.25rem; max-width:min(38.75rem, 100%); }
 </style>

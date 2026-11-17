@@ -588,14 +588,16 @@ function save() {
   background: var(--sb-accent-soft);
 }
 .alias-flag-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
 }
 .alias-flag-option {
-  min-height: 40px;
-  padding: 6px 8px;
+  flex: 1 1 clamp(5.5rem, calc(33.333% - 0.25rem), 100%);
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.375rem 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;

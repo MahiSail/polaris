@@ -294,8 +294,8 @@ onMounted(load)
     <PageHeader title="安全中心"><el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button></PageHeader>
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务器、地址或规则" style="width: 270px" />
-        <el-select v-model="selectedNode" clearable placeholder="全部服务器" style="width: 220px">
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务器、地址或规则" class="filter-search" />
+        <el-select v-model="selectedNode" clearable placeholder="全部服务器" class="filter-select">
           <el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" />
         </el-select>
       </div>
@@ -388,7 +388,7 @@ onMounted(load)
       </div>
     </main>
 
-    <el-dialog v-model="firewallOpen" title="添加访问限制" width="580px">
+    <el-dialog v-model="firewallOpen" title="添加访问限制" width="min(580px, 94vw)">
       <el-form label-position="top">
         <el-form-item label="服务器"><el-select v-model="firewall.node_id" style="width: 100%"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select></el-form-item>
         <el-row :gutter="16">
@@ -410,7 +410,7 @@ onMounted(load)
       <template #footer><el-button @click="firewallOpen = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveFirewall">保存并生效</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="jailOpen" :title="editingJail ? '修改自动封禁规则' : '添加自动封禁规则'" width="720px">
+    <el-dialog v-model="jailOpen" :title="editingJail ? '修改自动封禁规则' : '添加自动封禁规则'" width="min(720px, 94vw)">
       <el-form label-position="top">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="服务器"><el-select v-model="jail.node_id" :disabled="editingJail" style="width: 100%"><el-option v-for="node in appState.nodes" :key="node.id" :label="node.name" :value="node.id" /></el-select></el-form-item></el-col>

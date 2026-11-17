@@ -486,17 +486,19 @@ onMounted(load)
 }
 
 .m-inbound-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 10px;
-  padding: 8px 4px;
-  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0;
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.25rem;
+  border-radius: 0.625rem;
   background: var(--sb-surface-2);
   border: 1px solid var(--sb-line);
 }
 .inbound-stat-col {
+  flex: 1 1 clamp(5rem, 30%, 100%);
   min-width: 0;
-  padding: 0 8px;
+  padding: 0 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 2px;

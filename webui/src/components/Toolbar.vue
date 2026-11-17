@@ -54,39 +54,30 @@
         <option value="ping">按延迟</option>
       </select>
 
-      <!-- View Switcher (Grid vs List) -->
-      <div class="neu-inset view-switcher">
-        <button
-          type="button"
-          class="view-btn"
-          :class="{ 'is-active neu-sm': view === 'grid' }"
-          title="卡片视图"
-          @click="$emit('update:view', 'grid')"
-        >
-          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="view-btn"
-          :class="{ 'is-active neu-sm': view === 'list' }"
-          title="列表视图"
-          @click="$emit('update:view', 'list')"
-        >
-          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="8" y1="6" x2="21" y2="6" />
-            <line x1="8" y1="12" x2="21" y2="12" />
-            <line x1="8" y1="18" x2="21" y2="18" />
-            <line x1="3" y1="6" x2="3.01" y2="6" />
-            <line x1="3" y1="12" x2="3.01" y2="12" />
-            <line x1="3" y1="18" x2="3.01" y2="18" />
-          </svg>
-        </button>
-      </div>
+      <!-- Single-Button View Toggle (Grid <-> List) -->
+      <button
+        type="button"
+        class="neu-inset view-toggle-btn"
+        :title="view === 'grid' ? '当前为卡片视图，点击切换为列表视图' : '当前为列表视图，点击切换为卡片视图'"
+        :aria-label="view === 'grid' ? '切换为列表视图' : '切换为卡片视图'"
+        @click="$emit('update:view', view === 'grid' ? 'list' : 'grid')"
+      >
+        <svg v-if="view === 'grid'" class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        <svg v-else class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        <span class="view-toggle-txt">{{ view === 'grid' ? '卡片' : '列表' }}</span>
+      </button>
     </div>
   </div>
 </template>
@@ -119,40 +110,35 @@ defineEmits(['update:query', 'update:group', 'update:sort', 'update:view'])
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  border-radius: 16px;
-  padding: 8px 12px;
+  gap: 0.625rem;
+  border-radius: 1rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .search-box-wrap {
   position: relative;
-  width: 100%;
-}
-
-@media (min-width: 640px) {
-  .search-box-wrap {
-    width: 240px;
-  }
+  flex: 1 1 clamp(12rem, 28%, 22rem);
+  min-width: min(12rem, 100%);
+  max-width: 100%;
 }
 
 .search-icon {
   position: absolute;
   top: 50%;
-  left: 10px;
+  left: 0.625rem;
   transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--sb-muted);
   pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  height: 32px;
-  padding-left: 32px;
-  padding-right: 28px;
-  border-radius: 8px;
-  font-size: 12px;
+  min-height: 2rem;
+  padding: 0.25rem 1.75rem 0.25rem 2rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   color: var(--sb-text);
   outline: none;
 }
@@ -164,17 +150,18 @@ defineEmits(['update:query', 'update:group', 'update:sort', 'update:view'])
 .clear-btn {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: 0.375rem;
   transform: translateY(-50%);
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.25rem;
   border: none;
   background: transparent;
   color: var(--sb-muted);
-  font-size: 16px;
+  font-size: 1rem;
   cursor: pointer;
 }
 
@@ -184,7 +171,7 @@ defineEmits(['update:query', 'update:group', 'update:sort', 'update:view'])
 
 .toolbar-spacer {
   display: none;
-  flex: 1;
+  flex: 1 1 auto;
 }
 
 @media (min-width: 640px) {
@@ -195,55 +182,54 @@ defineEmits(['update:query', 'update:group', 'update:sort', 'update:view'])
 
 .controls-right {
   display: flex;
-  width: 100%;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 @media (min-width: 640px) {
   .controls-right {
-    width: auto;
+    flex: 0 1 auto;
     justify-content: flex-start;
   }
 }
 
 .select-ctrl {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   color: var(--sb-text);
   outline: none;
   cursor: pointer;
 }
 
-.view-switcher {
-  display: flex;
+.view-toggle-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  border-radius: 8px;
-  padding: 2px;
-}
-
-.view-btn {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--sb-muted);
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--sb-line);
+  color: var(--sb-accent);
+  font-size: 0.75rem;
+  font-weight: 550;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
-.view-btn:hover {
+.view-toggle-btn:hover {
   color: var(--sb-text);
+  border-color: var(--sb-line-strong);
 }
 
-.view-btn.is-active {
-  color: var(--sb-accent);
+.view-toggle-txt {
+  line-height: 1;
 }
 </style>

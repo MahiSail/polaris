@@ -81,7 +81,7 @@ function handleBack() {
 .m-page__body {
   flex: 1;
   min-height: 0;
-  padding: 12px 14px 24px;
+  padding: var(--m-py) var(--m-px) 1.5rem;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -91,9 +91,9 @@ function handleBack() {
   display: none;
 }
 .m-page__body.is-compact {
-  padding: 8px 10px 20px;
+  padding: 0.5rem clamp(0.625rem, 2.5vw, 0.875rem) 1.25rem;
 }
 .m-page.has-fab .m-page__body {
-  padding-bottom: 88px;
+  padding-bottom: 5.5rem;
 }
 </style>

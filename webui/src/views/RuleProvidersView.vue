@@ -108,7 +108,7 @@ onMounted(load)
 
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或类型" style="width: 280px" />
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或类型" class="filter-search" />
       </div>
       <div class="table-panel">
         <PagedTable :rows="filtered" :loading="loading" empty-text="还没有规则供应商">

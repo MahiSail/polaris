@@ -141,7 +141,7 @@
 
             <div v-else class="m-stack" style="margin-top: 10px;">
               <div v-if="totpQrDataUrl" style="display: flex; justify-content: center; padding: 8px; background: #fff; border-radius: 10px;">
-                <img :src="totpQrDataUrl" alt="2FA 二维码" style="width: 180px; height: 180px;" />
+                <img :src="totpQrDataUrl" alt="2FA 二维码" style="width: min(48vw, 12rem); height: min(48vw, 12rem);" />
               </div>
               <div class="m-card m-card--flat">
                 <div class="m-note" style="margin-bottom: 4px;">手动配置密钥：</div>

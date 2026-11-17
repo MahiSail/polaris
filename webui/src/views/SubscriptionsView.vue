@@ -526,8 +526,8 @@ onMounted(() => { load(); loadAccess() })
         <el-tabs v-model="tab" class="panel-tabs">
           <el-tab-pane label="客户端配置" name="configs">
             <div class="tab-actions tab-actions--start">
-              <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索配置或分组" style="width: 260px" />
-              <el-select v-model="selectedStatus" clearable placeholder="全部状态" style="width: 140px"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
+              <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索配置或分组" class="filter-search" />
+              <el-select v-model="selectedStatus" clearable placeholder="全部状态" class="filter-select--sm"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
             </div>
         <PagedTable :rows="filteredConfigs" :empty-text="loading ? '' : '还没有客户端配置'">
           <el-table-column label="配置名称" min-width="165">
@@ -587,10 +587,10 @@ onMounted(() => { load(); loadAccess() })
           </el-tab-pane>
           <el-tab-pane label="访问记录" name="access">
             <div class="tab-actions tab-actions--start access-filters">
-              <el-select v-model="accessQuery.config_id" clearable placeholder="全部配置" style="width: 180px"><el-option v-for="config in configs" :key="config.id" :label="config.name" :value="config.id" /></el-select>
-              <el-input v-model="accessQuery.ip" clearable placeholder="IP" style="width: 170px" @keyup.enter="searchAccess" />
-              <el-input v-model="accessQuery.location" clearable placeholder="归属地" style="width: 170px" @keyup.enter="searchAccess" />
-              <el-input v-model="accessQuery.user_agent" clearable placeholder="User-Agent" style="width: 220px" @keyup.enter="searchAccess" />
+              <el-select v-model="accessQuery.config_id" clearable placeholder="全部配置" class="filter-select"><el-option v-for="config in configs" :key="config.id" :label="config.name" :value="config.id" /></el-select>
+              <el-input v-model="accessQuery.ip" clearable placeholder="IP" class="filter-select" @keyup.enter="searchAccess" />
+              <el-input v-model="accessQuery.location" clearable placeholder="归属地" class="filter-select" @keyup.enter="searchAccess" />
+              <el-input v-model="accessQuery.user_agent" clearable placeholder="User-Agent" class="filter-search" @keyup.enter="searchAccess" />
               <el-button :icon="Search" @click="searchAccess">查询</el-button>
             </div>
             <el-table v-loading="accessLoading" :data="accessLogs">
@@ -726,9 +726,9 @@ onMounted(() => { load(); loadAccess() })
 
             <el-form-item label="允许访问的时间段">
               <div class="access-row">
-                <el-time-select v-model="form.access_window_start" start="00:00" step="00:30" end="23:30" placeholder="开始时间" aria-label="时间段开始" style="width: 150px" />
+                <el-time-select v-model="form.access_window_start" start="00:00" step="00:30" end="23:30" placeholder="开始时间" aria-label="时间段开始" class="filter-select--sm" />
                 <span class="subtle">至</span>
-                <el-time-select v-model="form.access_window_end" start="00:00" step="00:30" end="23:30" placeholder="结束时间" aria-label="时间段结束" style="width: 150px" />
+                <el-time-select v-model="form.access_window_end" start="00:00" step="00:30" end="23:30" placeholder="结束时间" aria-label="时间段结束" class="filter-select--sm" />
                 <el-button link @click="form.access_window_start = ''; form.access_window_end = ''">清除</el-button>
               </div>
               <div class="subtle" style="margin-top: 6px">
@@ -744,7 +744,7 @@ onMounted(() => { load(); loadAccess() })
                 value-format="YYYY-MM-DDTHH:mm:ssZ"
                 aria-label="有效期"
                 placeholder="留空表示长期有效"
-                style="width: 260px"
+                class="filter-search"
               />
               <div class="subtle" style="margin-top: 6px">到期后这个更新地址不再返回配置。需要续期就回来往后调，或者清空。</div>
             </el-form-item>
@@ -821,13 +821,13 @@ onMounted(() => { load(); loadAccess() })
   padding: 4px 6px !important;
 }
 .group-tag { margin: 3px 6px 3px 0; }
-.access-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.access-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
 .option-meta { float: right; margin-left: 18px; color: var(--sb-muted); font-size: 12px; }
 
 /* 整页编辑：左侧导航固定，右侧只渲染当前一节并独立滚动，
    这样无论规则有多少条，导航和顶部的保存按钮都不会被推走。 */
-.form-page { flex-direction: row; gap: 20px; align-items: stretch; overflow: hidden; }
-.form-nav { flex: 0 0 200px; display: flex; flex-direction: column; gap: 6px; }
+.form-page { flex-direction: row; gap: 1.25rem; align-items: stretch; overflow: hidden; }
+.form-nav { flex: 0 1 clamp(11rem, 18vw, 13.75rem); display: flex; flex-direction: column; gap: 0.375rem; }
 .form-nav__item {
   display: flex;
   flex-direction: column;
@@ -900,8 +900,9 @@ onMounted(() => { load(); loadAccess() })
   .rule-table, .rule-table tbody, .rule-table tr, .rule-table td { display: block; width: 100%; }
   .rule-table thead { display: none; }
   .rule-table tr { padding: 10px 0; border-top: 1px solid var(--el-border-color-lighter); }
-  .rule-table td { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px; padding: 5px 0; border: 0; }
-  .rule-table td::before { content: attr(data-label); color: var(--sb-muted); font-size: 12px; }
+  .rule-table td { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0; border: 0; }
+  .rule-table td::before { content: attr(data-label); flex: 0 0 clamp(4.75rem, 24%, 6.5rem); color: var(--sb-muted); font-size: 12px; }
+  .rule-table td > * { flex: 1 1 auto; min-width: 0; }
   .rule-table .check-cell { text-align: left; }
   .rule-table .rule-actions { display: flex; justify-content: flex-end; }
   .rule-table .rule-actions::before { margin-right: auto; }

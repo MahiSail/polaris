@@ -358,7 +358,7 @@
     <el-dialog
       v-model="ddnsHistoryVisible"
       :title="`DDNS 变更记录 · ${props.node?.name || ''}`"
-      width="920px"
+      width="min(920px, 95vw)"
       append-to-body
       destroy-on-close
     >
@@ -975,8 +975,8 @@ onMounted(loadHistory)
   background: color-mix(in oklab, var(--sb-warning, #f59e0b) 16%, transparent) !important;
 }
 
-.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.stat-card { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--sb-line); }
+.stat-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.stat-card { flex: 1 1 clamp(10.5rem, calc(25% - 0.75rem), 100%); min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 0.875rem 1rem; border-radius: 0.875rem; border: 1px solid var(--sb-line); }
 .stat-label { font-size: 11.5px; color: var(--sb-muted); }
 .stat-value { font-size: 19px; font-weight: 650; color: var(--sb-text); font-variant-numeric: tabular-nums; }
 .stat-sub { font-size: 11.5px; color: var(--sb-muted); }
@@ -988,8 +988,8 @@ onMounted(loadHistory)
 .tabs-spacer { flex: 1; }
 .tabs-note { font-size: 11.5px; color: var(--sb-muted); }
 
-.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.chart-panel { padding: 14px 16px; border-radius: 16px; border: 1px solid var(--sb-line); }
+.chart-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.chart-panel { flex: 1 1 clamp(18rem, calc(50% - 0.375rem), 100%); min-width: 0; padding: 0.875rem 1rem; border-radius: 1rem; border: 1px solid var(--sb-line); }
 .chart-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .chart-panel-head h4 { margin: 0; font-size: 12px; font-weight: 500; color: var(--sb-muted); }
 .chart-panel h4 { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--sb-muted); }
@@ -1016,8 +1016,8 @@ onMounted(loadHistory)
 .only-btn.active { border-color: var(--sb-accent); background: color-mix(in oklab, var(--sb-accent) 12%, transparent); color: var(--sb-accent); }
 .detail-empty { margin: 0; padding: 24px; text-align: center; color: var(--sb-muted); font-size: 12.5px; }
 
-.fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.fact-card { padding: 14px 16px; border: 1px solid var(--sb-line); border-radius: 16px; }
+.fact-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.fact-card { flex: 1 1 clamp(18rem, calc(50% - 0.375rem), 100%); min-width: 0; padding: 0.875rem 1rem; border: 1px solid var(--sb-line); border-radius: 1rem; }
 .fact-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .fact-title {
   margin: 0;
@@ -1182,7 +1182,7 @@ onMounted(loadHistory)
 .tone-muted { color: var(--sb-muted); }
 
 @media (max-width: 900px) {
-  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .chart-grid, .fact-grid { grid-template-columns: 1fr; }
+  .stat-card { flex: 1 1 clamp(9.5rem, calc(50% - 0.375rem), 100%); }
+  .chart-panel, .fact-card { flex: 1 0 100%; }
 }
 </style>

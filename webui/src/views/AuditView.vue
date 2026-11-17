@@ -158,13 +158,13 @@ onMounted(async () => {
                 clearable
                 :prefix-icon="Search"
                 placeholder="搜索操作、服务器或执行结果"
-                style="width: 260px"
+                class="filter-search"
               />
               <el-select
                 v-model="selectedNodeId"
                 clearable
                 placeholder="全部服务器"
-                style="width: 180px"
+                class="filter-select"
                 @change="taskQuery.page = 1; loadTasks()"
               >
                 <el-option
@@ -178,7 +178,7 @@ onMounted(async () => {
                 v-model="selectedTaskStatus"
                 clearable
                 placeholder="全部状态"
-                style="width: 140px"
+                class="filter-select--sm"
                 @change="taskQuery.page = 1; loadTasks()"
               >
                 <el-option label="执行成功" value="succeeded" />
@@ -271,13 +271,13 @@ onMounted(async () => {
                 clearable
                 :prefix-icon="Search"
                 placeholder="搜索操作人、内容或对象"
-                style="width: 260px"
+                class="filter-search"
               />
               <el-select
                 v-model="selectedModule"
                 clearable
                 placeholder="全部业务模块"
-                style="width: 160px"
+                class="filter-select"
                 @change="auditQuery.page = 1; loadAudit()"
               >
                 <el-option
@@ -291,7 +291,7 @@ onMounted(async () => {
                 v-model="selectedAuditStatus"
                 clearable
                 placeholder="全部状态"
-                style="width: 130px"
+                class="filter-select--sm"
                 @change="auditQuery.page = 1; loadAudit()"
               >
                 <el-option label="执行成功" value="succeeded" />
@@ -390,7 +390,7 @@ onMounted(async () => {
     <el-dialog
       v-model="detailDialogVisible"
       :title="activeType === 'audit' ? '管理员操作记录' : '系统操作详情'"
-      width="540px"
+      width="min(540px, 94vw)"
       destroy-on-close
     >
       <div v-if="activeRecord" class="detail-dialog-body">
@@ -604,8 +604,7 @@ onMounted(async () => {
 }
 
 .prop-label {
-  width: 80px;
-  flex-shrink: 0;
+  flex: 0 0 clamp(4.5rem, 20%, 6.5rem);
   color: var(--sb-muted, #8e93a6);
   line-height: 1.5;
 }
@@ -642,12 +641,14 @@ onMounted(async () => {
 }
 
 .params-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
 }
 
 .param-item {
+  flex: 1 1 clamp(10rem, calc(50% - 0.5rem), 100%);
+  min-width: 0;
   font-size: 12px;
   display: flex;
   align-items: baseline;

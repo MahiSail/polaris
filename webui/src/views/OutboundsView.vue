@@ -154,9 +154,9 @@ onMounted(load)
     </PageHeader>
     <main class="page-content">
       <div class="search-toolbar">
-        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" style="width: 260px" />
-        <el-select v-model="selectedType" clearable placeholder="全部类型" style="width: 140px"><el-option label="SOCKS5" value="socks" /><el-option label="HTTP" value="http" /><el-option label="直连" value="direct" /></el-select>
-        <el-select v-model="selectedStatus" clearable placeholder="全部状态" style="width: 140px"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
+        <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" class="filter-search" />
+        <el-select v-model="selectedType" clearable placeholder="全部类型" class="filter-select--sm"><el-option label="SOCKS5" value="socks" /><el-option label="HTTP" value="http" /><el-option label="直连" value="direct" /></el-select>
+        <el-select v-model="selectedStatus" clearable placeholder="全部状态" class="filter-select--sm"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredRows" :loading="loading" empty-text="还没有上网出口">
@@ -184,7 +184,7 @@ onMounted(load)
       </div>
     </main>
 
-    <el-dialog v-model="dialogOpen" :title="editing ? '编辑上网出口' : '新建上网出口'" width="560px">
+    <el-dialog v-model="dialogOpen" :title="editing ? '编辑上网出口' : '新建上网出口'" width="min(560px, 94vw)">
       <el-form label-position="top">
         <el-row :gutter="16">
           <el-col :span="14"><el-form-item label="名称" required><el-input v-model="form.name" /></el-form-item></el-col>
@@ -207,7 +207,7 @@ onMounted(load)
     <el-dialog
       v-model="testDialog"
       :title="`检测上网出口：${testTarget?.name || ''}`"
-      width="640px"
+      width="min(640px, 94vw)"
       :before-close="requestCloseTest"
       :close-on-click-modal="!testing"
       :close-on-press-escape="!testing"

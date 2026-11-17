@@ -349,7 +349,7 @@ onMounted(load)
       <div class="table-panel">
         <el-tabs v-if="isAdmin" v-model="tab" class="panel-tabs">
           <el-tab-pane label="管理账户" name="operators">
-            <div class="tab-actions tab-actions--start"><el-input v-model="operatorKeyword" clearable :prefix-icon="Search" placeholder="搜索用户名或权限" style="width: 250px" /><el-select v-model="operatorStatus" clearable placeholder="全部状态" style="width: 140px"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select><span class="toolbar__spacer" /><el-button type="primary" :icon="Plus" @click="open('operator')">新建</el-button></div>
+            <div class="tab-actions tab-actions--start"><el-input v-model="operatorKeyword" clearable :prefix-icon="Search" placeholder="搜索用户名或权限" class="filter-search" /><el-select v-model="operatorStatus" clearable placeholder="全部状态" class="filter-select--sm"><el-option label="启用" value="true" /><el-option label="停用" value="false" /></el-select><span class="toolbar__spacer" /><el-button type="primary" :icon="Plus" @click="open('operator')">新建</el-button></div>
             <PagedTable :rows="filteredOperators" :loading="loading" empty-text="还没有管理账户">
               <el-table-column label="用户名" prop="username" min-width="180" />
               <el-table-column label="权限" width="130"><template #default="{ row }"><el-select v-model="row.role" size="small" @change="put(`/operators/${row.id}`, { role: row.role, enabled: row.enabled })"><el-option label="管理员" value="admin" /><el-option label="运维人员" value="operator" /><el-option label="只读用户" value="viewer" /></el-select></template></el-table-column>
@@ -708,7 +708,7 @@ onMounted(load)
       </div>
     </main>
 
-    <el-dialog :model-value="dialog === 'operator'" title="新建管理账户" width="540px" @close="dialog = ''"><el-form label-position="top"><el-form-item label="用户名"><el-input v-model="operator.username" placeholder="3 至 64 位，可使用字母、数字、点、下划线和短横线" /></el-form-item><el-form-item label="初始密码"><el-input v-model="operator.password" type="password" show-password /><div class="form-tip">用户首次登录时必须修改此密码。</div></el-form-item><el-form-item label="权限"><el-select v-model="operator.role" style="width: 100%"><el-option label="管理员" value="admin" /><el-option label="运维人员" value="operator" /><el-option label="只读用户" value="viewer" /></el-select></el-form-item></el-form><template #footer><el-button @click="dialog = ''">取消</el-button><el-button type="primary" :disabled="!operator.username || operator.password.length < 12" @click="saveOperator">创建</el-button></template></el-dialog>
+    <el-dialog :model-value="dialog === 'operator'" title="新建管理账户" width="min(540px, 94vw)" @close="dialog = ''"><el-form label-position="top"><el-form-item label="用户名"><el-input v-model="operator.username" placeholder="3 至 64 位，可使用字母、数字、点、下划线和短横线" /></el-form-item><el-form-item label="初始密码"><el-input v-model="operator.password" type="password" show-password /><div class="form-tip">用户首次登录时必须修改此密码。</div></el-form-item><el-form-item label="权限"><el-select v-model="operator.role" style="width: 100%"><el-option label="管理员" value="admin" /><el-option label="运维人员" value="operator" /><el-option label="只读用户" value="viewer" /></el-select></el-form-item></el-form><template #footer><el-button @click="dialog = ''">取消</el-button><el-button type="primary" :disabled="!operator.username || operator.password.length < 12" @click="saveOperator">创建</el-button></template></el-dialog>
   </div>
 </template>
 
@@ -813,13 +813,13 @@ onMounted(load)
   overflow: hidden;
 }
 .notify-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 20px;
-  padding: 18px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  padding: 1.125rem 1.25rem;
 }
-.notify-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.notify-field--full { grid-column: 1 / -1; }
+.notify-field { flex: 1 1 clamp(14rem, calc(50% - 0.625rem), 100%); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.notify-field--full { flex: 1 0 100%; }
 .notify-field--switch { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .notify-field--switch .notify-field__hint { flex-basis: 100%; }
 .notify-field__label { color: var(--sb-text-2); font-size: 12px; font-weight: 600; }
@@ -875,7 +875,7 @@ onMounted(load)
   margin-left: auto;
 }
 .rule-row__field { display: flex; align-items: center; gap: 7px; color: var(--sb-muted); font-size: 11px; }
-.rule-row__field :deep(.el-input-number) { width: 104px; }
+.rule-row__field :deep(.el-input-number) { width: clamp(5.5rem, 10vw, 7rem); }
 .rule-row > :deep(.el-switch) { flex: none; margin-left: 8px; }
 
 .tools-scroll {
@@ -919,14 +919,15 @@ onMounted(load)
   font-size: 12px;
 }
 .result-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 1.5rem;
 }
 .result-item {
+  flex: 1 1 clamp(13rem, calc(50% - 0.75rem), 100%);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   min-width: 0;
   font-size: 12px;
 }
@@ -966,8 +967,8 @@ onMounted(load)
 .info-row > .el-tag { flex: none; }
 .ipdb-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 20px 0; }
 .ipdb-tip { margin: 0; padding: 12px 20px 18px; color: var(--sb-muted); font-size: 11px; line-height: 1.6; }
-.ipdb-query { display: flex; gap: 10px; padding: 16px 20px; }
-.ipdb-query .el-input { max-width: 420px; }
+.ipdb-query { display: flex; flex-wrap: wrap; gap: 0.625rem; padding: 1rem 1.25rem; }
+.ipdb-query .el-input { flex: 1 1 14rem; max-width: min(26.25rem, 100%); }
 
 @media (max-width: 1080px) {
   .notify-scroll { padding: 18px 18px 32px; }
@@ -975,20 +976,17 @@ onMounted(load)
 }
 
 @media (max-width: 820px) {
-  .notify-fields { grid-template-columns: minmax(0, 1fr); }
-  .notify-field--full { grid-column: auto; }
+  .notify-field { flex: 1 0 100%; }
   .notify-bar { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px 18px; }
   .notify-bar__actions { width: 100%; justify-content: flex-end; }
   .rule-row { flex-wrap: wrap; }
-  .rule-row__fields { margin-left: 40px; }
-  .rule-row__field :deep(.el-input-number) { width: 96px; }
-  .ipdb-query { flex-wrap: wrap; }
-  .ipdb-query .el-input { max-width: none; flex: 1; }
+  .rule-row__fields { margin-left: 0; }
+  .ipdb-query .el-input { max-width: none; }
 }
 
 @media (max-width: 700px) {
   .security-card { align-items: flex-start; flex-wrap: wrap; }
   .security-card > div { flex-basis: 100%; }
-  .result-grid { grid-template-columns: 1fr; }
+  .result-item { flex: 1 0 100%; }
 }
 </style>

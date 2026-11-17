@@ -59,24 +59,30 @@
             分享服务器
           </button>
         </div>
-        <div class="m-filter-row" style="gap: 6px; margin-left: auto;">
+        <div class="m-filter-row" style="gap: 0.375rem; margin-left: auto;">
           <button
             type="button"
-            class="m-pill"
-            :class="{ 'is-active': viewMode === 'card' }"
-            aria-label="卡片视图"
-            @click="viewMode = 'card'"
+            class="m-pill is-toggle is-active"
+            :aria-label="viewMode === 'card' ? '切换为列表视图' : '切换为卡片视图'"
+            :title="viewMode === 'card' ? '当前为卡片视图，点击切换为列表视图' : '当前为列表视图，点击切换为卡片视图'"
+            @click="viewMode = viewMode === 'card' ? 'list' : 'card'"
           >
-            卡片
-          </button>
-          <button
-            type="button"
-            class="m-pill"
-            :class="{ 'is-active': viewMode === 'list' }"
-            aria-label="列表视图"
-            @click="viewMode = 'list'"
-          >
-            列表
+            <svg v-if="viewMode === 'card'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            <span>{{ viewMode === 'card' ? '卡片' : '列表' }}</span>
+            <span class="m-view-toggle__swap" aria-hidden="true">⇄</span>
           </button>
         </div>
       </div>
@@ -163,7 +169,7 @@
       <div v-if="!filteredNodes.length" class="m-card m-note">尚未匹配到服务器</div>
 
       <!-- Mobile-Native Card View (100% PC parity without hover tooltips / tiny dropdowns) -->
-      <div v-else-if="viewMode === 'card'" class="m-list">
+      <div v-else-if="viewMode === 'card'" class="m-cards-flex">
         <MNodeCard
           v-for="node in filteredNodes"
           :key="node.id"
