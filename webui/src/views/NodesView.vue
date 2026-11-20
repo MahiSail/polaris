@@ -1973,13 +1973,13 @@ onBeforeUnmount(() => {
 }
 
 .pending-grid {
-  display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
   gap: 0.875rem;
   margin-bottom: 1.5rem;
 }
 .pending-grid > .pending-card {
-  flex: 1 1 clamp(19rem, calc(33.333% - 0.875rem), 100%);
   min-width: 0;
 }
 .pending-card {
@@ -2134,26 +2134,30 @@ onBeforeUnmount(() => {
 
 /* ── 服务器卡片与列表视图 (Responsive Flex Micro-neomorphic) ─────── */
 .openlat-cards-grid {
-  display: flex;
-  flex-wrap: wrap;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
   gap: 1rem;
+  align-items: stretch;
+  padding-bottom: 0.75rem;
 }
 .openlat-cards-grid > * {
-  flex: 1 1 clamp(20rem, calc(33.333% - 1rem), 100%);
   min-width: 0;
 }
+/* auto-fill 会保留空轨道：最后一行/仅 1~2 张卡片时宽度与满行一致，不再被拉伸 */
 .openlat-list-rows {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+  padding-bottom: 0.75rem;
 }
 .n-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
   gap: 0.875rem;
 }
 .n-grid > * {
-  flex: 1 1 clamp(19rem, calc(33.333% - 0.875rem), 100%);
   min-width: 0;
 }
 .n-card {
@@ -3198,7 +3202,7 @@ onBeforeUnmount(() => {
 .mesh-table-wrap {
   border: 1px solid var(--sb-line);
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 .mesh-table {
   width: 100%;

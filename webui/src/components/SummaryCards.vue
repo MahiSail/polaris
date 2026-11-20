@@ -336,6 +336,7 @@ const monthlySpendText = computed(() => {
 
 <style scoped>
 .summary-deck {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;

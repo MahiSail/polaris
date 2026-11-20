@@ -196,45 +196,47 @@
 
       <section v-if="probes.length" class="probe-panel neu">
         <div class="probe-panel-head">
-          <h4>多目标延迟</h4>
+          <h4>多目标延迟（{{ probes.length }}）</h4>
           <span>点击整行显示 / 隐藏曲线</span>
         </div>
-        <div class="probe-row probe-row--head">
-          <span>探测目标</span>
-          <span class="right">当前</span>
-          <span class="right">平均</span>
-          <span class="right">波动</span>
-          <span class="right">丢包</span>
-          <span class="right">仅看</span>
-        </div>
-        <div
-          v-for="probe in probes"
-          :key="probe.id"
-          class="probe-row"
-          :class="{ 'is-hidden': only === null ? hiddenProbes.includes(probe.id) : only !== probe.id, 'is-active': only === probe.id }"
-          role="button"
-          tabindex="0"
-          @click="toggleProbe(probe.id)"
-          @keydown.enter.prevent="toggleProbe(probe.id)"
-        >
-          <span class="probe-name">
-            <svg width="16" height="6" aria-hidden><line x1="0" y1="3" x2="16" y2="3" :stroke="probeColor(probe.id)" stroke-width="2" /></svg>
-            <span class="truncate">{{ probe.name || `探测 ${probe.id}` }}</span>
-          </span>
-          <span class="right tnum" :class="toneOf(probe.latency, probe.loss)">{{ probe.latency == null ? '超时' : `${Math.round(probe.latency)} ms` }}</span>
-          <span class="right tnum" :class="toneOf(probe.avgLatency, probe.loss)">{{ probe.avgLatency == null ? '—' : `${Math.round(probe.avgLatency)} ms` }}</span>
-          <span class="right tnum" :class="toneOf(probe.jitter)">{{ probe.jitter == null ? '—' : `${Math.round(probe.jitter)} ms` }}</span>
-          <span class="right tnum" :class="toneOf(probe.loss)">{{ lossText(probe.loss) }}</span>
-          <span class="right">
-            <button
-              type="button"
-              class="only-btn"
-              :class="{ active: only === probe.id }"
-              @click.stop="only = only === probe.id ? null : probe.id"
-            >
-              {{ only === probe.id ? '取消' : '仅看' }}
-            </button>
-          </span>
+        <div class="probe-table-wrap">
+          <div class="probe-row probe-row--head">
+            <span>探测目标</span>
+            <span class="right">当前</span>
+            <span class="right">平均</span>
+            <span class="right">波动</span>
+            <span class="right">丢包</span>
+            <span class="right">仅看</span>
+          </div>
+          <div
+            v-for="probe in probes"
+            :key="probe.id"
+            class="probe-row"
+            :class="{ 'is-hidden': only === null ? hiddenProbes.includes(probe.id) : only !== probe.id, 'is-active': only === probe.id }"
+            role="button"
+            tabindex="0"
+            @click="toggleProbe(probe.id)"
+            @keydown.enter.prevent="toggleProbe(probe.id)"
+          >
+            <span class="probe-name">
+              <svg width="16" height="6" aria-hidden class="probe-line-swatch"><line x1="0" y1="3" x2="16" y2="3" :stroke="probeColor(probe.id)" stroke-width="2" /></svg>
+              <span class="truncate" :title="probe.name || `探测 ${probe.id}`">{{ probe.name || `探测 ${probe.id}` }}</span>
+            </span>
+            <span class="right tnum" :class="toneOf(probe.latency, probe.loss)">{{ probe.latency == null ? '超时' : `${Math.round(probe.latency)} ms` }}</span>
+            <span class="right tnum" :class="toneOf(probe.avgLatency, probe.loss)">{{ probe.avgLatency == null ? '—' : `${Math.round(probe.avgLatency)} ms` }}</span>
+            <span class="right tnum" :class="toneOf(probe.jitter)">{{ probe.jitter == null ? '—' : `${Math.round(probe.jitter)} ms` }}</span>
+            <span class="right tnum" :class="toneOf(probe.loss)">{{ lossText(probe.loss) }}</span>
+            <span class="right">
+              <button
+                type="button"
+                class="only-btn"
+                :class="{ active: only === probe.id }"
+                @click.stop="only = only === probe.id ? null : probe.id"
+              >
+                {{ only === probe.id ? '取消' : '仅看' }}
+              </button>
+            </span>
+          </div>
         </div>
       </section>
     </div>
@@ -932,7 +934,7 @@ onMounted(loadHistory)
 </script>
 
 <style scoped>
-.node-detail { display: flex; flex-direction: column; gap: 16px; }
+.node-detail { flex: none; width: 100%; display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1rem; }
 .detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .back-btn { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 1px solid var(--sb-line); border-radius: 10px; background: var(--sb-surface-2); color: var(--sb-muted); font-size: 13px; cursor: pointer; }
 .back-btn:hover { color: var(--sb-text); }
@@ -975,49 +977,54 @@ onMounted(loadHistory)
   background: color-mix(in oklab, var(--sb-warning, #f59e0b) 16%, transparent) !important;
 }
 
-.stat-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.stat-card { flex: 1 1 clamp(10.5rem, calc(25% - 0.75rem), 100%); min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 0.875rem 1rem; border-radius: 0.875rem; border: 1px solid var(--sb-line); }
-.stat-label { font-size: 11.5px; color: var(--sb-muted); }
-.stat-value { font-size: 19px; font-weight: 650; color: var(--sb-text); font-variant-numeric: tabular-nums; }
-.stat-sub { font-size: 11.5px; color: var(--sb-muted); }
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.stat-card { min-width: 0; display: flex; flex-direction: column; gap: 0.1875rem; padding: 0.875rem 1rem; border-radius: 0.875rem; border: 1px solid var(--sb-line); }
+.stat-label { font-size: 0.71875rem; color: var(--sb-muted); }
+.stat-value { font-size: 1.1875rem; font-weight: 650; color: var(--sb-text); font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 0.71875rem; color: var(--sb-muted); }
 
-.detail-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-top: 1px solid var(--sb-line); padding-top: 14px; }
-.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; }
-.seg-btn { padding: 4px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--sb-muted); font-size: 12px; cursor: pointer; }
+.detail-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; border-top: 1px solid var(--sb-line); padding-top: 0.875rem; }
+.seg { display: inline-flex; gap: 0.125rem; padding: 0.125rem; border-radius: 0.625rem; }
+.seg-btn { padding: 0.25rem 0.625rem; border: 0; border-radius: 0.4375rem; background: transparent; color: var(--sb-muted); font-size: 0.75rem; cursor: pointer; }
 .seg-btn.active { background: var(--sb-surface); color: var(--sb-accent); font-weight: 600; box-shadow: var(--sb-shadow-sm); }
 .tabs-spacer { flex: 1; }
-.tabs-note { font-size: 11.5px; color: var(--sb-muted); }
+.tabs-note { font-size: 0.71875rem; color: var(--sb-muted); }
 
-.chart-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.chart-panel { flex: 1 1 clamp(18rem, calc(50% - 0.375rem), 100%); min-width: 0; padding: 0.875rem 1rem; border-radius: 1rem; border: 1px solid var(--sb-line); }
-.chart-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.chart-panel-head h4 { margin: 0; font-size: 12px; font-weight: 500; color: var(--sb-muted); }
-.chart-panel h4 { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--sb-muted); }
-.chart-legend { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--sb-muted); }
-.legend-chip { display: inline-flex; align-items: center; gap: 5px; }
-.legend-swatch { width: 7px; height: 7px; border-radius: 2px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.chart-panel { min-width: 0; padding: 0.875rem 1rem; border-radius: 1rem; border: 1px solid var(--sb-line); }
+.chart-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.625rem; }
+.chart-panel-head h4 { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--sb-muted); }
+.chart-panel h4 { margin: 0 0 0.625rem; font-size: 0.75rem; font-weight: 500; color: var(--sb-muted); }
+.chart-legend { display: flex; align-items: center; gap: 0.625rem; font-size: 0.6875rem; color: var(--sb-muted); }
+.legend-chip { display: inline-flex; align-items: center; gap: 0.3125rem; }
+.legend-swatch { width: 0.4375rem; height: 0.4375rem; border-radius: 0.125rem; }
 
-.latency-tab { display: flex; flex-direction: column; gap: 12px; }
+.latency-tab { flex: none; display: flex; flex-direction: column; gap: 1rem; }
+.latency-tab > * { flex: none; }
+.latency-tab :deep(.latency-panel) { border-radius: 1rem; padding: 0.875rem 1rem; }
 .latency-chart { padding: 0; overflow: hidden; }
-.latency-chart :deep(.trend-chart) { padding: 12px 16px 14px; }
+.latency-chart :deep(.trend-chart) { padding: 0.875rem 1rem 1rem; }
 .latency-chart .probe-panel-head { border-bottom: 1px solid var(--sb-line); }
-.probe-panel { border: 1px solid var(--sb-line); border-radius: 16px; overflow: hidden; }
-.probe-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--sb-line); }
-.probe-panel-head h4 { margin: 0; font-size: 12px; font-weight: 500; color: var(--sb-muted); }
-.probe-panel-head span { font-size: 11px; color: var(--sb-muted); }
-.probe-row { display: grid; grid-template-columns: minmax(6rem, 1fr) 3.5rem 3.5rem 4.5rem 3.25rem 4.5rem; align-items: center; gap: 12px; padding: 8px 16px; font-size: 12px; border-top: 1px solid var(--sb-line); cursor: pointer; transition: opacity .15s ease, background .15s ease; }
-.probe-row--head { border-top: 0; padding-top: 6px; padding-bottom: 6px; font-size: 11px; color: var(--sb-muted); cursor: default; }
+.probe-panel { flex: none; border: 1px solid var(--sb-line); border-radius: 1rem; overflow: hidden; }
+.probe-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--sb-line); }
+.probe-panel-head h4 { margin: 0; font-size: 0.78125rem; font-weight: 600; color: var(--sb-text-2, var(--sb-muted)); }
+.probe-panel-head span { font-size: 0.71875rem; color: var(--sb-muted); }
+.probe-table-wrap { width: 100%; overflow-x: auto; }
+.probe-row { display: grid; grid-template-columns: minmax(9rem, 1fr) 4.75rem 4.75rem 4.75rem 4.25rem 4.25rem; align-items: center; gap: 0.75rem; min-width: 34rem; padding: 0.625rem 1rem; font-size: 0.78125rem; border-top: 1px solid var(--sb-line); cursor: pointer; transition: opacity .15s ease, background .15s ease; }
+.probe-row:not(.probe-row--head):hover { background: color-mix(in oklab, var(--sb-accent) 5%, transparent); }
+.probe-row--head { border-top: 0; padding: 0.5rem 1rem; font-size: 0.71875rem; font-weight: 500; color: var(--sb-muted); background: color-mix(in oklab, var(--sb-surface-2) 55%, transparent); cursor: default; }
 .probe-row.is-hidden { opacity: .4; }
-.probe-row.is-active { background: color-mix(in oklab, var(--sb-accent) 8%, transparent); }
-.probe-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 500; color: var(--sb-text); }
-.right { text-align: right; }
-.only-btn { padding: 1px 6px; border: 1px solid var(--sb-line); border-radius: 6px; background: transparent; color: var(--sb-muted); font-size: 11px; cursor: pointer; }
+.probe-row.is-active { background: color-mix(in oklab, var(--sb-accent) 10%, transparent); }
+.probe-name { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; font-weight: 500; color: var(--sb-text); }
+.probe-line-swatch { flex: none; }
+.right { text-align: right; white-space: nowrap; }
+.only-btn { padding: 0.1875rem 0.5625rem; border: 1px solid var(--sb-line); border-radius: 0.375rem; background: transparent; color: var(--sb-muted); font-size: 0.71875rem; line-height: 1.3; cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease; }
 .only-btn:hover { border-color: var(--sb-accent); color: var(--sb-text); }
 .only-btn.active { border-color: var(--sb-accent); background: color-mix(in oklab, var(--sb-accent) 12%, transparent); color: var(--sb-accent); }
-.detail-empty { margin: 0; padding: 24px; text-align: center; color: var(--sb-muted); font-size: 12.5px; }
+.detail-empty { margin: 0; padding: 1.5rem; text-align: center; color: var(--sb-muted); font-size: 0.78125rem; }
 
-.fact-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.fact-card { flex: 1 1 clamp(18rem, calc(50% - 0.375rem), 100%); min-width: 0; padding: 0.875rem 1rem; border: 1px solid var(--sb-line); border-radius: 1rem; }
+.fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; align-items: start; }
+.fact-card { min-width: 0; padding: 0.875rem 1rem; border: 1px solid var(--sb-line); border-radius: 1rem; }
 .fact-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .fact-title {
   margin: 0;
@@ -1181,8 +1188,11 @@ onMounted(loadHistory)
 .tone-bad { color: var(--sb-danger); }
 .tone-muted { color: var(--sb-muted); }
 
-@media (max-width: 900px) {
-  .stat-card { flex: 1 1 clamp(9.5rem, calc(50% - 0.375rem), 100%); }
-  .chart-panel, .fact-card { flex: 1 0 100%; }
+@media (max-width: 56.25rem) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-grid, .fact-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 32.5rem) {
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

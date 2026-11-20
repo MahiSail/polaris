@@ -1496,7 +1496,7 @@ func ensureSingBoxLogrotate() error {
 }
 
 func singBoxDropInContents(memTotal uint64) string {
-	limit := "512MiB"
+	limitMiB := uint64(512)
 	if memTotal > 0 {
 		var limitBytes uint64
 		if memTotal <= 1024*1024*1024 { // <= 1GB
@@ -1511,16 +1511,35 @@ func singBoxDropInContents(memTotal uint64) string {
 		if limitBytes < 256*1024*1024 {
 			limitBytes = 256 * 1024 * 1024
 		}
-		limit = fmt.Sprintf("%dMiB", limitBytes/(1024*1024))
+		limitMiB = limitBytes / (1024 * 1024)
+	}
+	// GOMEMLIMIT is only a soft GC target: when live heap keeps growing (e.g.
+	// a leak in sing-box) the process sails past it and pushes the whole host
+	// into swap. MemoryMax is the hard stop, 10% above the GC target, so the
+	// kernel kills sing-box and systemd restarts it within seconds instead of
+	// the node degrading for days. Swap is disabled for the unit so the cap is
+	// reached promptly rather than after the leak has been paged out.
+	maxMiB := limitMiB * 110 / 100
+	if memTotal > 0 {
+		if ceiling := memTotal / (1024 * 1024) * 90 / 100; maxMiB > ceiling {
+			maxMiB = ceiling
+		}
+	}
+	if maxMiB < limitMiB {
+		maxMiB = limitMiB
 	}
 	return fmt.Sprintf(`[Service]
 Nice=-10
 CPUWeight=1000
 OOMScoreAdjust=-900
 LimitNOFILE=1048576
-Environment="GOMEMLIMIT=%s"
+Environment="GOMEMLIMIT=%dMiB"
 Environment="GODEBUG=madvdontneed=1"
-`, limit)
+MemoryMax=%dM
+MemorySwapMax=0
+Restart=always
+RestartSec=2
+`, limitMiB, maxMiB)
 }
 
 var managedSingBoxDropIn = managedSystemPath("/etc/systemd/system/sing-box.service.d/10-polaris-priority.conf")

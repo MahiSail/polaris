@@ -178,8 +178,8 @@ const lossSummaryText = computed(() => {
 .latency-panel {
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.75rem;
   background: var(--neu-inset-bg, rgba(15, 23, 42, 0.45));
   border: 1px solid var(--sb-line);
 }
@@ -188,27 +188,27 @@ const lossSummaryText = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .head-left {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 0.375rem;
+  font-size: 0.75rem;
   font-weight: 550;
   color: var(--sb-muted, #94a3b8);
 }
 
 .head-icon {
-  width: 14px;
-  height: 14px;
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--sb-accent, #38bdf8);
 }
 
 .head-right {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--sb-muted, #94a3b8);
   white-space: nowrap;
 }
@@ -224,19 +224,19 @@ const lossSummaryText = computed(() => {
 .panel-tracks {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 0.4375rem;
 }
 
 .track-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .track-label {
-  width: 28px;
+  width: 1.75rem;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--sb-muted, #94a3b8);
 }
 
@@ -246,19 +246,19 @@ const lossSummaryText = computed(() => {
 }
 
 .track-val {
-  width: 48px;
+  width: 3rem;
   flex-shrink: 0;
   text-align: right;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
 }
 
 .panel-foot {
   display: flex;
   justify-content: space-between;
-  margin-top: 5px;
-  padding: 0 54px 0 36px;
-  font-size: 9px;
+  margin-top: 0.3125rem;
+  padding: 0 3.5rem 0 2.25rem;
+  font-size: 0.5625rem;
   color: rgba(148, 163, 184, 0.5);
 }
 
@@ -267,20 +267,20 @@ const lossSummaryText = computed(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 0.25rem;
   min-width: 0;
 }
 
 .mini-track {
-  height: 7px;
+  height: 0.4375rem;
 }
 
 .mini-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  font-size: 10px;
+  gap: 0.375rem;
+  font-size: 0.625rem;
   line-height: 1;
   white-space: nowrap;
 }

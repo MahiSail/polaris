@@ -563,13 +563,13 @@ onBeforeUnmount(() => {
 }
 
 .node-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
   gap: 0.75rem;
+  align-items: stretch;
 }
 
 .node-grid > * {
-  flex: 1 1 clamp(19rem, calc(25% - 0.75rem), 100%);
   min-width: 0;
 }
 

@@ -198,7 +198,10 @@ func (s *Store) CompileNodeConfig(ctx context.Context, nodeID string) (string, s
 		// sing-box logs to a file rather than only the journal so Fail2Ban has
 		// a log path to watch; a jail whose logpath does not exist refuses to
 		// start, which previously made the whole feature unusable.
-		"log": map[string]any{"level": "info", "timestamp": true, "output": singBoxLogPath},
+		// warn keeps the ERROR "process connection from <HOST>" lines the
+		// Fail2Ban presets match, while dropping the per-connection INFO lines
+		// that cost tens of MB a day on small nodes.
+		"log": map[string]any{"level": "warn", "timestamp": true, "output": singBoxLogPath},
 		"dns": map[string]any{
 			"servers": []map[string]any{
 				{

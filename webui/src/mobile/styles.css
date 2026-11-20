@@ -233,15 +233,14 @@ html.is-mobile-ui .el-notification {
 }
 
 .m-cards-flex {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
   align-items: stretch;
   gap: 0.625rem;
   min-width: 0;
 }
 
 .m-cards-flex > * {
-  flex: 1 1 clamp(18rem, calc(50% - 0.3125rem), 100%);
   min-width: 0;
 }
 

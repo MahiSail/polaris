@@ -236,6 +236,26 @@ func TestSingBoxDropInContentsWithMemLimit(t *testing.T) {
 	if !strings.Contains(content4G, `Environment="GOMEMLIMIT=3072MiB"`) {
 		t.Errorf("expected 4GB host to have 3072MiB limit, got: %s", content4G)
 	}
+	if !strings.Contains(content4G, "MemoryMax=3379M") {
+		t.Errorf("expected 4GB host MemoryMax 10%% above GOMEMLIMIT, got: %s", content4G)
+	}
+	if !strings.Contains(content1G, "MemoryMax=675M") || !strings.Contains(content1G, "MemorySwapMax=0") || !strings.Contains(content1G, "Restart=always") {
+		t.Errorf("expected hard memory cap with restart on 1GB host, got: %s", content1G)
+	}
+
+	// 422MB host (the TW-HINET2 case): GOMEMLIMIT floors at 256MiB, the hard
+	// cap sits just above it and stays under 90% of physical RAM.
+	contentSmall := singBoxDropInContents(433064 * 1024)
+	if !strings.Contains(contentSmall, `Environment="GOMEMLIMIT=256MiB"`) || !strings.Contains(contentSmall, "MemoryMax=281M") {
+		t.Errorf("unexpected small-host drop-in: %s", contentSmall)
+	}
+
+	// Tiny host where 90% of RAM is below the GOMEMLIMIT floor: never cap
+	// below the GC target, or the process would be killed before GC kicks in.
+	contentTiny := singBoxDropInContents(256 * 1024 * 1024)
+	if !strings.Contains(contentTiny, "MemoryMax=256M") {
+		t.Errorf("expected tiny host MemoryMax clamped to GOMEMLIMIT, got: %s", contentTiny)
+	}
 }
 
 func TestSingBoxConfigsSemanticallyMatch(t *testing.T) {
