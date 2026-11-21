@@ -99,6 +99,7 @@ type Server struct {
 	liveAsks            map[string]*liveAskCall
 	subscriptionLimiter *rateLimiter
 	alertEngine         *AlertEngine
+	openClashMirror     *openClashMirror
 	// now is the clock the subscription access window and expiry are read
 	// against; tests replace it to reach a specific moment.
 	now func() time.Time
@@ -167,6 +168,7 @@ func NewServer(store *Store, secureCookies bool) (*Server, error) {
 		connectionsInterval: DefaultConnectionsInterval,
 		subscriptionLimiter: newRateLimiter(subscriptionRateWindow, subscriptionRateLimit, subscriptionRateMaxKeys),
 		alertEngine:         NewAlertEngine(store, ipLocator),
+		openClashMirror:     newOpenClashMirror(),
 		now:                 time.Now,
 	}
 	server.connHub.onWatchers = server.setFleetStreaming
@@ -374,7 +376,13 @@ func (s *Server) SetAgentPort(port int) {
 func (s *Server) BrowserHandler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerBrowserRoutes(mux)
-	return securityHeaders(mux)
+	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, openClashMirrorPrefix) && s.openClashMirror != nil {
+			s.openClashMirror.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 }
 
 // Handler is an alias for BrowserHandler kept for callers (mainly tests)
