@@ -827,7 +827,7 @@ onMounted(() => { load(); loadAccess() })
 /* 整页编辑：左侧导航固定，右侧只渲染当前一节并独立滚动，
    这样无论规则有多少条，导航和顶部的保存按钮都不会被推走。 */
 .form-page { flex-direction: row; gap: 1.25rem; align-items: stretch; overflow: hidden; }
-.form-nav { flex: 0 1 clamp(11rem, 18vw, 13.75rem); display: flex; flex-direction: column; gap: 0.375rem; }
+.form-nav { flex: 0 0 clamp(11rem, 18vw, 13.75rem); display: flex; flex-direction: column; gap: 0.375rem; }
 .form-nav__item {
   display: flex;
   flex-direction: column;
