@@ -480,7 +480,7 @@ const stats = computed(() => {
   }
 })
 
-async function load(silent = false) {
+async function load(silent = false, forceRefresh = false) {
   if (refreshing.value) return
   refreshing.value = true
   const isColdLoad = (!appState.nodes || appState.nodes.length === 0) || Object.keys(metrics.value).length === 0
@@ -508,7 +508,7 @@ async function load(silent = false) {
     refreshing.value = false
   }
   if (loadSystemUpdate) loadSystemUpdate().catch(() => {})
-  loadSingBoxLatest().catch(() => {})
+  loadSingBoxLatest(forceRefresh).catch(() => {})
   loadPingTasks().catch(() => {})
 }
 
@@ -741,18 +741,19 @@ async function upgradeAgent(node) {
   })
 }
 
-async function loadSingBoxLatest() {
-  const now = Date.now()
-  if (now - lastSingBoxCheckTime < 10 * 60 * 1000 && Object.keys(singBoxLatest.value).length > 0) {
-    return
-  }
+async function loadSingBoxLatest(force = false) {
   const architectures = [...new Set(appState.nodes.map((node) => node.architecture).filter(Boolean))]
   if (!architectures.length) return
+  const now = Date.now()
+  const allCached = architectures.every((arch) => Boolean(singBoxLatest.value[arch]))
+  if (!force && now - lastSingBoxCheckTime < 5 * 60 * 1000 && allCached) {
+    return
+  }
   lastSingBoxCheckTime = now
+  const suffix = force ? '&refresh=1' : ''
   await Promise.all(
     architectures.map(async (architecture) => {
-      if (singBoxLatest.value[architecture]) return
-      const release = await api(`/sing-box/latest?architecture=${architecture}`).catch(() => null)
+      const release = await api(`/sing-box/latest?architecture=${encodeURIComponent(architecture)}${suffix}`).catch(() => null)
       if (release?.version) singBoxLatest.value[architecture] = release.version
     }),
   )
@@ -1085,7 +1086,7 @@ onBeforeUnmount(() => {
         一键升级所有 Agent ({{ upgradableAgentNodes.length }})
       </el-button>
       <el-button v-if="canWrite" :icon="Connection" @click="probesDialog = true">探针</el-button>
-      <el-button :icon="Refresh" :loading="refreshing" @click="load">刷新</el-button>
+      <el-button :icon="Refresh" :loading="refreshing" @click="load(false, true)">刷新</el-button>
       <el-button v-if="canWrite" :icon="Share" @click="shareOpen = true">分享</el-button>
       <el-button v-if="isAdmin" type="primary" :icon="Plus" @click="generateToken">新增</el-button>
     </PageHeader>

@@ -29,7 +29,7 @@ func TestLatestSingBoxReleaseIsCachedPerArchitecture(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		release, err := server.latestSingBoxReleaseCached(t.Context(), "amd64")
+		release, err := server.latestSingBoxReleaseCached(t.Context(), "amd64", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -37,10 +37,16 @@ func TestLatestSingBoxReleaseIsCachedPerArchitecture(t *testing.T) {
 			t.Fatalf("unexpected cached release: %#v", release)
 		}
 	}
-	if _, err := server.latestSingBoxReleaseCached(t.Context(), "arm64"); err != nil {
+	if _, err := server.latestSingBoxReleaseCached(t.Context(), "arm64", false); err != nil {
 		t.Fatal(err)
 	}
 	if calls["amd64"] != 1 || calls["arm64"] != 1 {
 		t.Fatalf("official release resolver calls: %#v", calls)
+	}
+	if _, err := server.latestSingBoxReleaseCached(t.Context(), "amd64", true); err != nil {
+		t.Fatal(err)
+	}
+	if calls["amd64"] != 2 {
+		t.Fatalf("expected forceRefresh to bypass cache, calls=%#v", calls)
 	}
 }

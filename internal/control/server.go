@@ -2276,20 +2276,22 @@ func (s *Server) createSingBoxRelease(w http.ResponseWriter, r *http.Request) {
 // server list asks for the newest sing-box version on every visit and refresh,
 // and GitHub rate-limits anonymous callers per IP.
 const (
-	singBoxReleaseCacheTTL = time.Hour
-	singBoxReleaseErrorTTL = 5 * time.Minute
+	singBoxReleaseCacheTTL = 5 * time.Minute
+	singBoxReleaseErrorTTL = time.Minute
 )
 
-func (s *Server) latestSingBoxReleaseCached(ctx context.Context, architecture string) (SingBoxRelease, error) {
-	s.selfUpdateMu.Lock()
-	entry, cached := s.singBoxLatest[architecture]
-	s.selfUpdateMu.Unlock()
-	if cached {
-		if entry.release.Version != "" && time.Since(entry.fetchedAt) < singBoxReleaseCacheTTL {
-			return entry.release, nil
-		}
-		if entry.release.Version == "" && time.Since(entry.fetchedAt) < singBoxReleaseErrorTTL {
-			return SingBoxRelease{}, errors.New("official sing-box release check recently failed, retry later")
+func (s *Server) latestSingBoxReleaseCached(ctx context.Context, architecture string, forceRefresh bool) (SingBoxRelease, error) {
+	if !forceRefresh {
+		s.selfUpdateMu.Lock()
+		entry, cached := s.singBoxLatest[architecture]
+		s.selfUpdateMu.Unlock()
+		if cached {
+			if entry.release.Version != "" && time.Since(entry.fetchedAt) < singBoxReleaseCacheTTL {
+				return entry.release, nil
+			}
+			if entry.release.Version == "" && time.Since(entry.fetchedAt) < singBoxReleaseErrorTTL {
+				return SingBoxRelease{}, errors.New("official sing-box release check recently failed, retry later")
+			}
 		}
 	}
 	resolver := s.latestSingBoxReleaseFn
@@ -2320,7 +2322,9 @@ func (s *Server) latestSingBoxRelease(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	release, err := s.latestSingBoxReleaseCached(r.Context(), r.URL.Query().Get("architecture"))
+	refreshParam := strings.TrimSpace(r.URL.Query().Get("refresh"))
+	forceRefresh := refreshParam == "1" || strings.EqualFold(refreshParam, "true")
+	release, err := s.latestSingBoxReleaseCached(r.Context(), r.URL.Query().Get("architecture"), forceRefresh)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -2352,7 +2356,7 @@ func (s *Server) installSingBox(w http.ResponseWriter, r *http.Request) {
 	}
 	var release SingBoxRelease
 	if strings.TrimSpace(input.Version) == "" {
-		release, err = s.latestSingBoxReleaseCached(r.Context(), node.Architecture)
+		release, err = s.latestSingBoxReleaseCached(r.Context(), node.Architecture, false)
 	} else {
 		release, err = s.store.FindSingBoxRelease(r.Context(), input.Version, node.Architecture)
 	}
