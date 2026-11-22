@@ -1,15 +1,44 @@
 <template>
   <div class="heat-track-container" :class="{ 'is-compact': compact }">
-    <span
+    <el-tooltip
       v-for="(slot, i) in normalizedSlots"
       :key="i"
-      class="heat-cell"
-      :class="[
-        slot.heatClass,
-        { 'slot-gap': i > 0 && i % 6 === 0, 'heat-cell-flat': compact }
-      ]"
-      :title="slot.tooltip"
-    />
+      placement="top"
+      effect="dark"
+      popper-class="heat-cell-popper"
+      :show-after="80"
+    >
+      <template #content>
+        <div class="heat-card">
+          <div class="heat-card-header font-mono">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span>{{ slot.timeStr || '时段统计' }}</span>
+          </div>
+          <div class="heat-card-body">
+            <div class="heat-card-row">
+              <span class="heat-indicator-dot" :class="slot.heatClass" />
+              <span class="heat-card-label">{{ slot.metricLabel }}</span>
+              <span class="heat-card-val font-mono" :class="{ 'is-empty': !slot.hasData }">
+                {{ slot.valStr }}
+              </span>
+            </div>
+            <div v-if="slot.probes > 0" class="heat-card-probes font-mono">
+              <span class="heat-probe-badge">{{ slot.probes }} 个探测源</span>
+            </div>
+          </div>
+        </div>
+      </template>
+      <span
+        class="heat-cell"
+        :class="[
+          slot.heatClass,
+          { 'slot-gap': i > 0 && i % 6 === 0, 'heat-cell-flat': compact }
+        ]"
+      />
+    </el-tooltip>
   </div>
 </template>
 
@@ -97,16 +126,23 @@ const normalizedSlots = computed(() => {
     const item = items[i] || {}
     const value = props.kind === 'latency' ? item.latency : item.loss
     const timeStr = formatSlotTime(item.ts, range)
-    const valStr = value === null || value === undefined
+    const hasData = value !== null && value !== undefined
+    const valStr = !hasData
       ? '无数据'
       : props.kind === 'latency'
         ? `${Math.round(value)} ms`
         : `${Number(value).toFixed(1)}%`
-    const probeStr = props.probes > 1 ? ` (${props.probes} 个探测)` : ''
+    const probes = props.probes || item.probes || 0
+    const probeStr = probes > 1 ? ` (${probes} 个探测)` : ''
     const tooltip = timeStr ? `${timeStr} · ${TRACK_LABELS[props.kind]}: ${valStr}${probeStr}` : '暂无数据'
 
     result.push({
       value,
+      hasData,
+      timeStr,
+      metricLabel: TRACK_LABELS[props.kind] || '指标',
+      valStr,
+      probes,
       heatClass: getHeatClass(value, props.kind),
       tooltip,
     })

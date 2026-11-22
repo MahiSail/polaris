@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Connection, Delete, Edit, Folder, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api, del, post, put } from '../api'
 import { includesText } from '../format'
 import PageHeader from '../components/PageHeader.vue'
@@ -212,9 +212,32 @@ onMounted(load)
                   <span v-if="member.kind === 'group'" class="member-chip__kind">分组</span>
                   <span class="member-chip__name">{{ member.name }}</span>
                 </span>
-                <el-tooltip v-if="restMembers(row).length" placement="top">
+                <el-tooltip
+                  v-if="restMembers(row).length"
+                  placement="top"
+                  popper-class="members-popper"
+                  :show-after="100"
+                >
                   <template #content>
-                    <div v-for="member in restMembers(row)" :key="member.key">{{ member.kind === 'group' ? '分组 · ' : '' }}{{ member.name }}</div>
+                    <div class="members-popper-card">
+                      <div class="members-popper-header">
+                        <span class="members-popper-title">未展开成员 ({{ restMembers(row).length }})</span>
+                      </div>
+                      <div class="members-popper-list">
+                        <span
+                          v-for="member in restMembers(row)"
+                          :key="member.key"
+                          :class="['members-popper-chip', memberChipClass(member)]"
+                        >
+                          <el-icon class="members-popper-chip__icon">
+                            <Folder v-if="member.kind === 'group'" />
+                            <Connection v-else />
+                          </el-icon>
+                          <span class="members-popper-chip__kind">{{ member.kind === 'group' ? '分组' : '节点' }}</span>
+                          <span class="members-popper-chip__name">{{ member.name }}</span>
+                        </span>
+                      </div>
+                    </div>
                   </template>
                   <span class="member-chip member-chip--rest">+{{ restMembers(row).length }}</span>
                 </el-tooltip>
@@ -326,10 +349,100 @@ onMounted(load)
   border-color: color-mix(in oklab, var(--sb-danger) 35%, transparent);
   background: color-mix(in oklab, var(--sb-danger) 10%, transparent);
 }
-.member-chip--rest { flex: none; color: var(--sb-muted); border-style: dashed; background: transparent; cursor: default; }
+.member-chip--rest {
+  flex: none;
+  color: var(--sb-muted);
+  border-style: dashed;
+  background: transparent;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.member-chip--rest:hover {
+  color: var(--sb-accent);
+  border-color: var(--sb-accent);
+  background: var(--sb-accent-soft);
+}
 .member-empty { color: var(--sb-muted); font-size: 12px; }
 .member-option { display: flex; align-items: center; gap: 14px; width: 100%; height: 100%; min-width: 0; }
 .member-option__name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-option__meta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; color: var(--sb-muted); font-size: 12px; }
 @media (max-width: 640px) { .member-option__meta { display: none; } }
+
+:global(.members-popper.el-popper) {
+  padding: 10px 12px !important;
+  max-width: min(420px, 90vw) !important;
+}
+:global(.members-popper-card) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:global(.members-popper-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-line);
+}
+:global(.members-popper-title) {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sb-text-2);
+  letter-spacing: 0.3px;
+}
+:global(.members-popper-list) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+:global(.members-popper-chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--sb-line);
+  background: color-mix(in oklab, var(--sb-surface-3) 60%, transparent);
+  color: var(--sb-text);
+  font-size: 11.5px;
+  line-height: 1.3;
+  max-width: 100%;
+}
+:global(.members-popper-chip__icon) {
+  font-size: 12px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+:global(.members-popper-chip__kind) {
+  font-size: 10px;
+  color: var(--sb-muted);
+  flex-shrink: 0;
+}
+:global(.members-popper-chip__name) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:global(.members-popper-chip.is-group) {
+  border-color: color-mix(in oklab, var(--sb-accent) 25%, transparent);
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+}
+:global(.members-popper-chip.is-group .members-popper-chip__kind) {
+  color: color-mix(in oklab, var(--sb-accent) 70%, transparent);
+}
+:global(.members-popper-chip.is-off) {
+  color: var(--sb-warning);
+  border-color: color-mix(in oklab, var(--sb-warning) 35%, transparent);
+  background: color-mix(in oklab, var(--sb-warning) 10%, transparent);
+}
+:global(.members-popper-chip.is-missing) {
+  color: var(--sb-danger);
+  border-color: color-mix(in oklab, var(--sb-danger) 35%, transparent);
+  background: color-mix(in oklab, var(--sb-danger) 10%, transparent);
+}
 </style>

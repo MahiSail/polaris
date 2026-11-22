@@ -34,7 +34,7 @@
           style="width: 100%;"
           @click="runProbeAll"
         >
-          一键检测所有互联服务器
+          检测所有互联服务器
         </el-button>
         <div v-if="result?.tested_at" class="m-note" style="margin-top: 6px;">
           最近检测：{{ formatDateTime(result.tested_at) }}

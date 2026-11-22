@@ -156,7 +156,7 @@ async function reloadIPDB() {
 
 async function downloadIPDB() {
   try {
-    await ElMessageBox.confirm('确定要从高精度开源镜像源下载最新 GeoLite2-City.mmdb 数据库吗？下载通常需要数十秒。', '下载高精度 IP 库', { type: 'info' })
+    await ElMessageBox.confirm('确定要从开源镜像源下载最新 GeoLite2-City.mmdb 数据库吗？下载通常需要数十秒。', '下载 IP 数据库', { type: 'info' })
   } catch {
     return
   }
@@ -165,7 +165,7 @@ async function downloadIPDB() {
     const res = await post('/ip/database/download', {})
     if (res?.success) {
       Object.assign(ipdbStatus, res)
-      ElMessage.success('高精度 MMDB 离线库下载并加载成功！')
+      ElMessage.success('MMDB 离线库下载并加载成功')
     } else {
       ElMessage.error(res?.error || '下载失败')
     }
@@ -190,7 +190,7 @@ async function onMMDBFileSelected(event) {
     const res = await uploadFile('/ip/database/upload', formData)
     if (res?.success) {
       Object.assign(ipdbStatus, res)
-      ElMessage.success('MMDB 数据库上传并成功生效！')
+      ElMessage.success('MMDB 数据库上传并成功生效')
     }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '上传失败')
@@ -593,7 +593,7 @@ onMounted(load)
             </div>
           </el-tab-pane>
 
-          <el-tab-pane v-if="isAdmin" label="高精度 IP 库 (MMDB)" name="ipdb">
+          <el-tab-pane v-if="isAdmin" label="IP 数据库 (MMDB)" name="ipdb">
             <div class="tools-scroll">
               <input
                 ref="mmdbUploadInput"

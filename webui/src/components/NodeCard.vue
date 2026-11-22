@@ -178,59 +178,114 @@
       >
         <template #content>
           <div class="traffic-tip">
+            <!-- 本月流量 -->
             <div class="traffic-tip-section">
               <div class="traffic-tip-head">
-                <span class="traffic-tip-label">本月流量</span>
+                <span class="traffic-tip-label">
+                  <svg class="tip-sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  本月流量
+                </span>
                 <span class="traffic-tip-val font-mono">{{ formatBytes(trafficUsedBytes) }}</span>
               </div>
-              <div class="traffic-tip-sub font-mono">
-                <span>↓ {{ formatBytes(effectiveMonthlyRx) }}</span>
-                <span class="traffic-tip-dot">·</span>
-                <span>↑ {{ formatBytes(effectiveMonthlyTx) }}</span>
+              <div class="traffic-tip-badges font-mono">
+                <span class="traffic-badge traffic-badge--rx" title="本月下行流量">
+                  <span class="badge-arrow">↓</span>
+                  <span>{{ formatBytes(effectiveMonthlyRx) }}</span>
+                </span>
+                <span class="traffic-badge traffic-badge--tx" title="本月上行流量">
+                  <span class="badge-arrow">↑</span>
+                  <span>{{ formatBytes(effectiveMonthlyTx) }}</span>
+                </span>
               </div>
             </div>
 
             <div class="traffic-tip-line" />
 
+            <!-- 累计流量 -->
             <div class="traffic-tip-section">
               <div class="traffic-tip-head">
-                <span class="traffic-tip-label">累计流量</span>
+                <span class="traffic-tip-label">
+                  <svg class="tip-sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                  累计流量
+                </span>
                 <span class="traffic-tip-val font-mono">{{ formatBytes(lifetimeTrafficBytes) }}</span>
               </div>
-              <div class="traffic-tip-sub font-mono">
-                <span>↓ {{ formatBytes(effectiveLifetimeRx) }}</span>
-                <span class="traffic-tip-dot">·</span>
-                <span>↑ {{ formatBytes(effectiveLifetimeTx) }}</span>
+              <div class="traffic-tip-badges font-mono">
+                <span class="traffic-badge traffic-badge--rx" title="累计下行流量">
+                  <span class="badge-arrow">↓</span>
+                  <span>{{ formatBytes(effectiveLifetimeRx) }}</span>
+                </span>
+                <span class="traffic-badge traffic-badge--tx" title="累计上行流量">
+                  <span class="badge-arrow">↑</span>
+                  <span>{{ formatBytes(effectiveLifetimeTx) }}</span>
+                </span>
               </div>
             </div>
 
+            <!-- 业务代理流量 (sing-box) -->
             <template v-if="hasProxyTraffic && hasNodeTraffic">
               <div class="traffic-tip-line" />
               <div class="traffic-tip-section">
                 <div class="traffic-tip-head">
-                  <span class="traffic-tip-label">业务代理</span>
+                  <span class="traffic-tip-label">
+                    <svg class="tip-sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="16 3 21 3 21 8" />
+                      <line x1="4" y1="20" x2="21" y2="3" />
+                      <polyline points="21 16 21 21 16 21" />
+                      <line x1="15" y1="15" x2="21" y2="21" />
+                      <line x1="4" y1="4" x2="9" y2="9" />
+                    </svg>
+                    业务代理
+                  </span>
                   <span class="traffic-tip-val font-mono">{{ formatBytes(proxyMonthlyTotal) }}</span>
                 </div>
-                <div class="traffic-tip-sub font-mono">
-                  <span>↓ {{ formatBytes(proxyMonthlyRx) }}</span>
-                  <span class="traffic-tip-dot">·</span>
-                  <span>↑ {{ formatBytes(proxyMonthlyTx) }}</span>
+                <div class="traffic-tip-badges font-mono">
+                  <span class="traffic-badge traffic-badge--rx" title="代理下行流量">
+                    <span class="badge-arrow">↓</span>
+                    <span>{{ formatBytes(proxyMonthlyRx) }}</span>
+                  </span>
+                  <span class="traffic-badge traffic-badge--tx" title="代理上行流量">
+                    <span class="badge-arrow">↑</span>
+                    <span>{{ formatBytes(proxyMonthlyTx) }}</span>
+                  </span>
                 </div>
               </div>
             </template>
 
+            <!-- 套餐配额进度 -->
             <template v-if="trafficLimitBytes > 0">
               <div class="traffic-tip-line" />
               <div class="traffic-tip-section">
                 <div class="traffic-tip-head">
-                  <span class="traffic-tip-label">套餐配额</span>
-                  <span class="traffic-tip-val font-mono">{{ trafficPercent || 0 }}%</span>
+                  <span class="traffic-tip-label">
+                    <svg class="tip-sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+                      <path d="M22 12A10 10 0 0 0 12 2v10z" />
+                    </svg>
+                    套餐配额
+                  </span>
+                  <span class="traffic-tip-val font-mono" :class="quotaToneClass">{{ trafficPercent ?? 0 }}%</span>
                 </div>
-                <div class="traffic-tip-sub font-mono">
+                <div class="traffic-meter-track">
+                  <div
+                    class="traffic-meter-bar"
+                    :class="quotaToneClass"
+                    :style="{ width: `${Math.min(100, trafficPercent || 0)}%` }"
+                  />
+                </div>
+                <div class="traffic-quota-sub font-mono">
                   <span>{{ formatBytes(trafficUsedBytes) }} / {{ formatBytes(trafficLimitBytes) }}</span>
-                </div>
-                <div v-if="trafficLimitBytes > trafficUsedBytes" class="traffic-tip-sub font-mono traffic-tip-muted">
-                  剩余可用 {{ formatBytes(trafficLimitBytes - trafficUsedBytes) }}
+                  <span v-if="trafficLimitBytes > trafficUsedBytes">剩余 {{ formatBytes(trafficLimitBytes - trafficUsedBytes) }}</span>
+                  <span v-else class="text-danger">已耗尽</span>
                 </div>
               </div>
             </template>
@@ -621,6 +676,14 @@ const trafficPercent = computed(() => {
   if (!limit || limit <= 0) return null
   const used = trafficUsedBytes.value
   return Math.min(100, Math.round((used / limit) * 100))
+})
+
+const quotaToneClass = computed(() => {
+  const pct = trafficPercent.value
+  if (pct === null || pct === undefined) return ''
+  if (pct >= 90) return 'is-danger'
+  if (pct >= 75) return 'is-warn'
+  return ''
 })
 
 // The traffic plan is masked in share mode, so the meter must not fall back to

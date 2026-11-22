@@ -141,7 +141,7 @@
           </span>
         </div>
         <div class="footer-meta">
-          <span>WebSocket 实时推送 · 探针/24h 链路热力随数据自动刷新</span>
+          <span>WebSocket 实时连接 · 数据自动刷新</span>
           <span>Powered by Polaris · © {{ year }}</span>
         </div>
       </footer>

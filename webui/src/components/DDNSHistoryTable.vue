@@ -245,7 +245,7 @@ defineExpose({ refresh: loadRecords })
               :content="row.error_message"
               placement="top"
             >
-              <el-tag size="small" type="danger" effect="dark" class="cursor-pointer">
+              <el-tag size="small" type="danger" class="cursor-pointer">
                 失败
               </el-tag>
             </el-tooltip>
@@ -261,18 +261,15 @@ defineExpose({ refresh: loadRecords })
         <el-table-column
           v-if="isAdmin || canWrite"
           label="操作"
-          width="68"
-          align="center"
-          fixed="right"
+          width="84"
+          class-name="action-column"
         >
           <template #default="{ row }">
             <el-button
               link
-              type="danger"
-              :icon="Delete"
               title="删除此记录"
               @click="removeRecord(row)"
-            />
+            >删除</el-button>
           </template>
         </el-table-column>
       </el-table>

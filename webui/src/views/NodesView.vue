@@ -681,7 +681,7 @@ async function approve(registration) {
   approvingIds.value.add(registration.id)
   try {
     await post(`/nodes/${registration.id}/approve`, {})
-    ElMessage.success(`服务器「${registration.node_name}」接入成功！`)
+    ElMessage.success(`服务器「${registration.node_name}」接入成功`)
     await load(true)
   } catch (e) {
     ElMessage.error(e?.message || '批准接入失败')
@@ -728,7 +728,7 @@ async function upgradeAllAgents() {
     })
   } catch (error) {
     if (error !== 'cancel' && error?.message !== 'cancel') {
-      ElMessage.error(error?.message || '一键升级失败')
+      ElMessage.error(error?.message || '批量升级失败')
     }
   } finally {
     upgradingAllAgents.value = false
@@ -1561,7 +1561,7 @@ onBeforeUnmount(() => {
                 <span class="dlg-probe-interval font-mono">{{ p.interval }}s</span>
               </div>
             </div>
-            <div v-else class="dlg-empty">当前未配置公共探针，可点击右上角「管理公共探针」添加。</div>
+            <div v-else class="dlg-empty">当前未配置公共探针。</div>
           </div>
         </section>
       </el-form>
@@ -1596,7 +1596,7 @@ onBeforeUnmount(() => {
         <div class="mesh-topbar">
           <span class="mesh-hint">从当前服务器探测至集群内其他各 VPS 服务器的网络互联、丢包与延迟</span>
           <el-button type="primary" size="small" :icon="Refresh" :loading="peerProbing" @click="runPeerProbes('')">
-            一键检测所有互联服务器
+            检测所有互联服务器
           </el-button>
         </div>
 

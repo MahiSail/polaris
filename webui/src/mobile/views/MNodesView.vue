@@ -447,11 +447,11 @@
             <div class="m-filter-bar" style="margin-bottom: 8px;">
               <label class="m-field__label" style="margin: 0;">服务器专属探针 ({{ (editForm.custom_probes || []).length }})</label>
               <button type="button" class="m-pill" @click="addCustomProbe">
-                + 添加专属探针
+                + 添加
               </button>
             </div>
             <div v-if="!(editForm.custom_probes || []).length" class="m-card m-card--flat m-note">
-              暂无专属探针，点击上方按钮添加仅针对该服务器的探测任务。
+              暂无专属探针
             </div>
             <div v-else class="m-list">
               <div

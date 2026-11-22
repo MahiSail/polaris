@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, ArrowLeft, ArrowUp, CopyDocument, Delete, DocumentCopy, Download, Edit, Grid, MoreFilled, Plus, Refresh, RefreshRight, Search } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowUp, CopyDocument, Delete, DocumentCopy, Download, Edit, Folder, Grid, MoreFilled, Plus, Refresh, RefreshRight, Search } from '@element-plus/icons-vue'
 import { api, del, post, put } from '../api'
 import { writeClipboard } from '../clipboard'
 import { formatDateTime, includesText } from '../format'
@@ -462,7 +462,7 @@ async function importToClash(config) {
   // 否则客户端装上了却每次更新都失败，比直接失败更难查。
   if (config.access_user_agent) {
     const confirmed = await ElMessageBox.confirm(
-      `这份配置设了访问密钥，一键导入带不上它。导入后请在客户端把 User-Agent 改成 ${config.access_user_agent}，否则更新会失败。`,
+      `该配置已设置访问密钥，快捷导入无法自动携带密钥。导入后请在客户端配置 User-Agent 为 ${config.access_user_agent}，否则更新将失败。`,
       '导入到 Clash',
       { confirmButtonText: '仍然导入', type: 'warning' },
     ).catch(() => null)
@@ -544,11 +544,30 @@ onMounted(() => { load(); loadAccess() })
               <el-tag v-for="id in (row.proxy_group_ids || []).slice(0, groupPreviewCount)" :key="id" type="info" class="group-tag">
                 {{ groupByID[id]?.name || '分组已失效' }}
               </el-tag>
-              <el-tooltip v-if="(row.proxy_group_ids || []).length > groupPreviewCount" placement="top">
+              <el-tooltip
+                v-if="(row.proxy_group_ids || []).length > groupPreviewCount"
+                placement="top"
+                popper-class="groups-popper"
+                :show-after="100"
+              >
                 <template #content>
-                  <div v-for="id in row.proxy_group_ids.slice(groupPreviewCount)" :key="id">{{ groupByID[id]?.name || '分组已失效' }}</div>
+                  <div class="groups-popper-card">
+                    <div class="groups-popper-header">
+                      <span class="groups-popper-title">包含代理分组 ({{ row.proxy_group_ids.length - groupPreviewCount }})</span>
+                    </div>
+                    <div class="groups-popper-list">
+                      <span
+                        v-for="id in row.proxy_group_ids.slice(groupPreviewCount)"
+                        :key="id"
+                        :class="['groups-popper-chip', { 'is-missing': !groupByID[id]?.name }]"
+                      >
+                        <el-icon class="groups-popper-chip__icon"><Folder /></el-icon>
+                        <span class="groups-popper-chip__name">{{ groupByID[id]?.name || '分组已失效' }}</span>
+                      </span>
+                    </div>
+                  </div>
                 </template>
-                <el-tag class="group-tag" type="info" effect="plain">+{{ row.proxy_group_ids.length - groupPreviewCount }}</el-tag>
+                <el-tag class="group-tag group-tag--rest" type="info" effect="plain">+{{ row.proxy_group_ids.length - groupPreviewCount }}</el-tag>
               </el-tooltip>
             </template>
           </el-table-column>
@@ -820,6 +839,75 @@ onMounted(() => { load(); loadAccess() })
   padding: 4px 6px !important;
 }
 .group-tag { margin: 3px 6px 3px 0; }
+.group-tag--rest {
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.group-tag--rest:hover {
+  border-color: var(--sb-accent);
+  color: var(--sb-accent);
+  background: var(--sb-accent-soft);
+}
+
+:global(.groups-popper.el-popper) {
+  padding: 10px 12px !important;
+  max-width: min(380px, 90vw) !important;
+}
+:global(.groups-popper-card) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:global(.groups-popper-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-line);
+}
+:global(.groups-popper-title) {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sb-text-2);
+  letter-spacing: 0.3px;
+}
+:global(.groups-popper-list) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+:global(.groups-popper-chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--sb-accent) 22%, transparent);
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+  font-size: 11.5px;
+  line-height: 1.3;
+  max-width: 100%;
+}
+:global(.groups-popper-chip__icon) {
+  font-size: 12px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+:global(.groups-popper-chip__name) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:global(.groups-popper-chip.is-missing) {
+  color: var(--sb-danger);
+  border-color: color-mix(in oklab, var(--sb-danger) 35%, transparent);
+  background: color-mix(in oklab, var(--sb-danger) 10%, transparent);
+}
 .access-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
 .option-meta { float: right; margin-left: 18px; color: var(--sb-muted); font-size: 12px; }
 

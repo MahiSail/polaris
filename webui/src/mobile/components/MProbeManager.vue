@@ -13,12 +13,12 @@
           style="flex: 1; min-width: 0;"
         />
         <el-button v-if="canWrite" type="primary" @click="openCreate">
-          新建探针
+          添加
         </el-button>
       </div>
 
       <div v-if="loading && tasks.length === 0" class="m-card m-note">正在加载探针列表...</div>
-      <div v-else-if="filteredTasks.length === 0" class="m-card m-note">暂无匹配的探针任务</div>
+      <div v-else-if="filteredTasks.length === 0" class="m-card m-note">暂无探针</div>
 
       <div v-else class="m-list">
         <div v-for="(task, index) in filteredTasks" :key="task.id" class="m-card">
@@ -57,11 +57,11 @@
 
     <MSheet
       v-model="formOpen"
-      :title="editingId ? '编辑探针任务' : '新建探针任务'"
+      :title="editingId ? '编辑' : '添加'"
     >
       <div class="m-stack">
         <div class="m-field">
-          <label class="m-field__label">任务名称</label>
+          <label class="m-field__label">探针名称</label>
           <el-input v-model="form.name" placeholder="例如：广州电信" />
         </div>
         <div class="m-field">

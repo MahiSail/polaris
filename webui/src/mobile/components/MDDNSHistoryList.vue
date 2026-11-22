@@ -75,8 +75,7 @@
           <el-button
             v-if="canWrite"
             size="small"
-            type="danger"
-            text
+            link
             @click="deleteOne(row)"
           >
             删除

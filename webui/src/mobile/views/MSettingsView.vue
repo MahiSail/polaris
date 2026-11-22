@@ -170,7 +170,7 @@ async function loadIPDBStatus() {
 
 async function downloadMMDB() {
   try {
-    await ElMessageBox.confirm('确定从镜像源在线下载 GeoLite2-City.mmdb 并热加载吗？', '下载高精度 IP 库', {
+    await ElMessageBox.confirm('确定从镜像源在线下载 GeoLite2-City.mmdb 并热加载吗？', '下载 IP 数据库', {
       type: 'info',
       confirmButtonText: '下载',
       cancelButtonText: '取消',

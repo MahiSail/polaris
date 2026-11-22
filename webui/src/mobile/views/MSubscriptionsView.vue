@@ -618,7 +618,7 @@ async function importToClash(config) {
   // 一键导入带不上 User-Agent，设了密钥就必须让人知道还得手工补一步。
   if (config.access_user_agent) {
     await ElMessageBox.confirm(
-      `这份配置设了访问密钥，一键导入带不上它。导入后请在客户端把 User-Agent 改成 ${config.access_user_agent}，否则更新会失败。`,
+      `该配置已设置访问密钥，快捷导入无法自动携带密钥。导入后请在客户端配置 User-Agent 为 ${config.access_user_agent}，否则更新将失败。`,
       '导入到 Clash',
       { confirmButtonText: '仍然导入', type: 'warning' },
     )

@@ -319,21 +319,36 @@ html.light .page-header {
   font-weight: 600;
   letter-spacing: .4px;
   border-bottom: 1px solid var(--sb-line) !important;
-  text-align: center !important;
+  text-align: left !important;
 }
 .table-panel .el-table th.el-table__cell .cell,
 .el-table th.el-table__cell .cell {
   display: flex !important;
-  justify-content: center !important;
+  justify-content: flex-start !important;
   align-items: center !important;
-  text-align: center !important;
+  text-align: left !important;
+}
+.table-panel .el-table th.el-table__cell .caret-wrapper,
+.el-table th.el-table__cell .caret-wrapper {
+  flex: none;
+  margin-left: 4px;
 }
 /* 一页十行加上表头、工具栏和分页条要能放进笔记本视口，
    否则分页就失去了去掉滚动条的意义。 */
 .table-panel .el-table td.el-table__cell { height: 46px; padding: 0; border-bottom: 1px solid rgba(100, 104, 123, .08); }
-/* 首末列内容贴着面板边缘会很挤，统一留出和面板内边距一致的空隙；表头保持水平居中。 */
-.table-panel .el-table td.el-table__cell:first-child > .cell { padding-left: 20px; }
-.table-panel .el-table td.el-table__cell:last-child > .cell { padding-right: 20px; }
+/* 首末列内容贴着面板边缘会很挤，统一留出和面板内边距一致的空隙；所有表头严格靠左并与内容对齐。 */
+.table-panel .el-table th.el-table__cell:first-child > .cell,
+.el-table th.el-table__cell:first-child > .cell,
+.table-panel .el-table td.el-table__cell:first-child > .cell,
+.el-table td.el-table__cell:first-child > .cell {
+  padding-left: 20px;
+}
+.table-panel .el-table th.el-table__cell:last-child > .cell,
+.el-table th.el-table__cell:last-child > .cell,
+.table-panel .el-table td.el-table__cell:last-child > .cell,
+.el-table td.el-table__cell:last-child > .cell {
+  padding-right: 20px;
+}
 /* 固定列的底色（body 单元格采用实体卡片底色，hover 时高亮） */
 .table-panel .el-table td.el-table__cell.el-table-fixed-column--left,
 .table-panel .el-table td.el-table__cell.el-table-fixed-column--right,
@@ -984,55 +999,274 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
   height: 0;
 }
 
-/* ── 流量详情悬浮卡片 (Polaris Token 统一风格) ──────────────── */
-.traffic-popper.el-popper {
-  padding: 10px 14px !important;
+/* ── 全局 Tooltip & Popover 悬浮系统 (Polaris Obsidian Glass / Micro-Neomorphism) ── */
+
+/* 1. Element Plus 全局 Popper 核心主题规范 ───────────────────────────── */
+
+/* 深色模式默认与 dark 类 (黑曜石毛玻璃 Obsidian Glass) */
+html.dark .el-popper.is-dark,
+html.dark .el-popper.is-light,
+html.dark .el-popover.el-popper,
+html.dark .el-tooltip__popper,
+html.dark .el-popper[role="tooltip"],
+.el-popper.is-dark,
+.el-popper[role="tooltip"] {
+  background: rgba(26, 30, 40, 0.90) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.65), 0 4px 12px -2px rgba(0, 0, 0, 0.45) !important;
   border-radius: 10px !important;
-  background: var(--sb-surface-3) !important;
-  border: 1px solid var(--sb-line-strong) !important;
-  box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.45) !important;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--sb-text) !important;
+  line-height: 1.5;
+}
+
+/* 深色模式 Popper 箭头匹配 */
+html.dark .el-popper.is-dark .el-popper__arrow::before,
+html.dark .el-popper.is-light .el-popper__arrow::before,
+html.dark .el-popover.el-popper .el-popper__arrow::before,
+html.dark .el-tooltip__popper .el-popper__arrow::before,
+html.dark .el-popper[role="tooltip"] .el-popper__arrow::before,
+.el-popper.is-dark .el-popper__arrow::before,
+.el-popper[role="tooltip"] .el-popper__arrow::before {
+  background: rgba(26, 30, 40, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* 浅色模式 (微拟物通透 Micro-Neomorphism) */
+html.light .el-popper.is-dark,
+html.light .el-popper.is-light,
+html.light .el-popover.el-popper,
+html.light .el-tooltip__popper,
+html.light .el-popper[role="tooltip"],
+html:not(.dark) .el-popper.is-dark,
+html:not(.dark) .el-popper.is-light,
+html:not(.dark) .el-popover.el-popper,
+html:not(.dark) .el-tooltip__popper,
+html:not(.dark) .el-popper[role="tooltip"] {
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 12px 28px -6px rgba(100, 104, 123, 0.22), 0 4px 12px -2px rgba(100, 104, 123, 0.1) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--sb-text) !important;
+  line-height: 1.5;
+}
+
+/* 浅色模式 Popper 箭头匹配 */
+html.light .el-popper.is-dark .el-popper__arrow::before,
+html.light .el-popper.is-light .el-popper__arrow::before,
+html.light .el-popover.el-popper .el-popper__arrow::before,
+html.light .el-tooltip__popper .el-popper__arrow::before,
+html.light .el-popper[role="tooltip"] .el-popper__arrow::before,
+html:not(.dark) .el-popper.is-dark .el-popper__arrow::before,
+html:not(.dark) .el-popper.is-light .el-popper__arrow::before,
+html:not(.dark) .el-popover.el-popper .el-popper__arrow::before,
+html:not(.dark) .el-tooltip__popper .el-popper__arrow::before,
+html:not(.dark) .el-popper[role="tooltip"] .el-popper__arrow::before {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 保证箭头各朝向的背面边框保持透明，消除多余方角边框 */
+.el-popper[data-popper-placement^="top"] > .el-popper__arrow::before {
+  border-top-color: transparent !important;
+  border-left-color: transparent !important;
+}
+.el-popper[data-popper-placement^="bottom"] > .el-popper__arrow::before {
+  border-bottom-color: transparent !important;
+  border-right-color: transparent !important;
+}
+.el-popper[data-popper-placement^="left"] > .el-popper__arrow::before {
+  border-bottom-color: transparent !important;
+  border-left-color: transparent !important;
+}
+.el-popper[data-popper-placement^="right"] > .el-popper__arrow::before {
+  border-top-color: transparent !important;
+  border-right-color: transparent !important;
+}
+
+/* 悬浮气泡强调文字 */
+.el-popper b,
+.el-popper strong {
+  color: var(--sb-accent);
+  font-weight: 600;
+}
+
+/* el-popover 独立内边距与标题美化 */
+.el-popover.el-popper {
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+}
+.el-popover__title {
+  color: var(--sb-text) !important;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+/* 表格 show-overflow-tooltip 增强美化：限制最大宽度与优化换行可读性 */
+.el-popper[role="tooltip"] {
+  max-width: min(520px, calc(100vw - 32px)) !important;
+  white-space: normal !important;
+  word-break: break-all !important;
+  line-height: 1.55 !important;
+  letter-spacing: 0.2px;
+}
+
+/* 2. 流量详情悬浮卡片 (.traffic-popper & .traffic-tip) ───────────── */
+.traffic-popper.el-popper {
+  min-width: 220px !important;
+  max-width: 320px !important;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
   white-space: normal !important;
   line-height: normal !important;
 }
 
+/* 深色模式下的流量气泡 */
+html.dark .traffic-popper.el-popper,
+.traffic-popper.el-popper {
+  background: rgba(26, 30, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+}
+html.dark .traffic-popper.el-popper .el-popper__arrow::before,
 .traffic-popper.el-popper .el-popper__arrow::before {
-  background: var(--sb-surface-3) !important;
-  border: 1px solid var(--sb-line-strong) !important;
+  background: rgba(26, 30, 40, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* 浅色模式下的流量气泡 */
+html.light .traffic-popper.el-popper,
+html:not(.dark) .traffic-popper.el-popper {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+  box-shadow: 0 16px 36px -8px rgba(100, 104, 123, 0.26), 0 0 0 1px rgba(255, 255, 255, 0.8) inset !important;
+  backdrop-filter: blur(18px) !important;
+  -webkit-backdrop-filter: blur(18px) !important;
+}
+html.light .traffic-popper.el-popper .el-popper__arrow::before,
+html:not(.dark) .traffic-popper.el-popper .el-popper__arrow::before {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
 }
 
 .traffic-tip {
   font-size: 11.5px;
   line-height: 1.45;
-  min-width: 160px;
+  min-width: 196px;
   color: var(--sb-text-2);
   white-space: normal;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .traffic-tip-section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .traffic-tip-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .traffic-tip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-weight: 600;
   color: var(--sb-text);
-  font-size: 11.5px;
+  font-size: 11px;
+}
+
+.traffic-tip-label .tip-sec-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--sb-muted);
+  flex-shrink: 0;
 }
 
 .traffic-tip-val {
-  font-weight: 600;
+  font-weight: 650;
   color: var(--sb-accent);
   font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
 }
 
+.traffic-tip-val.is-warn {
+  color: var(--sb-warning);
+}
+
+.traffic-tip-val.is-danger {
+  color: var(--sb-danger);
+}
+
+.traffic-tip-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* Rx (下载) & Tx (上传) 雅致徽章 */
+.traffic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-family: var(--font-mono, monospace);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.15s ease;
+}
+
+.traffic-badge--rx {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38BDF8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+html.light .traffic-badge--rx,
+html:not(.dark) .traffic-badge--rx {
+  background: rgba(2, 132, 199, 0.10);
+  color: #0284C7;
+  border-color: rgba(2, 132, 199, 0.22);
+}
+
+.traffic-badge--tx {
+  background: rgba(245, 158, 11, 0.12);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+html.light .traffic-badge--tx,
+html:not(.dark) .traffic-badge--tx {
+  background: rgba(217, 119, 6, 0.10);
+  color: #D97706;
+  border-color: rgba(217, 119, 6, 0.22);
+}
+
+.traffic-badge .badge-arrow {
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* 兼容 .traffic-tip-sub 结构 */
 .traffic-tip-sub {
   font-size: 10.5px;
   color: var(--sb-muted);
@@ -1040,25 +1274,428 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
   align-items: center;
   gap: 4px;
 }
-
 .traffic-tip-muted {
   opacity: 0.85;
 }
-
 .traffic-tip-dot {
   opacity: 0.5;
 }
 
+/* 套餐配额进度条 */
+.traffic-meter-track,
+.traffic-quota-bar {
+  width: 100%;
+  height: 5px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 3px 0 1px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+html.light .traffic-meter-track,
+html.light .traffic-quota-bar,
+html:not(.dark) .traffic-meter-track,
+html:not(.dark) .traffic-quota-bar {
+  background: rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.traffic-meter-bar,
+.traffic-quota-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #38BDF8, #818CF8);
+  transition: width 0.3s ease;
+}
+
+.traffic-meter-bar.is-warn,
+.traffic-quota-fill.is-warn {
+  background: linear-gradient(90deg, #F59E0B, #F97316);
+}
+
+.traffic-meter-bar.is-danger,
+.traffic-quota-fill.is-danger {
+  background: linear-gradient(90deg, #F87171, #EF4444);
+}
+
+.traffic-quota-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--sb-muted);
+}
+
 .traffic-tip-line {
-  margin: 6px 0;
+  margin: 1px 0;
   height: 1px;
   background: var(--sb-line);
 }
 
-/* 限制悬浮提示宽度，避免长文本整行占满屏幕 */
-.el-popper[role="tooltip"] {
-  max-width: min(380px, calc(100vw - 32px));
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.5;
+/* 3. 24小时热力条微型卡片 (.heat-cell-popper) ────────────────── */
+.heat-cell-popper.el-popper {
+  min-width: 140px !important;
+  max-width: 240px !important;
+  padding: 8px 12px !important;
+  border-radius: 9px !important;
+  white-space: normal !important;
+  line-height: normal !important;
+}
+
+html.dark .heat-cell-popper.el-popper,
+.heat-cell-popper.el-popper {
+  background: rgba(26, 30, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+  backdrop-filter: blur(14px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(180%) !important;
+}
+html.dark .heat-cell-popper.el-popper .el-popper__arrow::before,
+.heat-cell-popper.el-popper .el-popper__arrow::before {
+  background: rgba(26, 30, 40, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.light .heat-cell-popper.el-popper,
+html:not(.dark) .heat-cell-popper.el-popper {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 10px 24px -4px rgba(100, 104, 123, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.8) inset !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+html.light .heat-cell-popper.el-popper .el-popper__arrow::before,
+html:not(.dark) .heat-cell-popper.el-popper .el-popper__arrow::before {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.heat-card,
+.heat-popper-card {
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.heat-card-header,
+.heat-popper-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--sb-muted);
+  border-bottom: 1px solid var(--sb-line);
+  padding-bottom: 4px;
+}
+
+.heat-card-header svg,
+.heat-popper-header svg {
+  width: 11px;
+  height: 11px;
+}
+
+.heat-card-body,
+.heat-popper-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heat-card-row,
+.heat-popper-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+
+.heat-indicator-dot,
+.heat-popper-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.heat-indicator-dot.heat-ok, .heat-popper-dot.heat-ok {
+  background: var(--heat-ok, #10B981);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+.heat-indicator-dot.heat-mild, .heat-popper-dot.heat-mild {
+  background: var(--heat-mild, #6EE7B7);
+}
+.heat-indicator-dot.heat-warn, .heat-popper-dot.heat-warn {
+  background: var(--heat-warn, #F59E0B);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+.heat-indicator-dot.heat-hot, .heat-popper-dot.heat-hot {
+  background: var(--heat-hot, #F97316);
+}
+.heat-indicator-dot.heat-bad, .heat-popper-dot.heat-bad {
+  background: var(--heat-bad, #EF4444);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+.heat-indicator-dot.heat-muted, .heat-popper-dot.heat-muted {
+  background: var(--heat-muted, #475569);
+}
+
+.heat-card-label,
+.heat-popper-label {
+  color: var(--sb-text-2);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.heat-card-val,
+.heat-popper-val {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--sb-text);
+  font-size: 11.5px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-card-val.is-empty,
+.heat-popper-val.is-empty {
+  color: var(--sb-muted);
+  font-weight: 400;
+}
+
+.heat-card-probes,
+.heat-popper-probes {
+  font-size: 10px;
+  color: var(--sb-muted);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.heat-probe-badge,
+.heat-popper-probe-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line);
+  color: var(--sb-muted);
+}
+
+/* 4. 代理分组未展开成员气泡 (.members-popper) ───────────────── */
+.members-popper.el-popper {
+  min-width: 200px !important;
+  max-width: min(420px, 90vw) !important;
+  padding: 10px 12px !important;
+  border-radius: 12px !important;
+  white-space: normal !important;
+  line-height: normal !important;
+}
+
+html.dark .members-popper.el-popper,
+.members-popper.el-popper {
+  background: rgba(26, 30, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+}
+html.dark .members-popper.el-popper .el-popper__arrow::before,
+.members-popper.el-popper .el-popper__arrow::before {
+  background: rgba(26, 30, 40, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.light .members-popper.el-popper,
+html:not(.dark) .members-popper.el-popper {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+  box-shadow: 0 16px 36px -8px rgba(100, 104, 123, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.8) inset !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+html.light .members-popper.el-popper .el-popper__arrow::before,
+html:not(.dark) .members-popper.el-popper .el-popper__arrow::before {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
+}
+
+.members-popper-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.members-popper-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-line);
+}
+
+.members-popper-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sb-text-2);
+  letter-spacing: 0.3px;
+}
+
+.members-popper-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.members-popper-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--sb-line);
+  background: color-mix(in oklab, var(--sb-surface-3) 60%, transparent);
+  color: var(--sb-text);
+  font-size: 11.5px;
+  line-height: 1.3;
+  max-width: 100%;
+}
+html.light .members-popper-chip,
+html:not(.dark) .members-popper-chip {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.members-popper-chip__icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.members-popper-chip__kind {
+  font-size: 10px;
+  color: var(--sb-muted);
+  flex-shrink: 0;
+}
+
+.members-popper-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.members-popper-chip.is-group {
+  border-color: color-mix(in oklab, var(--sb-accent) 25%, transparent);
+  background: var(--sb-accent-soft);
+  color: var(--sb-accent);
+}
+
+.members-popper-chip.is-group .members-popper-chip__kind {
+  color: color-mix(in oklab, var(--sb-accent) 70%, transparent);
+}
+
+.members-popper-chip.is-off {
+  color: var(--sb-warning);
+  border-color: color-mix(in oklab, var(--sb-warning) 35%, transparent);
+  background: color-mix(in oklab, var(--sb-warning) 10%, transparent);
+}
+
+.members-popper-chip.is-missing {
+  color: var(--sb-danger);
+  border-color: color-mix(in oklab, var(--sb-danger) 35%, transparent);
+  background: color-mix(in oklab, var(--sb-danger) 10%, transparent);
+}
+
+/* 5. 订阅引用代理分组气泡 (.groups-popper) ─────────────────── */
+.groups-popper.el-popper {
+  min-width: 180px !important;
+  max-width: min(420px, 90vw) !important;
+  padding: 10px 12px !important;
+  border-radius: 12px !important;
+  white-space: normal !important;
+  line-height: normal !important;
+}
+
+html.dark .groups-popper.el-popper,
+.groups-popper.el-popper {
+  background: rgba(26, 30, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+}
+html.dark .groups-popper.el-popper .el-popper__arrow::before,
+.groups-popper.el-popper .el-popper__arrow::before {
+  background: rgba(26, 30, 40, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+html.light .groups-popper.el-popper,
+html:not(.dark) .groups-popper.el-popper {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(0, 0, 0, 0.09) !important;
+  box-shadow: 0 16px 36px -8px rgba(100, 104, 123, 0.24), 0 0 0 1px rgba(255, 255, 255, 0.8) inset !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+html.light .groups-popper.el-popper .el-popper__arrow::before,
+html:not(.dark) .groups-popper.el-popper .el-popper__arrow::before {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
+}
+
+.groups-popper-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groups-popper-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-line);
+}
+
+.groups-popper-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sb-text-2);
+  letter-spacing: 0.3px;
+}
+
+.groups-popper-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.groups-popper-chip,
+.groups-popper .group-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--sb-line);
+  background: color-mix(in oklab, var(--sb-surface-3) 60%, transparent);
+  color: var(--sb-text);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+html.light .groups-popper-chip,
+html.light .groups-popper .group-tag,
+html:not(.dark) .groups-popper-chip,
+html:not(.dark) .groups-popper .group-tag {
+  background: rgba(0, 0, 0, 0.04);
 }

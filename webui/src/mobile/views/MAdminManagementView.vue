@@ -171,7 +171,7 @@
       <div v-else-if="activeSection === 'admin-settings'" class="m-card">
         <div class="m-card__title" style="margin-bottom: 6px;">控制面综合设置</div>
         <p class="m-note" style="margin: 0 0 12px;">
-          管理操作员账户、通知设置、Reality 伪装域名检测以及高精度 MMDB IP 库。
+          管理操作员账户、通知设置、Reality 伪装域名检测以及 MMDB IP 数据库。
         </p>
         <el-button type="primary" style="width: 100%;" @click="navigate('settings')">
           前往系统设置

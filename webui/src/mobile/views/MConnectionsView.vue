@@ -184,6 +184,31 @@ async function runConnAction(key) {
   }
 }
 
+async function quickCloseConn(row) {
+  if (!row?.node_id || !row?.id) return
+  try {
+    await ElMessageBox.confirm(`确定要关闭目标为 ${row.target || '该连接'} 的连接吗？`, '提示', {
+      confirmButtonText: '确定关闭',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonClass: 'el-button--danger',
+    })
+  } catch {
+    return
+  }
+  try {
+    await del(`/nodes/${encodeURIComponent(row.node_id)}/connections/${encodeURIComponent(row.id)}`)
+    ElMessage.success('连接已关闭')
+    const snapshot = connectionSnapshots.value.get(row.node_id)
+    if (snapshot && Array.isArray(snapshot.connections)) {
+      snapshot.connections = snapshot.connections.filter((c) => c.id !== row.id)
+      connectionSnapshots.value = new Map(connectionSnapshots.value)
+    }
+  } catch (err) {
+    ElMessage.error(err.message || '关闭连接失败')
+  }
+}
+
 async function handleCloseAll() {
   const nodeName = appState.nodes.find((n) => n.id === selectedNode.value)?.name
   const targetDesc = selectedNode.value
@@ -272,11 +297,17 @@ onBeforeUnmount(() => {
       <button
         v-if="!isShareMode && filteredRows.length > 0"
         type="button"
-        class="m-close-all-link"
+        class="m-close-all-btn"
         :disabled="closingAll"
+        :title="selectedNode ? '关闭此服务器连接' : '关闭所有连接'"
+        aria-label="关闭所有连接"
         @click="handleCloseAll"
       >
-        {{ selectedNode ? '关闭此服务器连接' : '关闭所有连接' }}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="close-all-icon">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="15" y1="9" x2="9" y2="15" />
+          <line x1="9" y1="9" x2="15" y2="15" />
+        </svg>
       </button>
     </div>
 
@@ -288,12 +319,26 @@ onBeforeUnmount(() => {
       @click="openDetail(row)"
       @keydown.enter="openDetail(row)"
     >
-      <!-- Row 1: Host (left, spacious) + Compact Protocol / Hop Tags (right, never wrap-squashing host) -->
+      <!-- Row 1: Host (left, spacious) + Compact Protocol / Hop Tags + Close Icon (right) -->
       <div class="m-conn-head">
         <div class="m-conn-host font-mono" :title="row.target">{{ row.target }}</div>
         <div class="m-conn-badges">
           <span v-if="row.chain_hop_count > 1" class="m-conn-tag m-conn-tag--chain">{{ row.chain_hop_count }}跳</span>
           <span class="m-conn-tag font-mono">{{ (row.network || 'TCP').toUpperCase() }}</span>
+          <button
+            v-if="!isShareMode"
+            type="button"
+            class="m-conn-quick-close"
+            title="关闭该连接"
+            aria-label="关闭该连接"
+            @click.stop="quickCloseConn(row)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -569,16 +614,62 @@ onBeforeUnmount(() => {
 .m-count-bar .m-count {
   margin-bottom: 0;
 }
-.m-close-all-link {
-  background: none;
+.m-close-all-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
   border: none;
-  padding: 2px 6px;
-  color: var(--el-color-danger, #f56c6c);
-  font-size: 12px;
-  font-weight: 500;
+  box-shadow: none;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  color: var(--sb-danger);
+  opacity: 0.85;
   cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
-.m-close-all-link:disabled {
-  opacity: 0.5;
+.m-close-all-btn:hover:not(:disabled) {
+  opacity: 1;
+  transform: scale(1.15);
+}
+.m-close-all-btn:active:not(:disabled) {
+  background: transparent;
+  transform: scale(0.92);
+}
+.m-close-all-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.close-all-icon {
+  width: 17px;
+  height: 17px;
+}
+.m-conn-quick-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--sb-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.m-conn-quick-close svg {
+  width: 15px;
+  height: 15px;
+}
+.m-conn-quick-close:hover {
+  color: var(--sb-danger);
+  transform: scale(1.15);
+}
+.m-conn-quick-close:active {
+  color: var(--sb-danger);
+  background: transparent;
+  transform: scale(0.92);
 }
 </style>

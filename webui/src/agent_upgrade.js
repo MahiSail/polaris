@@ -45,7 +45,7 @@ export async function performAllAgentsUpgrade(nodes, { refreshList, refreshNodes
     : `等 ${count} 台服务器`
   await ElMessageBox.confirm(
     `确认将 ${count} 台服务器${summary}的 Agent 升级到最新版本${latestVersion ? ` (v${latestVersion})` : ''}？升级完成后 Agent 会自动重启并重新连接，运行中的代理服务不受影响。`,
-    '一键升级所有 Agent',
+    '批量升级 Agent',
     { type: 'warning', confirmButtonText: '开始升级' },
   )
 

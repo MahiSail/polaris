@@ -191,19 +191,24 @@ onBeforeUnmount(() => {
         <el-select v-model="selectedOutbound" clearable placeholder="全部出口" class="filter-select">
           <el-option v-for="exit in outboundOptions" :key="exit" :label="exit" :value="exit" />
         </el-select>
-        <el-button
-          v-if="!isShareMode"
-          type="danger"
-          plain
-          :icon="CircleClose"
-          :loading="closingAll"
-          :disabled="filteredRows.length === 0"
-          @click="handleCloseAll"
-        >
-          {{ selectedNode ? '关闭当前服务器连接' : '关闭所有连接' }}
-        </el-button>
         <span class="toolbar__spacer" />
         <span class="subtle">{{ filteredRows.length }} 条 · {{ formatDateTime(collectedAt, '暂无数据') }}</span>
+        <el-tooltip
+          v-if="!isShareMode"
+          :content="selectedNode ? '关闭当前服务器所有连接' : '关闭所有活动连接'"
+          placement="top"
+        >
+          <el-button
+            type="danger"
+            link
+            :icon="CircleClose"
+            :loading="closingAll"
+            :disabled="filteredRows.length === 0"
+            aria-label="关闭所有连接"
+            class="toolbar-close-all-btn"
+            @click="handleCloseAll"
+          />
+        </el-tooltip>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredRows" :loading="loading" empty-text="当前没有活动连接">
@@ -247,17 +252,19 @@ onBeforeUnmount(() => {
           <el-table-column label="时间" prop="started_at" width="170" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
           </el-table-column>
-          <el-table-column v-if="!isShareMode" label="操作" width="80" align="center" fixed="right">
+          <el-table-column v-if="!isShareMode" label="操作" width="60" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button
-                type="danger"
-                link
-                size="small"
-                :loading="closingIds.has(row.id)"
-                @click="handleCloseConnection(row)"
-              >
-                关闭
-              </el-button>
+              <el-tooltip content="关闭该连接" placement="top">
+                <el-button
+                  type="danger"
+                  link
+                  :icon="CircleClose"
+                  :loading="closingIds.has(row.id)"
+                  aria-label="关闭该连接"
+                  class="row-close-btn"
+                  @click="handleCloseConnection(row)"
+                />
+              </el-tooltip>
             </template>
           </el-table-column>
         </PagedTable>
@@ -267,6 +274,82 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.toolbar-close-all-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  width: auto !important;
+  color: var(--sb-danger) !important;
+  opacity: 0.85;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.toolbar-close-all-btn :deep(.el-icon) {
+  font-size: 19px;
+  width: 19px;
+  height: 19px;
+}
+.toolbar-close-all-btn:hover:not(:disabled) {
+  background: transparent !important;
+  opacity: 1;
+  transform: scale(1.15);
+}
+.toolbar-close-all-btn:active:not(:disabled) {
+  background: transparent !important;
+  transform: scale(0.95);
+}
+.toolbar-close-all-btn:disabled,
+.toolbar-close-all-btn.is-disabled {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+.row-close-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: auto !important;
+  width: auto !important;
+  color: var(--sb-muted) !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.row-close-btn :deep(.el-icon) {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+.row-close-btn:hover:not(:disabled) {
+  background: transparent !important;
+  color: var(--sb-danger) !important;
+  text-decoration: none !important;
+  transform: scale(1.15);
+}
+.row-close-btn:active:not(:disabled) {
+  background: transparent !important;
+  transform: scale(0.95);
+}
+.row-close-btn:disabled,
+.row-close-btn.is-disabled {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
 :deep(.tag-cell .el-tag) {
   max-width: 100%;
   overflow: hidden;

@@ -193,12 +193,12 @@ onMounted(load)
 <template>
   <div class="ping-tasks-view">
     <div class="toolbar">
-      <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">添加探针</el-button>
+      <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">添加</el-button>
     </div>
 
     <section class="probes-panel">
       <p class="probe-intro">
-        支持配置集群共享的「公共探针」。每台服务器会执行公共探针，实时测量网络延迟与丢包率。
+        公共探针由集群中所有服务器统一执行，用于测量网络延迟与丢包率。
       </p>
 
       <div class="probe-filter-bar">
@@ -247,13 +247,13 @@ onMounted(load)
             <el-button link :icon="InfoFilled" @click="openEdit(row)">详情</el-button>
           </template>
         </el-table-column>
-        <template #empty>还没有延迟监控，点右上角“添加探针”</template>
+        <template #empty>暂无探针，可点击上方“添加”</template>
       </el-table>
     </section>
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingID ? '编辑探针' : '添加探针'"
+      :title="editingID ? '编辑' : '添加'"
       width="min(540px, 94vw)"
       class="probe-dialog"
       append-to-body
@@ -265,7 +265,7 @@ onMounted(load)
 
         <el-form-item label="目标地址（host:port）" required>
           <el-input v-model="form.target" placeholder="例如：202.103.224.68:53 或 1.1.1.1:443" @keyup.enter="save" />
-          <div class="probe-hint">格式为 host:port，服务器将定期向此目标建立 TCP 握手并采集往返延迟与丢包率</div>
+          <div class="probe-hint">格式为 host:port，定期建立 TCP 握手并采集延迟与丢包率</div>
         </el-form-item>
 
         <el-form-item label="探测间隔（秒）">
