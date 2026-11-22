@@ -372,6 +372,14 @@ const priceText = computed(() => {
   gap: 6px;
   flex: none;
 }
+.m-node-status {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+}
 .m-node-status__dot {
   width: 6px;
   height: 6px;
@@ -380,12 +388,12 @@ const priceText = computed(() => {
 }
 .m-node-more {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid var(--sb-line-strong);
   background: var(--sb-surface-2);
   color: var(--sb-text-2);

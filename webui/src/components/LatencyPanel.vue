@@ -14,7 +14,7 @@
         <svg class="head-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
         </svg>
-        <span>24 小时</span>
+        <span>{{ rangeLabel }}</span>
       </span>
       <span class="head-right font-mono" :title="targetTitles">
         <template v-if="failed">
@@ -33,7 +33,7 @@
       <div class="track-line">
         <span class="track-label">延迟</span>
         <div class="track-bar">
-          <HeatTrack :hours="formattedHours" kind="latency" :probes="targetCount" />
+          <HeatTrack :hours="formattedHours" kind="latency" :probes="targetCount" :range-hours="displayRangeHours" />
         </div>
         <span class="track-val font-mono" :class="latencyToneClass">
           {{ avgLatency === null ? '—' : `${Math.round(avgLatency)}ms` }}
@@ -43,7 +43,7 @@
       <div class="track-line">
         <span class="track-label">丢包</span>
         <div class="track-bar">
-          <HeatTrack :hours="formattedHours" kind="loss" :probes="targetCount" />
+          <HeatTrack :hours="formattedHours" kind="loss" :probes="targetCount" :range-hours="displayRangeHours" />
         </div>
         <span class="track-val font-mono" :class="lossToneClass">
           {{ avgLoss === null ? '—' : `${Number(avgLoss).toFixed(1)}%` }}
@@ -52,7 +52,7 @@
     </div>
 
     <div class="panel-foot">
-      <span>24 小时前</span>
+      <span>{{ rangeLabel }}前</span>
       <span>现在</span>
     </div>
   </div>
@@ -67,10 +67,28 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  timeRangeHours: {
+    type: Number,
+    default: 0,
+  },
   compact: {
     type: Boolean,
     default: false,
   },
+})
+
+const displayRangeHours = computed(() => {
+  if (props.timeRangeHours > 0) return props.timeRangeHours
+  if (props.latency?.timeRangeHours > 0) return props.latency.timeRangeHours
+  return 24
+})
+
+const rangeLabel = computed(() => {
+  const h = displayRangeHours.value
+  if (h === 168) return '7 天'
+  if (h === 1) return '1 小时'
+  if (h === 6) return '6 小时'
+  return `${h} 小时`
 })
 
 const failed = computed(() => props.latency?.failed === true)

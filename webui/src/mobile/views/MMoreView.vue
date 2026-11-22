@@ -19,17 +19,17 @@ const logout = inject('logout')
 
 const groups = [
   {
-    label: '服务器',
+    label: '服务器与安全',
     items: [
       { id: 'nodes', label: '服务器', icon: Monitor },
       { id: 'security', label: '安全中心', icon: Lock },
-      { id: 'routes', label: '服务器访问规则', icon: Operation },
-      { id: 'outbounds', label: '上网出口', icon: Connection },
     ],
   },
   {
-    label: '连接配置',
+    label: '网络与分流',
     items: [
+      { id: 'routes', label: '服务器访问规则', icon: Operation },
+      { id: 'outbounds', label: '上网出口', icon: Connection },
       { id: 'proxy-groups', label: '代理分组', icon: Share },
       { id: 'rule-providers', label: '规则供应商', icon: Collection },
     ],
@@ -45,11 +45,7 @@ const groups = [
   {
     label: '系统管理',
     items: [
-      { id: 'status', label: '节点实时看板', icon: Monitor },
       { id: 'cloudflare', label: '域名解析', icon: Document },
-      { id: 'settings?tab=alerts', route: 'settings', query: 'tab=alerts', label: '通知设置', icon: Bell, adminOnly: true },
-      { id: 'settings?tab=tools', route: 'settings', query: 'tab=tools', label: '网络工具', icon: Connection },
-      { id: 'admin-data', label: '数据备份与维护', icon: Operation, adminOnly: true },
       { id: 'settings', label: '系统设置', icon: Setting, adminOnly: true },
     ],
   },

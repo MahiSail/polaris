@@ -19,7 +19,7 @@
       </div>
 
       <div class="m-action-strip">
-        <el-button v-if="canWrite && !isShareMode" type="primary" plain @click="emit('edit', 'basic')">
+        <el-button v-if="canWrite && !isShareMode" @click="emit('edit', 'basic')">
           配置
         </el-button>
         <el-button v-if="!isShareMode" @click="emit('probe-peers', node)">
@@ -57,23 +57,25 @@
     <div class="m-kv-grid">
       <div class="m-card" style="padding: 10px 12px;">
         <div class="m-kv-cell__label">CPU 占用</div>
-        <div class="m-kv-cell__value" style="font-size: 16px;">{{ cpuPercentText }}</div>
-        <div class="m-note">{{ host.cpu_cores ? `${host.cpu_cores} 核` : '—' }}</div>
+        <div class="m-kv-cell__value" style="font-size: 16px; margin: 3px 0; line-height: 1.3;">{{ cpuPercentText }}</div>
+        <div class="m-note truncate" style="font-size: 11px;">{{ host.cpu_cores ? `${host.cpu_cores} 核` : '—' }}</div>
       </div>
       <div class="m-card" style="padding: 10px 12px;">
         <div class="m-kv-cell__label">内存占用</div>
-        <div class="m-kv-cell__value" style="font-size: 16px;">{{ memPercentText }}</div>
-        <div class="m-note">{{ host.memory_total ? `${formatBytes(host.memory_used || 0)} / ${formatBytes(host.memory_total)}` : '—' }}</div>
+        <div class="m-kv-cell__value" style="font-size: 16px; margin: 3px 0; line-height: 1.3;">{{ memPercentText }}</div>
+        <div class="m-note truncate" style="font-size: 11px;" :title="host.memory_total ? `${formatBytes(host.memory_used || 0)} / ${formatBytes(host.memory_total)}` : '—'">
+          {{ host.memory_total ? `${formatBytes(host.memory_used || 0)} / ${formatBytes(host.memory_total)}` : '—' }}
+        </div>
       </div>
       <div class="m-card" style="padding: 10px 12px;">
         <div class="m-kv-cell__label">实时网速</div>
-        <div class="m-kv-cell__value" style="font-size: 14px;">↓ {{ formatBytes(host.net_rx_rate || 0, '/s') }}</div>
-        <div class="m-note">↑ {{ formatBytes(host.net_tx_rate || 0, '/s') }} · 连接 {{ connCount }}</div>
+        <div class="m-kv-cell__value" style="font-size: 14px; margin: 3px 0; line-height: 1.3;">↓ {{ formatBytes(host.net_rx_rate || 0, '/s') }}</div>
+        <div class="m-note truncate" style="font-size: 11px;">↑ {{ formatBytes(host.net_tx_rate || 0, '/s') }} · 连接 {{ connCount }}</div>
       </div>
       <div class="m-card" style="padding: 10px 12px;">
         <div class="m-kv-cell__label">网络延迟</div>
-        <div class="m-kv-cell__value" style="font-size: 16px;">{{ latencyHeadline }}</div>
-        <div class="m-note">{{ latencySubtitle }}</div>
+        <div class="m-kv-cell__value" style="font-size: 16px; margin: 3px 0; line-height: 1.3;">{{ latencyHeadline }}</div>
+        <div class="m-note truncate" style="font-size: 11px;">{{ latencySubtitle }}</div>
       </div>
     </div>
 
@@ -170,7 +172,7 @@
 
     <!-- Tab 2: Network Latency -->
     <div v-else-if="tab === 'latency'" class="m-stack">
-      <LatencyPanel v-if="effectiveLatency" :latency="effectiveLatency" />
+      <LatencyPanel v-if="effectiveLatency" :latency="effectiveLatency" :time-range-hours="hours" />
 
       <div v-if="latencyLoading && !probes.length" class="m-card m-note">正在加载延迟历史...</div>
       <div v-else-if="latencyError" class="m-card m-note" style="color: var(--sb-danger);">{{ latencyError }}</div>
@@ -285,6 +287,7 @@ import { formatBandwidth, formatBytes, formatDateTime, formatUptime } from '../.
 import { isShareMode } from '../../share'
 import { isNewerVersion } from '../../version'
 import LatencyPanel from '../../components/LatencyPanel.vue'
+import { summarizePing } from '../../latency'
 import OsIcon from '../../components/OsIcon.vue'
 import StatusDot from '../../components/StatusDot.vue'
 import TrendChart from '../../components/TrendChart.vue'
@@ -326,7 +329,8 @@ const ddnsHistoryOpen = ref(false)
 
 const host = computed(() => props.live?.host || props.metrics?.host || {})
 const connCount = computed(() => props.live?.connection_count ?? 0)
-const effectiveLatency = computed(() => props.live?.latency || props.metrics?.latency || null)
+const pingSummary = computed(() => (pingRaw.value ? summarizePing(pingRaw.value, hours.value) : null))
+const effectiveLatency = computed(() => pingSummary.value || props.live?.latency || props.metrics?.latency || null)
 
 const agentUpgradable = computed(() =>
   Boolean(props.latestAgentVersion && isNewerVersion(props.latestAgentVersion, props.node.agent_version))

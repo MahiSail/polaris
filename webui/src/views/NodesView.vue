@@ -20,6 +20,7 @@ import {
   Share,
   Tickets,
   Top,
+  Upload,
 } from '@element-plus/icons-vue'
 import { api, post, put } from '../api'
 import { buildDDNSIPOptions, formatDDNSBindLabel } from '../ddns'
@@ -1079,11 +1080,11 @@ onBeforeUnmount(() => {
       <el-button
         v-if="isAdmin && upgradableAgentNodes.length > 0"
         type="warning"
-        :icon="Top"
+        :icon="Upload"
         :loading="upgradingAllAgents"
         @click="upgradeAllAgents"
       >
-        一键升级所有 Agent ({{ upgradableAgentNodes.length }})
+        升级 Agent ({{ upgradableAgentNodes.length }})
       </el-button>
       <el-button v-if="canWrite" :icon="Connection" @click="probesDialog = true">探针</el-button>
       <el-button v-if="canWrite" :icon="Share" @click="shareOpen = true">分享</el-button>
@@ -1172,8 +1173,6 @@ onBeforeUnmount(() => {
               @click="viewMode = viewMode === 'card' ? 'list' : 'card'"
             >
               <el-icon><component :is="viewMode === 'card' ? Grid : Tickets" /></el-icon>
-              <span>{{ viewMode === 'card' ? '卡片' : '列表' }}</span>
-              <span class="view-toggle-pill__swap" aria-hidden="true">⇄</span>
             </button>
           </div>
         </div>
@@ -1838,26 +1837,21 @@ onBeforeUnmount(() => {
 .view-toggle-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  min-height: 2rem;
-  padding: 0 0.75rem;
-  border-radius: 0.5625rem;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 0.5rem;
   border: 1px solid var(--sb-line);
-  background: rgba(56, 189, 248, 0.14);
-  color: var(--sb-accent);
-  font-size: 0.75rem;
-  font-weight: 600;
+  background: var(--sb-surface-2);
+  color: var(--sb-text-2);
   cursor: pointer;
-  white-space: nowrap;
   transition: all 0.15s ease;
 }
 .view-toggle-pill:hover {
   border-color: var(--sb-accent);
-  background: rgba(56, 189, 248, 0.22);
-}
-.view-toggle-pill__swap {
-  font-size: 0.7rem;
-  opacity: 0.65;
+  color: var(--sb-accent);
+  background: var(--sb-accent-soft);
 }
 
 /* ── 3. 待接入横幅 (Pending Section) ────────────────────── */
@@ -2353,7 +2347,7 @@ onBeforeUnmount(() => {
 .is-total { color: var(--sb-muted); font-size: 10.5px; }
 .n-conn {
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(148, 163, 184, .12);
   color: var(--sb-muted);
   font-size: 10px;
@@ -2853,7 +2847,7 @@ onBeforeUnmount(() => {
 .dlg-tab-badge {
   min-width: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(56, 189, 248, .16);
   color: var(--sb-accent);
   font-size: 10.5px;

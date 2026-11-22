@@ -25,9 +25,6 @@
           <div class="m-filter-bar" style="margin-bottom: 6px;">
             <div style="display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap;">
               <strong style="font-size: 14px;">{{ task.name }}</strong>
-              <el-tag :type="task.auto_join ? 'success' : 'warning'" size="small" effect="light">
-                {{ task.auto_join ? '全局默认' : `自定义 (${(task.node_ids || []).length})` }}
-              </el-tag>
             </div>
             <span class="m-note">{{ task.interval || 60 }}s</span>
           </div>
@@ -74,53 +71,6 @@
         <div class="m-field">
           <label class="m-field__label">探测间隔（秒）</label>
           <el-input-number v-model="form.interval" :min="5" :max="3600" style="width: 100%;" />
-        </div>
-        <div class="m-field">
-          <label class="m-field__label">生效范围</label>
-          <div class="m-filter-row">
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': form.auto_join }"
-              @click="form.auto_join = true"
-            >
-              全局默认（全部服务器）
-            </button>
-            <button
-              type="button"
-              class="m-pill"
-              :class="{ 'is-active': !form.auto_join }"
-              @click="form.auto_join = false"
-            >
-              仅指定服务器
-            </button>
-          </div>
-        </div>
-
-        <div v-if="!form.auto_join" class="m-field">
-          <div class="m-filter-bar" style="margin-bottom: 6px;">
-            <label class="m-field__label" style="margin: 0;">绑定服务器 ({{ form.node_ids.length }})</label>
-            <el-button size="small" text @click="toggleSelectAllNodes">
-              {{ form.node_ids.length === nodes.length ? '清空全选' : '全选服务器' }}
-            </el-button>
-          </div>
-          <div class="m-list" style="max-height: min(35dvh, 15rem); overflow-y: auto;">
-            <label
-              v-for="n in nodes"
-              :key="n.id"
-              class="m-choice"
-              style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;"
-            >
-              <div style="min-width: 0;">
-                <div style="font-size: 13px; font-weight: 500;">{{ n.name }}</div>
-                <div class="m-note m-mono-wrap">{{ n.last_observed_ip || n.client_address || '未上报 IP' }}</div>
-              </div>
-              <el-checkbox
-                :model-value="form.node_ids.includes(n.id)"
-                @change="toggleNode(n.id)"
-              />
-            </label>
-          </div>
         </div>
 
         <div class="m-form-foot">
@@ -238,8 +188,8 @@ async function saveTask() {
       name: form.name.trim(),
       target: form.target.trim(),
       interval: Number(form.interval) || 60,
-      auto_join: form.auto_join,
-      node_ids: form.auto_join ? [] : form.node_ids,
+      auto_join: true,
+      node_ids: [],
     }
     if (editingId.value) {
       await put(`/ping-tasks/${editingId.value}`, payload)

@@ -33,6 +33,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  rangeHours: {
+    type: Number,
+    default: 24,
+  },
 })
 
 const TRACK_LABELS = {
@@ -57,39 +61,42 @@ function getHeatClass(value, kind) {
   return 'heat-bad'
 }
 
-function formatSlotTime(ts) {
+function formatSlotTime(ts, rangeHours = 24) {
   if (!ts) return ''
   const d = new Date(ts * 1000)
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const date = String(d.getDate()).padStart(2, '0')
   const hour = String(d.getHours()).padStart(2, '0')
+  const minute = String(d.getMinutes()).padStart(2, '0')
+  if (rangeHours <= 6) {
+    return `${hour}:${minute}`
+  }
   return `${month}-${date} ${hour}:00`
 }
 
 const normalizedSlots = computed(() => {
   const result = []
-  const count = 24
   const source = Array.isArray(props.hours) ? props.hours : []
+  const range = props.rangeHours || 24
+  const count = source.length > 0 ? source.length : (range > 24 ? 28 : 24)
 
-  // Ensure 24 slots, aligning from right (latest) if fewer
   let items = source
   if (items.length < count) {
     const padCount = count - items.length
-    const nowHour = Math.floor(Date.now() / 1000 / 3600) * 3600
+    const step = range <= 1 ? 150 : range <= 6 ? 900 : range <= 24 ? 3600 : 21600
+    const nowSlot = Math.floor(Date.now() / 1000 / step) * step
     const padding = Array.from({ length: padCount }, (_, idx) => ({
-      ts: nowHour - (count - 1 - idx) * 3600,
+      ts: nowSlot - (count - 1 - idx) * step,
       latency: null,
       loss: null,
     }))
     items = [...padding, ...items]
-  } else if (items.length > count) {
-    items = items.slice(items.length - count)
   }
 
   for (let i = 0; i < count; i++) {
     const item = items[i] || {}
     const value = props.kind === 'latency' ? item.latency : item.loss
-    const timeStr = formatSlotTime(item.ts)
+    const timeStr = formatSlotTime(item.ts, range)
     const valStr = value === null || value === undefined
       ? '无数据'
       : props.kind === 'latency'

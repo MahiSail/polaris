@@ -32,11 +32,9 @@
         <span class="tile-blob blob-info" />
         <div class="tile-head">
           <span class="tile-bubble bubble-info">
-            <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="m3 16 4 4 4-4" />
-              <path d="M7 20V4" />
-              <path d="m21 8-4-4-4 4" />
-              <path d="M17 4v16" />
+            <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 14 4-4" />
+              <path d="M3.34 19a10 10 0 1 1 17.32 0" />
             </svg>
           </span>
           <span>实时网速</span>

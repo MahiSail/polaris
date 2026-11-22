@@ -460,7 +460,7 @@ onMounted(load)
 .m-inbound-status {
   flex-shrink: 0;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
 }

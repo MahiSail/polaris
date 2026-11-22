@@ -14,26 +14,41 @@ function jitterOf(values) {
   return sum / (clean.length - 1)
 }
 
-function hourSlots(count = HOUR_BUCKETS) {
-  const nowHour = Math.floor(Date.now() / 1000 / HOUR_SECONDS) * HOUR_SECONDS
-  return Array.from({ length: count }, (_, i) => nowHour - (count - 1 - i) * HOUR_SECONDS)
+function resolveSlotConfig(rangeHours = 24) {
+  if (rangeHours <= 1) {
+    return { count: 24, step: 150 } // 1 小时: 24 格，每格 2.5 分钟
+  }
+  if (rangeHours <= 6) {
+    return { count: 24, step: 900 } // 6 小时: 24 格，每格 15 分钟
+  }
+  if (rangeHours <= 24) {
+    return { count: 24, step: 3600 } // 24 小时: 24 格，每格 1 小时
+  }
+  return { count: 28, step: 21600 } // 7 天 (168 小时): 28 格，每格 6 小时
 }
 
-function hourlyBuckets(points, fallbackLoss, slots) {
-  const byHour = new Map()
+function hourSlots(rangeHours = 24) {
+  const { count, step } = resolveSlotConfig(rangeHours)
+  const nowSlot = Math.floor(Date.now() / 1000 / step) * step
+  return Array.from({ length: count }, (_, i) => nowSlot - (count - 1 - i) * step)
+}
+
+function hourlyBuckets(points, fallbackLoss, slots, rangeHours = 24) {
+  const { step } = resolveSlotConfig(rangeHours)
+  const byBucket = new Map()
   for (const p of points) {
-    const hour = Math.floor(p.ts / HOUR_SECONDS) * HOUR_SECONDS
-    const row = byHour.get(hour) ?? { lat: 0, latN: 0, loss: 0, lossN: 0 }
+    const bucket = Math.floor(p.ts / step) * step
+    const row = byBucket.get(bucket) ?? { lat: 0, latN: 0, loss: 0, lossN: 0 }
     if (p.latency !== null && p.latency !== undefined) {
       row.lat += p.latency
       row.latN++
     }
     row.loss += p.loss ?? fallbackLoss
     row.lossN++
-    byHour.set(hour, row)
+    byBucket.set(bucket, row)
   }
   return slots.map((ts) => {
-    const row = byHour.get(ts)
+    const row = byBucket.get(ts)
     return {
       ts,
       latency: row && row.latN > 0 ? row.lat / row.latN : null,
@@ -42,7 +57,7 @@ function hourlyBuckets(points, fallbackLoss, slots) {
   })
 }
 
-// 把多个探测按小时求均值，合成单条 24 小时序列。
+// 把多个探测按小时/槽位求均值，合成单条序列。
 export function mergeHours(probes, slots) {
   return slots.map((ts, i) => {
     let latSum = 0
@@ -73,7 +88,7 @@ function mean(values) {
   return values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : null
 }
 
-export function summarizePing(history) {
+export function summarizePing(history, rangeHours = 24) {
   const sorted = [...(history?.ping ?? [])].sort((a, b) => a.ts - b.ts)
   const byProbe = new Map()
   for (const p of sorted) {
@@ -82,13 +97,13 @@ export function summarizePing(history) {
     else byProbe.set(p.task_id, [p])
   }
 
-  const slots = hourSlots()
+  const slots = hourSlots(rangeHours)
   const probes = []
   for (const [id, points] of byProbe) {
     const values = points.map((p) => p.latency)
     const clean = values.filter((v) => v !== null && v !== undefined)
     const loss = history?.loss?.[String(id)] ?? (points[points.length - 1]?.latency === null ? 100 : 0)
-    const hours = hourlyBuckets(points, loss, slots)
+    const hours = hourlyBuckets(points, loss, slots, rangeHours)
     const lats = hours.map((h) => h.latency).filter((v) => v !== null)
     const losses = hours.map((h) => h.loss).filter((v) => v !== null)
     probes.push({
@@ -114,11 +129,11 @@ export function summarizePing(history) {
   const pick = alive.reduce((best, p) => (best === null || p.latency < best.latency ? p : best), null)
 
   if (probes.length === 0) {
-    return { latency: null, loss: 0, probe: '', jitter: null, probes, hours, avgLatency, avgLoss, none: true }
+    return { latency: null, loss: 0, probe: '', jitter: null, probes, hours, avgLatency, avgLoss, timeRangeHours: rangeHours, none: true }
   }
   if (!pick) {
     const first = probes[0]
-    return { latency: null, loss: 100, probe: first.name, jitter: first.jitter, probes, hours, avgLatency, avgLoss }
+    return { latency: null, loss: 100, probe: first.name, jitter: first.jitter, probes, hours, avgLatency, avgLoss, timeRangeHours: rangeHours }
   }
   return {
     latency: pick.latency,
@@ -129,5 +144,6 @@ export function summarizePing(history) {
     hours,
     avgLatency,
     avgLoss,
+    timeRangeHours: rangeHours,
   }
 }

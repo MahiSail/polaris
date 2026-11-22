@@ -32,21 +32,42 @@ const emit = defineEmits(['update:modelValue', 'save'])
 
 const model = ref(createListenerModel(null, ''))
 const accounts = ref([])
-const aliasFlags = [['🇭🇰','香港'],['🇹🇼','台湾'],['🇸🇬','新加坡'],['🇯🇵','日本'],['🇰🇷','韩国'],['🇺🇸','美国'],['🇬🇧','英国'],['🇩🇪','德国'],['🇫🇷','法国'],['🇳🇱','荷兰'],['🇨🇦','加拿大'],['🇦🇺','澳大利亚'],['🇪🇪','爱沙尼亚'],['🇮🇳','印度'],['🇹🇷','土耳其']]
-const flagDrawerIndex = ref(-1)
-function addAliasFlag(account, flag) {
-  const alias = (account.alias || '').trim()
-  account.alias = alias.startsWith(flag) ? alias : `${flag}${alias ? ` ${alias}` : ''}`
-  flagDrawerIndex.value = -1
+const aliasFlags = [
+  ['🇭🇰', '香港'], ['🇹🇼', '台湾'], ['🇸🇬', '新加坡'], ['🇯🇵', '日本'],
+  ['🇰🇷', '韩国'], ['🇺🇸', '美国'], ['🇬🇧', '英国'], ['🇩🇪', '德国'],
+  ['🇫🇷', '法国'], ['🇳🇱', '荷兰'], ['🇨🇦', '加拿大'], ['🇦🇺', '澳大利亚'],
+  ['🇪🇪', '爱沙尼亚'], ['🇮🇳', '印度'], ['🇹🇷', '土耳其']
+]
+const activeFlagPopover = ref(-1)
+
+function setAccountFlag(account, flag) {
+  let alias = (account.alias || '').trim()
+  // 如果已有其他国旗前缀，先替换
+  for (const [f] of aliasFlags) {
+    if (alias.startsWith(f)) {
+      alias = alias.slice(f.length).trim()
+      break
+    }
+  }
+  account.alias = `${flag} ${alias}`.trim()
+  activeFlagPopover.value = -1
 }
-const expanded = ref(0)
+
+function getAccountFlag(account) {
+  const alias = (account.alias || '').trim()
+  for (const [f] of aliasFlags) {
+    if (alias.startsWith(f)) return f
+  }
+  return ''
+}
+
+const activeAccountIndex = ref(0)
 
 const selectedProfile = computed(() => listenerProfileMap[model.value.profile])
 const showReality = computed(() => model.value.security === 'reality')
 const currentNode = computed(() => props.nodes.find((node) => node.id === model.value.node_id))
 const nodeAddress = computed(() => currentNode.value?.client_address || '')
 const nodeOptions = computed(() => props.nodes.map((node) => ({ value: node.id, label: node.name, desc: node.client_address || '未填写客户端连接地址' })))
-const customNodeIPs = ref([])
 
 function getNodeEgressOptions(node) {
   if (!node) return []
@@ -79,9 +100,7 @@ function getNodeEgressOptions(node) {
   addIP(node.client_address)
   // 5. Last observed IP
   addIP(node.last_observed_ip)
-  // 6. User manually added custom IPs in this session
-  for (const ip of customNodeIPs.value) addIP(ip)
-
+  
   const aliases = node.ip_aliases || {}
   return ips.map((ip) => {
     const alias = aliases[ip]
@@ -98,30 +117,6 @@ function getNodeEgressOptions(node) {
 }
 
 const nodeEgressOptions = computed(() => getNodeEgressOptions(currentNode.value))
-
-async function promptAddCustomIP(account) {
-  try {
-    const { value } = await ElMessageBox.prompt('请输入服务器可用的出口 IPv4 或 IPv6 地址：', '添加出口 IP', {
-      confirmButtonText: '确定添加',
-      cancelButtonText: '取消',
-      inputPattern: /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/,
-      inputErrorMessage: '请输入有效的 IPv4 或 IPv6 地址',
-      inputPlaceholder: '例如：198.51.100.2 或 2001:db8::1',
-    })
-    const trimmed = (value || '').trim()
-    if (trimmed) {
-      if (!customNodeIPs.value.includes(trimmed)) {
-        customNodeIPs.value.push(trimmed)
-      }
-      if (account) {
-        account.outbound_id = `direct:${trimmed}`
-      }
-      ElMessage.success(`已添加出口 IP: ${trimmed}`)
-    }
-  } catch {
-    // User cancelled prompt
-  }
-}
 
 function defaultEgressValue() {
   return 'direct'
@@ -348,7 +343,7 @@ watch(() => props.modelValue, (open) => {
   if (!accounts.value.length) {
     accounts.value = [{ id: '', name: randomAccountName(), alias: '', enabled: true, outbound_id: 'direct' }]
   }
-  expanded.value = 0
+  activeFlagPopover.value = -1
   normalizeProfile()
 })
 
@@ -367,13 +362,12 @@ watch(() => model.value.node_id, (newNodeID) => {
 
 function addAccount() {
   accounts.value.push({ id: '', name: randomAccountName(), alias: '', enabled: true, outbound_id: 'direct' })
-  expanded.value = accounts.value.length - 1
 }
 
 function removeAccount(index) {
-  if (accounts.value.length === 1) return
+  if (accounts.value.length <= 1) return
   accounts.value.splice(index, 1)
-  expanded.value = -1
+  if (activeFlagPopover.value === index) activeFlagPopover.value = -1
 }
 
 function save() {
@@ -496,48 +490,82 @@ function save() {
       </div>
     </template>
 
-    <div class="m-section">节点</div>
-    <div class="accounts">
-      <!-- 一次只展开一个用户，否则三四个用户的表单会把页面拉得很长。 -->
-      <div v-for="(account, index) in accounts" :key="account.id || `new-${index}`" class="account">
-        <button type="button" class="account__head" @click="expanded = expanded === index ? -1 : index">
-          <span>{{ account.alias || account.name || `节点 ${index + 1}` }}</span>
-          <span v-if="!account.enabled" class="m-pill m-pill--info">停用</span>
-          <i aria-hidden="true">{{ expanded === index ? '⌃' : '⌄' }}</i>
-        </button>
-        <div v-if="expanded === index" class="account__body">
-          <div class="m-field">
-            <label class="m-field__label">节点名称 <em>*</em></label>
-            <el-input v-model="account.name" aria-label="节点名称" placeholder="节点名称" />
+    <div class="m-section m-section--between">
+      <span>节点配置</span>
+      <button type="button" class="m-section-action-btn" @click="addAccount">
+        <el-icon><Plus /></el-icon>
+        <span>添加节点</span>
+      </button>
+    </div>
+    <div class="m-node-list">
+      <div
+        v-for="(account, index) in accounts"
+        :key="account.id || `node-${index}`"
+        class="m-node-card"
+      >
+        <div class="m-node-card__header">
+          <div class="m-node-card__title">
+            <span class="m-node-num">{{ index + 1 }}</span>
+            <span class="m-node-name-preview">{{ account.alias || account.name || `节点 ${index + 1}` }}</span>
           </div>
+          <div class="m-node-card__actions">
+            <el-switch
+              v-model="account.enabled"
+              size="small"
+              inline-prompt
+              active-text="开"
+              inactive-text="关"
+              aria-label="启用节点"
+            />
+            <button
+              v-if="accounts.length > 1"
+              type="button"
+              class="m-node-del-icon-btn"
+              title="删除该节点"
+              aria-label="删除节点"
+              @click="removeAccount(index)"
+            >
+              <el-icon><Delete /></el-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="m-node-card__body">
           <div class="m-field">
             <label class="m-field__label">客户端节点别名 <em>*</em></label>
-            <div class="alias-input">
-              <el-input v-model="account.alias" maxlength="128" aria-label="客户端节点别名" placeholder="节点别名" />
+            <div class="alias-combo-input">
               <button
                 type="button"
-                class="alias-flag-trigger"
-                :class="{ 'is-open': flagDrawerIndex === index }"
-                aria-label="选择国旗"
-                @click="flagDrawerIndex = flagDrawerIndex === index ? -1 : index"
+                class="alias-flag-badge"
+                :class="{ 'is-active': activeFlagPopover === index }"
+                title="点击选择地区国旗"
+                @click="activeFlagPopover = activeFlagPopover === index ? -1 : index"
               >
-                🏳️ 国旗
+                <span class="flag-val">{{ getAccountFlag(account) || '🏳️' }}</span>
+                <span class="flag-arrow">▾</span>
               </button>
+              <el-input
+                v-model="account.alias"
+                maxlength="128"
+                aria-label="客户端节点别名"
+                placeholder="例如：🇭🇰 香港专线 01"
+              />
             </div>
-            <div v-if="flagDrawerIndex === index" class="alias-flag-grid">
+            <!-- 国旗轻量平铺选择板 -->
+            <div v-if="activeFlagPopover === index" class="flag-grid-selector">
               <button
                 v-for="[flag, country] in aliasFlags"
                 :key="flag"
                 type="button"
-                class="alias-flag-option"
-                :aria-label="country"
-                @click="addAliasFlag(account, flag)"
+                class="flag-grid-item"
+                @click="setAccountFlag(account, flag)"
               >
-                <span>{{ flag }}</span>
-                <small>{{ country }}</small>
+                <span class="flag-icon">{{ flag }}</span>
+                <span class="flag-label">{{ country }}</span>
               </button>
             </div>
           </div>
+
           <div class="m-field">
             <label class="m-field__label">上网出口与链式代理</label>
             <MPicker
@@ -545,17 +573,17 @@ function save() {
               :options="accountOutboundOptions(account)"
               title="选择出口或链式节点"
             />
+          </div>
 
+          <div class="m-field m-field--auth-id">
+            <div class="auth-id-row">
+              <label class="m-field__label">节点认证名称 (内部 ID) <em>*</em></label>
+            </div>
+            <el-input v-model="account.name" aria-label="节点名称" placeholder="例如：user_xxxx" />
           </div>
-          <div class="m-field m-field--inline">
-            <label class="m-field__label">启用该节点</label>
-            <el-switch v-model="account.enabled" aria-label="启用该节点" />
-          </div>
-          <el-button type="danger" plain :icon="Delete" :disabled="accounts.length === 1" style="width: 100%;" @click="removeAccount(index)">删除该节点</el-button>
         </div>
       </div>
     </div>
-    <el-button :icon="Plus" class="add-account" @click="addAccount">添加节点</el-button>
 
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
@@ -565,69 +593,193 @@ function save() {
 </template>
 
 <style scoped>
-.alias-input { display: flex; gap: 6px; min-width: 0; align-items: center; }
-.alias-input :deep(.el-input) { flex: 1; min-width: 0; }
-.alias-flag-trigger {
-  flex: none;
-  min-height: var(--m-tap);
-  padding: 0 12px;
-  border: 1px solid var(--sb-line-strong);
-  border-radius: var(--sb-radius-sm);
-  background: var(--sb-surface-2);
-  color: var(--sb-text);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.alias-flag-trigger.is-open {
-  border-color: var(--sb-text);
-  background: var(--sb-accent-soft);
-}
-.alias-flag-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-top: 0.5rem;
-}
-.alias-flag-option {
-  flex: 1 1 clamp(5.5rem, calc(33.333% - 0.25rem), 100%);
-  min-width: 0;
-  min-height: 2.5rem;
-  padding: 0.375rem 0.5rem;
+.m-section--between {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 1px solid var(--sb-line);
-  border-radius: 8px;
-  background: var(--sb-surface-2);
-  color: var(--sb-text);
-  font: inherit;
+  justify-content: space-between;
+}
+.m-section-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--sb-accent-soft);
+  color: var(--sb-primary);
+  border: 1px solid var(--sb-primary-soft);
+  border-radius: var(--sb-radius-sm);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
-.alias-flag-option span { font-size: 17px; line-height: 1; }
-.alias-flag-option small { font-size: 12px; color: var(--sb-text-2); }
-.domain { border-style: dashed; cursor: pointer; }
-.domain small { color: var(--sb-muted); font-size: 11px; }
-.accounts { border: 1px solid var(--sb-line); border-radius: var(--m-radius); overflow: hidden; }
-.account + .account { border-top: 1px solid var(--sb-line); }
-.account__head {
-  width: 100%;
-  min-height: var(--m-tap);
+.m-node-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.m-node-card {
+  border: 1px solid var(--sb-line);
+  border-radius: var(--sb-radius-md);
+  background: var(--sb-surface-1);
+  overflow: hidden;
+}
+.m-node-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--sb-surface-2);
+  border-bottom: 1px solid var(--sb-line);
+}
+.m-node-card__title {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 13px;
+  min-width: 0;
+}
+.m-node-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--sb-line);
   color: var(--sb-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.m-node-name-preview {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-node-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.m-node-del-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sb-radius-sm);
+  border: 1px solid var(--sb-danger-soft, #fca5a5);
+  background: var(--sb-danger-soft, #fef2f2);
+  color: var(--sb-danger, #ef4444);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+}
+.m-node-card__body {
+  padding: 14px 14px 4px;
+}
+.alias-combo-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.alias-combo-input :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+.alias-flag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--sb-line-strong);
+  border-radius: var(--sb-radius-sm);
   background: var(--sb-surface-2);
-  border: 0;
-  font: inherit;
-  font-size: 14.5px;
-  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.alias-flag-badge.is-active {
+  border-color: var(--sb-primary);
+  background: var(--sb-accent-soft);
+}
+.alias-flag-badge .flag-val {
+  font-size: 18px;
+  line-height: 1;
+}
+.alias-flag-badge .flag-arrow {
+  font-size: 10px;
+  color: var(--sb-muted);
+}
+.flag-grid-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--sb-line);
+  border-radius: var(--sb-radius-sm);
+  background: var(--sb-surface-2);
+}
+.flag-grid-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--sb-line);
+  border-radius: var(--sb-radius-sm);
+  background: var(--sb-surface-1);
+  color: var(--sb-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.flag-grid-item:active {
+  background: var(--sb-accent-soft);
+  border-color: var(--sb-primary);
+}
+.flag-grid-item .flag-icon {
+  font-size: 16px;
+}
+.m-field--auth-id {
+  margin-top: 4px;
+}
+.auth-id-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.m-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.m-chip.domain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--sb-radius-sm);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
+  color: var(--sb-text);
+  font-size: 13px;
   cursor: pointer;
 }
-.account__head > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.account__head i { flex: none; color: var(--sb-muted); font-style: normal; }
-.account__body { padding: 14px 13px 6px; border-top: 1px solid var(--sb-line); }
-.add-account { width: 100%; height: var(--m-tap); margin-top: 10px; }
+.m-chip.domain:hover, .m-chip.domain:active {
+  border-color: var(--sb-primary);
+  background: var(--sb-accent-soft);
+}
+.domain small {
+  color: var(--sb-primary);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--sb-surface-1);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 </style>

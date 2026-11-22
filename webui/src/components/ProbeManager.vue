@@ -130,8 +130,8 @@ async function save() {
       name: form.value.name.trim(),
       target: form.value.target.trim(),
       interval,
-      auto_join: Boolean(form.value.auto_join),
-      node_ids: form.value.auto_join ? [] : form.value.node_ids,
+      auto_join: true,
+      node_ids: [],
     }
     if (editingID.value) {
       await put(`/ping-tasks/${editingID.value}`, body)
@@ -218,16 +218,9 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column prop="target" label="目标地址 (host:port)" min-width="170" />
-        <el-table-column label="适用范围" min-width="220" class-name="tag-cell">
-          <template #default="{ row }">
-            <div v-if="row.auto_join !== false" class="probe-node-tags">
-              <el-tag size="small" type="success" effect="plain">公共</el-tag>
-              <span class="probe-scope-txt">全部服务器</span>
-            </div>
-            <div v-else class="probe-node-tags" :title="formatNodeTooltip(row)">
-              <el-tag size="small" type="warning" effect="plain">独立</el-tag>
-              <span class="probe-scope-txt truncate">{{ formatNodesText(row) }}</span>
-            </div>
+        <el-table-column label="适用范围" min-width="150" class-name="tag-cell">
+          <template #default>
+            <span class="probe-scope-txt">全部服务器</span>
           </template>
         </el-table-column>
         <el-table-column label="探测间隔" width="100" align="right">
@@ -273,49 +266,6 @@ onMounted(load)
         <el-form-item label="目标地址（host:port）" required>
           <el-input v-model="form.target" placeholder="例如：202.103.224.68:53 或 1.1.1.1:443" @keyup.enter="save" />
           <div class="probe-hint">格式为 host:port，服务器将定期向此目标建立 TCP 握手并采集往返延迟与丢包率</div>
-        </el-form-item>
-
-        <el-form-item label="适用范围" required>
-          <el-radio-group v-model="form.auto_join">
-            <el-radio-button :value="true">公共探针（所有服务器共用）</el-radio-button>
-            <el-radio-button :value="false">单独配置（指定服务器）</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item v-if="!form.auto_join" label="适用服务器" required>
-          <div class="node-select-bar">
-            <el-checkbox
-              :model-value="isAllNodesSelected"
-              :indeterminate="isIndeterminateNodes"
-              @change="toggleSelectAllNodes"
-            >
-              全部服务器
-            </el-checkbox>
-            <span class="node-select-badge">已选择 {{ form.node_ids.length }} / {{ (appState?.nodes || []).length }} 台</span>
-          </div>
-          <el-select
-            v-model="form.node_ids"
-            multiple
-            filterable
-            collapse-tags
-            collapse-tags-tooltip
-            :max-collapse-tags="4"
-            placeholder="请选择要启用该探针的服务器（可多选）"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="node in (appState?.nodes || [])"
-              :key="node.id"
-              :label="node.name"
-              :value="node.id"
-            >
-              <div class="node-option-row">
-                <span>{{ node.name }}</span>
-                <span class="node-option-sub font-mono">{{ node.client_address || node.last_observed_ip || '' }}</span>
-              </div>
-            </el-option>
-          </el-select>
-          <div class="probe-hint">仅所选服务器会执行该探针（同时仍会保留公共探针）</div>
         </el-form-item>
 
         <el-form-item label="探测间隔（秒）">

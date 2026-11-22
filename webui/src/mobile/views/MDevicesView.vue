@@ -16,7 +16,7 @@
       </div>
 
       <!-- 4 Separate Summary Stats (PC parity) -->
-      <div class="m-kv-grid">
+      <div class="devices-stats-grid">
         <div class="m-card" style="padding: 10px 12px;">
           <div class="m-kv-cell__label">历史连接数</div>
           <div class="m-kv-cell__value" style="font-size: 16px;">{{ summary.total_connections || 0 }}</div>
@@ -57,18 +57,21 @@
             </strong>
           </div>
 
-          <div class="m-filter-bar" style="margin-bottom: 6px; flex-wrap: nowrap;">
-            <span class="m-note truncate" style="flex: 1; min-width: 0;">{{ row.source_location || '归属地未知' }}</span>
-            <span
-              v-if="row.user"
-              role="button"
-              tabindex="0"
-              class="m-pill m-pill--info"
-              style="max-width: 58%; overflow: hidden; text-overflow: ellipsis; border-radius: 6px; cursor: pointer; display: inline-block;"
-              @click.stop="filterByUser(row.user)"
-            >
-              接入节点：{{ row.user }}
-            </span>
+          <div class="m-device-head-row">
+            <span class="m-note truncate" style="flex: 1 1 auto; min-width: 0;">{{ row.source_location || '归属地未知' }}</span>
+            <div v-if="row.user" class="m-device-users">
+              <span
+                v-for="u in splitUsers(row.user)"
+                :key="u"
+                role="button"
+                tabindex="0"
+                class="m-user-badge truncate"
+                :title="`筛选接入节点：${u}`"
+                @click.stop="filterByUser(u)"
+              >
+                {{ u }}
+              </span>
+            </div>
           </div>
 
           <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-text-2); margin-bottom: 4px;">
@@ -140,6 +143,11 @@ function filterByUser(user) {
   navigate('connection-history', `user=${encodeURIComponent(user)}`)
 }
 
+function splitUsers(userStr) {
+  if (!userStr) return []
+  return String(userStr).split(',').map((s) => s.trim()).filter(Boolean)
+}
+
 watch(range, () => {
   load()
 })
@@ -148,3 +156,48 @@ onMounted(() => {
   load()
 })
 </script>
+
+<style scoped>
+.devices-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.devices-stats-grid > .m-card {
+  margin: 0 !important;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.m-device-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+.m-device-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  max-width: 60%;
+}
+.m-user-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--sb-primary, #0284c7);
+  background: var(--sb-accent-soft, #f0f9ff);
+  border: 1px solid var(--sb-primary-soft, #bae6fd);
+  cursor: pointer;
+  max-width: 100%;
+}
+.m-user-badge:active {
+  background: var(--sb-primary-soft, #bae6fd);
+}
+</style>

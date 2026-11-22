@@ -920,7 +920,8 @@ button.upgrade-tag {
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  box-sizing: border-box;
+  border-radius: 6px;
   border: 1px solid var(--sb-line);
   background: var(--sb-surface-2);
   color: var(--sb-muted);
@@ -937,9 +938,11 @@ button.upgrade-tag {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 11px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
   font-weight: 550;
   flex-shrink: 0;
 }

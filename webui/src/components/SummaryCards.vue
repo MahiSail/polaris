@@ -34,11 +34,9 @@
       <span class="tile-blob blob-info" />
       <div class="tile-head">
         <span class="tile-bubble bubble-info">
-          <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-            <polyline points="17 14 12 9 7 14" />
-            <line x1="12" y1="9" x2="12" y2="21" />
+          <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 14 4-4" />
+            <path d="M3.34 19a10 10 0 1 1 17.32 0" />
           </svg>
         </span>
         <span class="tile-label">实时网速</span>

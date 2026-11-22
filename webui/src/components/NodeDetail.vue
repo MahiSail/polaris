@@ -169,7 +169,7 @@
 
     <!-- 网络延迟 -->
     <div v-else-if="tab === 'latency'" class="latency-tab">
-      <LatencyPanel v-if="effectiveLatency" :latency="effectiveLatency" />
+      <LatencyPanel v-if="effectiveLatency" :latency="effectiveLatency" :time-range-hours="hours" />
       <p v-if="latencyFailed" class="detail-empty">读取历史数据失败：{{ latencyFailed }}</p>
       <p v-else-if="latencyLoading && !probes.length" class="detail-empty">正在读取延迟历史…</p>
       <p v-else-if="!probes.length" class="detail-empty">
@@ -447,7 +447,7 @@ const activeConnections = computed(() => {
 })
 // 与 ref 一致：延迟页的探测统计来自按所选时间范围拉取的原始 ping 历史，
 // 列表页的 24 小时概览仍用实时上报里的汇总。
-const pingSummary = computed(() => (pingHistory.value ? summarizePing(pingHistory.value) : null))
+const pingSummary = computed(() => (pingHistory.value ? summarizePing(pingHistory.value, hours.value) : null))
 const probes = computed(() => {
   if (pingSummary.value) return pingSummary.value.probes
   return latency.value?.probes || []
@@ -942,7 +942,7 @@ onMounted(loadHistory)
 .detail-name { margin: 0; font-size: 18px; font-weight: 650; color: var(--sb-text); }
 .country-label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--sb-muted); }
 .status-uptime { margin-left: 4px; opacity: .8; font-weight: 500; }
-.agent-badge { padding: 2px 8px; border: 1px solid var(--sb-line); border-radius: 999px; font-size: 11px; color: var(--sb-muted); }
+.agent-badge { padding: 2px 8px; border: 1px solid var(--sb-line); border-radius: 6px; font-size: 11px; color: var(--sb-muted); }
 .agent-badge.has-upgrade {
   border-color: color-mix(in oklab, var(--sb-warning, #f59e0b) 40%, transparent);
   color: var(--sb-warning, #f59e0b);
