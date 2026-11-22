@@ -57,7 +57,7 @@ func defaultMihomoClientDNS() MihomoClientDNS {
 		EnhancedMode:          "fake-ip",
 		FakeIPRange:           "198.18.0.1/16",
 		FakeIPFilterMode:      "rule",
-		FakeIPFilter:          []string{"MATCH,fake-ip"},
+		FakeIPFilter:          []string{"DOMAIN-SUFFIX,lan,real-ip", "DOMAIN-SUFFIX,local,real-ip", "DOMAIN-SUFFIX,localhost,real-ip", "DOMAIN-SUFFIX,msftconnecttest.com,real-ip", "DOMAIN-SUFFIX,msftncsi.com,real-ip", "DOMAIN,time.windows.com,real-ip", "DOMAIN-SUFFIX,ntp.org,real-ip", "DOMAIN-SUFFIX,nrd.nie.163.com,real-ip", "DOMAIN-SUFFIX,fp.ps.netease.com,real-ip", "MATCH,fake-ip"},
 		DefaultNameserver:     []string{"223.5.5.5", "119.29.29.29"},
 		Nameserver:            []string{"https://223.5.5.5/dns-query"},
 		ProxyServerNameserver: []string{"https://223.5.5.5/dns-query"},
