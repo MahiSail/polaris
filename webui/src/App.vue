@@ -406,24 +406,105 @@ onBeforeUnmount(() => {
   <el-container v-else class="app-layout">
     <el-aside :width="sidebarCollapsed ? '4rem' : 'clamp(13.25rem, 15vw, 15rem)'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
       <div class="sidebar-header">
-        <button
-          type="button"
-          class="app-brand"
-          :aria-label="`${brandName} ${brandTagline}`"
-          @click="sidebarCollapsed ? toggleSidebar() : navigate('dashboard')"
+        <el-popover
+          placement="right-start"
+          :width="316"
+          trigger="click"
+          :disabled="isShareMode"
+          popper-class="update-popover"
         >
-          <span class="app-brand__mark"><BrandMark :size="21" /></span>
-          <span v-if="!sidebarCollapsed" class="app-brand__text">
-            <strong>{{ brandName }}</strong>
-            <small>
-              {{ brandTagline }}
-              <em class="app-brand__version">
-                v{{ appState.systemUpdate?.current_version || '—' }}
-                <i v-if="appState.systemUpdate?.update_available" class="app-brand__dot" aria-hidden="true" />
-              </em>
-            </small>
-          </span>
-        </button>
+          <template #reference>
+            <button
+              type="button"
+              class="app-brand"
+              :aria-label="`${brandName} ${brandTagline}，查看版本与更新`"
+              @click="sidebarCollapsed ? toggleSidebar() : null"
+            >
+              <span class="app-brand__mark"><BrandMark :size="21" /></span>
+              <span v-if="!sidebarCollapsed" class="app-brand__text">
+                <strong>{{ brandName }}</strong>
+                <small>
+                  {{ brandTagline }}
+                  <em class="app-brand__version">
+                    v{{ appState.systemUpdate?.current_version || '—' }}
+                    <i v-if="appState.systemUpdate?.update_available" class="app-brand__dot" aria-hidden="true" />
+                  </em>
+                </small>
+              </span>
+            </button>
+          </template>
+          <div class="update-pop">
+            <div class="update-pop__header">
+              <div class="update-pop__title">
+                <span class="update-pop__badge-icon">
+                  <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+                  </svg>
+                </span>
+                <h4>软件版本与更新</h4>
+              </div>
+              <span
+                v-if="appState.systemUpdate?.update_available"
+                class="update-pop__status-pill update-pop__status-pill--warn"
+              >
+                发现新版本
+              </span>
+              <span
+                v-else-if="appState.systemUpdate?.check_error"
+                class="update-pop__status-pill update-pop__status-pill--danger"
+              >
+                检查异常
+              </span>
+              <span
+                v-else
+                class="update-pop__status-pill update-pop__status-pill--ok"
+              >
+                已是最新
+              </span>
+            </div>
+
+            <div class="update-pop__card">
+              <div class="update-pop__row">
+                <span class="update-pop__label">当前版本</span>
+                <span class="update-pop__val font-mono">v{{ appState.systemUpdate?.current_version || '未知' }}</span>
+              </div>
+              <div v-if="appState.systemUpdate?.latest_version && appState.systemUpdate?.update_available" class="update-pop__row">
+                <span class="update-pop__label">最新版本</span>
+                <span class="update-pop__val font-mono text-success">v{{ appState.systemUpdate.latest_version }}</span>
+              </div>
+            </div>
+
+            <div v-if="appState.systemUpdate?.check_error" class="update-pop__notice update-pop__notice--danger">
+              检查更新失败：{{ appState.systemUpdate.check_error }}
+            </div>
+            <div v-else-if="appState.systemUpdate?.update_available" class="update-pop__notice update-pop__notice--info">
+              新版本已发布。更新控制端后，可在「服务器」页面逐台升级 agent。
+            </div>
+            <div v-else class="update-pop__notice">
+              已是最新版本。每次打开控制台时会自动静默检查。
+            </div>
+
+            <div class="update-pop__actions">
+              <el-button
+                v-if="!isShareMode"
+                size="small"
+                :loading="updateChecking"
+                @click="checkSystemUpdate"
+              >
+                重新检查
+              </el-button>
+              <el-button
+                v-if="isAdmin && appState.systemUpdate?.update_available"
+                size="small"
+                type="primary"
+                :loading="updateApplying"
+                @click="applySystemUpdate"
+              >
+                更新管理平台
+              </el-button>
+            </div>
+          </div>
+        </el-popover>
         <button
           v-if="!sidebarCollapsed"
           type="button"

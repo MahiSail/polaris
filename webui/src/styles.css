@@ -833,11 +833,124 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
 }
 
 /* 侧栏品牌区点开的版本与更新浮层。内容会挂到 body 上，样式必须写在全局。 */
-.update-popover .update-pop h4 { margin: 0 0 8px; color: var(--sb-text); font-size: 14px; }
-.update-popover .update-pop p { margin: 0 0 8px; color: var(--sb-muted); font-size: 12.5px; line-height: 1.65; }
-.update-popover .update-pop strong { color: var(--sb-text); }
-.update-popover .update-pop__warn { color: var(--el-color-danger); }
-.update-popover .update-pop__actions { display: flex; gap: 8px; margin-top: 12px; }
+.update-popover.el-popper {
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+}
+
+.update-pop {
+  display: flex;
+  flex-direction: column;
+}
+
+.update-pop__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.update-pop__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.update-pop__title h4 {
+  margin: 0;
+  color: var(--sb-text);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.update-pop__badge-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sb-accent);
+}
+
+.update-pop__status-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.update-pop__status-pill--ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--sb-success);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.update-pop__status-pill--warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--sb-warning);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.update-pop__status-pill--danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--sb-danger);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.update-pop__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sb-line);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+html.light .update-pop__card,
+html:not(.dark) .update-pop__card {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.update-pop__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.update-pop__label {
+  color: var(--sb-muted);
+}
+
+.update-pop__val {
+  font-weight: 600;
+  color: var(--sb-text);
+}
+
+.update-pop__notice {
+  margin: 0 0 14px;
+  color: var(--sb-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.update-pop__notice--info {
+  color: var(--sb-text-2);
+}
+
+.update-pop__notice--danger {
+  color: var(--sb-danger);
+}
+
+.update-pop__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ── 微拟物与毛玻璃系统 (Micro-Neomorphism & Glassmorphism) ───────── */
 /* 与 ref/openlat 同一套 color-mix 公式：卡片朝白色和页面底色各带一点偏移。 */
