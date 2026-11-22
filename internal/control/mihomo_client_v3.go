@@ -886,6 +886,7 @@ func (s *Store) migrateMihomoClientConfigsV2(ctx context.Context) error {
 		switch row.config.RulePreset {
 		case "china-direct":
 			config.Rules = append(config.Rules,
+				MihomoRule{Type: "DOMAIN-SUFFIX", Value: "cn", Action: "DIRECT"},
 				MihomoRule{Type: "GEOSITE", Value: "CN", Action: "DIRECT"},
 				MihomoRule{Type: "GEOIP", Value: "CN", Action: "DIRECT", NoResolve: true})
 		case "direct-all":

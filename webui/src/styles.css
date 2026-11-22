@@ -367,8 +367,23 @@ html.light .page-header {
 .table-panel .action-column .el-button + .el-button { margin-left: 8px; }
 /* el-tag 是 inline-flex：单元格宽度还没算准时它会被压成一条竖线。让单元格
    自己当 flex 容器，并且不许压缩标签，布局时序再怎么抖都撑得开。 */
-.table-panel .tag-cell .cell { display: flex; align-items: center; }
-.table-panel .tag-cell .el-tag { flex: none; }
+.table-panel .tag-cell .cell { display: flex; align-items: center; min-width: 0; }
+.table-panel .tag-cell .el-tag {
+  flex: 0 1 auto;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+.table-panel .tag-cell .el-tag .el-tag__content {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: normal;
+  text-align: center;
+}
 .search-toolbar {
   flex: none;
   display: flex;

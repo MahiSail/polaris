@@ -135,11 +135,20 @@ function chainTargetKey(c) {
   return ''
 }
 
+export function stripLandingSuffix(label) {
+  if (!label) return ''
+  const str = String(label).trim()
+  const m = str.match(/^[^(（]*[（(]经\s*(.+?)\s*落地[）)]\s*$/)
+  if (m) {
+    return m[1].trim()
+  }
+  return str
+}
+
 function needsLandingAttributionFallback(exitLabel, targetKey) {
-  const label = String(exitLabel || '').trim()
+  const label = stripLandingSuffix(String(exitLabel || '').trim())
   if (!label) return true
   const lower = label.toLowerCase()
-  if (lower.includes('落地）') || lower.includes('落地)')) return false
   if (lower === 'direct' || lower === '直连' || lower.startsWith('direct-') || lower.startsWith('direct:') || lower.startsWith('直连 (') || lower.startsWith('直连（')) {
     return true
   }
@@ -343,7 +352,7 @@ export function mergeChainedConnections(connections, nodes = [], options = {}) {
         entry.chain_node_ids = initialChainNodeIDs
       }
     }
-    const resolvedName = leg?.resolved_outbound_name || entry.resolved_outbound_name
+    const resolvedName = stripLandingSuffix(leg?.resolved_outbound_name || entry.resolved_outbound_name)
     if (resolvedName) {
       const prevExit = entry.chain_exit || entry.exit
       if (prevExit && !String(prevExit).endsWith(resolvedName)) {
@@ -441,16 +450,15 @@ export function mergeChainedConnections(connections, nodes = [], options = {}) {
       entry.node_name = entry.chain_node_names.join(' → ')
 
       if (best.exit) {
-        let exitLabel = best.exit
+        let exitLabel = stripLandingSuffix(best.exit)
         if (
           !isChainEntry(best) &&
           isDirectExit(best) &&
           best.node_id &&
           best.node_id !== entry.node_id &&
-          best.node_name &&
-          !String(exitLabel).includes('落地）')
+          best.node_name
         ) {
-          exitLabel = `${exitLabel}（经 ${best.node_name} 落地）`
+          exitLabel = best.node_name
         }
         entry.chain_exit = entry.exit ? `${entry.exit} → ${exitLabel}` : exitLabel
         entry.exit = exitLabel
@@ -495,9 +503,9 @@ export function mergeChainedConnections(connections, nodes = [], options = {}) {
     if (!isChainEntry(c) || c.is_chain_relay) continue
     const tKey = chainTargetKey(c)
     if (!tKey) continue
-    const candidateExit = String(c.exit || c.resolved_outbound_name || '').trim()
+    const candidateExit = stripLandingSuffix(String(c.exit || c.resolved_outbound_name || '').trim())
     if (!needsLandingAttributionFallback(candidateExit, tKey)) {
-      if (!consensusExitByTarget.has(tKey) || candidateExit.includes('落地）')) {
+      if (!consensusExitByTarget.has(tKey)) {
         consensusExitByTarget.set(tKey, {
           exit: candidateExit,
           chain_path: c.chain_path || c.node_name,

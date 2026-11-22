@@ -4,6 +4,7 @@ import { Clock, Download, Filter, Refresh, Search } from '@element-plus/icons-vu
 import { ElMessage } from 'element-plus'
 import { api, csrfToken } from '../api'
 import { formatBytes, formatDateTime, formatDuration, localTimeZoneLabel } from '../format'
+import { stripLandingSuffix } from '../connections'
 import PageHeader from '../components/PageHeader.vue'
 
 const appState = inject('appState')
@@ -363,7 +364,7 @@ onBeforeUnmount(() => {
           <el-table-column label="网络 / 出口" min-width="190" show-overflow-tooltip>
             <template #default="{ row }">
               <div><el-tag size="small" effect="plain">{{ (row.network || 'TCP').toUpperCase() }}</el-tag></div>
-              <div class="subtle" style="font-size: 11px; margin-top: 2px">{{ row.outbound_name || '—' }}</div>
+              <div class="subtle" style="font-size: 11px; margin-top: 2px">{{ stripLandingSuffix(row.outbound_name) || '—' }}</div>
             </template>
           </el-table-column>
 

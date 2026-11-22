@@ -129,7 +129,7 @@
 
           <div class="m-filter-bar" style="font-size: 11px; color: var(--sb-muted);">
             <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              {{ row.node_name || '—' }} · {{ row.user || '未知设备' }} · {{ row.outbound_name || 'direct' }}
+              {{ row.node_name || '—' }} · {{ row.user || '未知设备' }} · {{ stripLandingSuffix(row.outbound_name) || 'direct' }}
             </span>
             <span style="white-space: nowrap;">
               {{ row.closed_at ? formatDuration(row.duration_seconds) : '连接中' }} · {{ formatDateTime(row.started_at) }}
@@ -304,7 +304,7 @@
             </div>
             <div class="m-kv-cell">
               <span class="m-kv-cell__label">出站出口</span>
-              <span class="m-kv-cell__value">{{ activeRecord.outbound_name || 'direct' }}</span>
+              <span class="m-kv-cell__value">{{ stripLandingSuffix(activeRecord.outbound_name) || 'direct' }}</span>
             </div>
             <div class="m-kv-cell">
               <span class="m-kv-cell__label">下行流量</span>
@@ -364,6 +364,7 @@ import { ElMessage } from 'element-plus'
 import { Download, Filter, Refresh } from '@element-plus/icons-vue'
 import { api } from '../../api'
 import { formatBytes, formatDateTime, formatDuration, localTimeZoneLabel } from '../../format'
+import { stripLandingSuffix } from '../../connections'
 import MPage from '../components/MPage.vue'
 import MPicker from '../components/MPicker.vue'
 import MSheet from '../components/MSheet.vue'

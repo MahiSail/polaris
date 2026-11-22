@@ -150,11 +150,17 @@ func (r *connectionRecorder) resolveOutboundName(nodeID, nodeName string, c stor
 			hub = r.hub
 		}
 		resolved := resolveChainRoute(context.Background(), r.store, hub, active, nil, nodeID, nodeName, c)
-		if resolved.HopResolved && resolved.FinalOutbound != "" {
-			if len(resolved.Path) > 1 {
-				outboundName = strings.Join(resolved.Path[1:], " → ") + " → " + resolved.FinalOutbound
-			} else {
-				outboundName = resolved.FinalOutbound
+		if resolved.HopResolved {
+			finalOut := resolved.FinalOutbound
+			if resolved.FinalIsDirect && resolved.FinalNodeName != "" && resolved.FinalNodeName != nodeName {
+				finalOut = resolved.FinalNodeName
+			}
+			if finalOut != "" {
+				if len(resolved.Path) > 1 {
+					outboundName = strings.Join(resolved.Path[1:], " → ") + " → " + finalOut
+				} else {
+					outboundName = finalOut
+				}
 			}
 		}
 	}

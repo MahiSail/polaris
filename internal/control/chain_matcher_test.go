@@ -334,7 +334,7 @@ func TestConvertConnectionsPerConnectionChainCacheNoCrossLeak(t *testing.T) {
 	if converted[0].ResolvedOutboundName != "SpecialLine" {
 		t.Fatalf("expected a1 ResolvedOutboundName = SpecialLine, got %q", converted[0].ResolvedOutboundName)
 	}
-	if converted[1].ResolvedOutboundName != "直连（经 Landing 落地）" {
-		t.Fatalf("expected a2 ResolvedOutboundName = 直连（经 Landing 落地）, got %q", converted[1].ResolvedOutboundName)
+	if converted[1].ResolvedOutboundName != "Landing" {
+		t.Fatalf("expected a2 ResolvedOutboundName = Landing, got %q", converted[1].ResolvedOutboundName)
 	}
 }

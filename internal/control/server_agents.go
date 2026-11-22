@@ -1222,7 +1222,7 @@ func (s *Server) convertConnections(ctx context.Context, nodeID string, in []wir
 			}
 			if resolved.HopResolved && resolved.FinalOutbound != "" {
 				if resolved.FinalIsDirect && resolved.FinalNodeName != "" && resolved.FinalNodeName != nodeNames[nodeID] {
-					out[i].ResolvedOutboundName = fmt.Sprintf("%s（经 %s 落地）", resolved.FinalOutbound, resolved.FinalNodeName)
+					out[i].ResolvedOutboundName = resolved.FinalNodeName
 				} else {
 					out[i].ResolvedOutboundName = resolved.FinalOutbound
 				}

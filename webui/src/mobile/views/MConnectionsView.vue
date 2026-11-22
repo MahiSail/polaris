@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { writeClipboard } from '../../clipboard'
 import { formatBytes, formatDateTime, includesText } from '../../format'
-import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../../connections'
+import { connectionSnapshots, mergeChainedConnections, stripLandingSuffix, subscribeConnections } from '../../connections'
 import { del } from '../../api'
 import { isShareMode } from '../../share'
 import MPage from '../components/MPage.vue'
@@ -73,12 +73,15 @@ const rows = computed(() => {
       node_name: node?.name || result.node_id,
       clock_offset_ms: result.clock_offset_ms || 0,
       // master 会把 sing-box 的出站标签解析成操作者配置的出口，解析不到才显示原始标签。
-      exit: connection.outbound_name || connection.outbound || connection.chains?.[0] || 'DIRECT',
+      exit: stripLandingSuffix(connection.resolved_outbound_name || connection.outbound_name || connection.outbound || connection.chains?.[0] || 'DIRECT'),
       entry: entryLabel(connection),
       target: targetLabel(connection),
     }))
   })
-  return mergeChainedConnections(flat, appState.nodes)
+  return mergeChainedConnections(flat, appState.nodes).map((row) => ({
+    ...row,
+    exit: stripLandingSuffix(row.exit),
+  }))
 })
 const collectedAt = computed(() => [...connectionSnapshots.value.values()].map((result) => result.collected_at).filter(Boolean).sort().at(-1) || '')
 const nodeOptions = computed(() => [{ value: '', label: '全部服务器' }, ...appState.nodes.map((node) => ({ value: node.id, label: node.name }))])

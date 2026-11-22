@@ -3,7 +3,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleClose, Refresh, Search } from '@element-plus/icons-vue'
 import { formatBytes, formatDateTime, includesText } from '../format'
-import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../connections'
+import { connectionSnapshots, mergeChainedConnections, stripLandingSuffix, subscribeConnections } from '../connections'
 import { del } from '../api'
 import { isShareMode } from '../share'
 import PageHeader from '../components/PageHeader.vue'
@@ -52,13 +52,14 @@ const rows = computed(() => {
       clock_offset_ms: result.clock_offset_ms || 0,
       // The master resolves the sing-box outbound tag to the egress an operator
       // configured; the raw tag is only shown when that lookup found nothing.
-      exit: connection.outbound_name || connection.outbound || connection.chains?.[0] || 'DIRECT',
+      exit: stripLandingSuffix(connection.resolved_outbound_name || connection.outbound_name || connection.outbound || connection.chains?.[0] || 'DIRECT'),
       entry: entryLabel(connection),
       target: targetLabel(connection),
     }))
   })
   return mergeChainedConnections(flat, appState.nodes).map((row) => ({
     ...row,
+    exit: stripLandingSuffix(row.exit),
     source_display: row.source_ip || row.source || '',
     total_rate: (Number(row.download_rate) || 0) + (Number(row.upload_rate) || 0),
     total_bytes: (Number(row.download) || 0) + (Number(row.upload) || 0),
@@ -352,10 +353,17 @@ onBeforeUnmount(() => {
 }
 :deep(.tag-cell .el-tag) {
   max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+:deep(.tag-cell .el-tag .el-tag__content) {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: inline-block;
-  vertical-align: middle;
+  line-height: normal;
+  text-align: center;
 }
 </style>

@@ -1262,7 +1262,10 @@ func (issue *routeIssue) trafficType() string {
 	}
 	if hasPort("443") && (hasNet("udp") || len(issue.networks) == 0) {
 		if hasNet("udp") {
-			return "QUIC / HTTP3（国内应用 UDP/443 直连 IP）"
+			if net.ParseIP(issue.destIP) != nil && issue.host == "" {
+				return "QUIC / HTTP3（国内应用 UDP/443 直连 IP）"
+			}
+			return "QUIC / HTTP3（国内应用 UDP/443）"
 		}
 	}
 	if hasPort("443") {
@@ -1391,6 +1394,118 @@ func (e *AlertEngine) proxyRouteBatchWindow() time.Duration {
 	return defaultProxyRouteWindow
 }
 
+var domesticBaseDomains = map[string]struct{}{
+	// Baidu
+	"baidu.com": {}, "bdstatic.com": {}, "bcebos.com": {}, "baidupcs.com": {}, "baidustatic.com": {}, "hao123.com": {},
+	// Alibaba
+	"taobao.com": {}, "tmall.com": {}, "alibaba.com": {}, "alipay.com": {}, "aliyun.com": {}, "alicdn.com": {},
+	"1688.com": {}, "cainiao.com": {}, "dingtalk.com": {}, "fliggy.com": {}, "ele.me": {}, "alipayobjects.com": {}, "yuque.com": {},
+	"tbcdn.cn": {},
+	// Tencent
+	"qq.com": {}, "tencent.com": {}, "wechat.com": {}, "weixin.com": {}, "gtimg.com": {}, "idqqimg.com": {},
+	"myqcloud.com": {}, "tencent-cloud.com": {}, "qcloud.com": {}, "qpic.cn": {}, "qlogo.cn": {},
+	// ByteDance
+	"douyin.com": {}, "bytedance.com": {}, "byteimg.com": {}, "byteeffecttos.com": {}, "feishu.net": {}, "feishu.cn": {},
+	"zijieapi.com": {}, "iesdouyin.com": {}, "pstatp.com": {}, "snssdk.com": {}, "toutiao.com": {}, "huoshan.com": {},
+	"xigua.com": {}, "dongchedi.com": {},
+	// Bilibili
+	"bilibili.com": {}, "biliapi.net": {}, "hdslb.com": {}, "bilivideo.com": {}, "bilibili.tv": {},
+	// JD
+	"jd.com": {}, "360buy.com": {}, "360buyimg.com": {}, "jdcache.com": {}, "jdpay.com": {},
+	// NetEase
+	"163.com": {}, "126.com": {}, "netease.com": {}, "127.net": {}, "ydstatic.com": {}, "youdao.com": {}, "kaola.com": {},
+	// Sina & Weibo
+	"weibo.com": {}, "sina.com": {}, "sina.com.cn": {}, "sinaimg.cn": {}, "sinajs.cn": {}, "weibo.cn": {},
+	// Zhihu
+	"zhihu.com": {}, "zhimg.com": {},
+	// Meituan & Dianping
+	"meituan.com": {}, "meituan.net": {}, "dianping.com": {}, "sankuai.com": {}, "dpfile.com": {},
+	// Xiaomi
+	"xiaomi.com": {}, "mi.com": {}, "mi-img.com": {}, "xiaomi.net": {},
+	// Huawei & Honor
+	"huawei.com": {}, "honor.com": {}, "dbankcdn.com": {}, "vmall.com": {}, "huaweicloud.com": {},
+	// Kuaishou
+	"kuaishou.com": {}, "yximgs.com": {}, "kwai.com": {}, "gifshow.com": {},
+	// Xiaohongshu
+	"xiaohongshu.com": {}, "xhscdn.com": {},
+	// Video & Music & Entertainment
+	"iqiyi.com": {}, "youku.com": {}, "tudou.com": {}, "mgtv.com": {}, "ximalaya.com": {}, "kugou.com": {}, "kuwo.cn": {},
+	// Tech & Community
+	"csdn.net": {}, "cnblogs.com": {}, "segmentfault.com": {}, "gitee.com": {}, "oschina.net": {}, "douban.com": {}, "tieba.com": {},
+	// Travel & Transport & Maps
+	"12306.cn": {}, "ctrip.com": {}, "qunar.com": {}, "amap.com": {}, "autonavi.com": {}, "didiglobal.com": {}, "didichuxing.com": {},
+	// Office / Cloud / Security
+	"wps.com": {}, "wps.cn": {}, "kingsoft.com": {}, "volces.com": {}, "qiniu.com": {}, "upyun.com": {},
+	"360.cn": {}, "360.com": {}, "so.com": {}, "qihoo.com": {},
+	// Apple China
+	"apple.com.cn": {}, "icloud.com.cn": {},
+	// Carriers
+	"189.cn": {}, "10010.com": {}, "10086.cn": {},
+	// Duolingo China
+	"duolingo.cn": {},
+}
+
+func isDomesticDomain(domain string) bool {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return false
+	}
+	domain = strings.TrimSuffix(domain, ".")
+
+	// 1. ccTLD .cn and common Chinese IDN TLDs
+	if domain == "cn" || strings.HasSuffix(domain, ".cn") {
+		return true
+	}
+	if domain == "中国" || strings.HasSuffix(domain, ".中国") ||
+		domain == "中國" || strings.HasSuffix(domain, ".中國") ||
+		domain == "xn--fiqs8s" || strings.HasSuffix(domain, ".xn--fiqs8s") ||
+		domain == "xn--fiqz9s" || strings.HasSuffix(domain, ".xn--fiqz9s") ||
+		domain == "公司" || strings.HasSuffix(domain, ".公司") ||
+		domain == "xn--55qx5d" || strings.HasSuffix(domain, ".xn--55qx5d") ||
+		domain == "网络" || strings.HasSuffix(domain, ".网络") ||
+		domain == "xn--io0a7i" || strings.HasSuffix(domain, ".xn--io0a7i") {
+		return true
+	}
+
+	// 2. Direct lookup or suffix match against domesticBaseDomains
+	if _, ok := domesticBaseDomains[domain]; ok {
+		return true
+	}
+	parts := strings.Split(domain, ".")
+	for i := 1; i < len(parts)-1; i++ {
+		sub := strings.Join(parts[i:], ".")
+		if _, ok := domesticBaseDomains[sub]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isLocalDomain(domain string) bool {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return false
+	}
+	domain = strings.TrimSuffix(domain, ".")
+	if domain == "localhost" || strings.HasSuffix(domain, ".localhost") {
+		return true
+	}
+	if domain == "local" || strings.HasSuffix(domain, ".local") {
+		return true
+	}
+	if domain == "lan" || strings.HasSuffix(domain, ".lan") {
+		return true
+	}
+	if domain == "home.arpa" || strings.HasSuffix(domain, ".home.arpa") {
+		return true
+	}
+	if domain == "internal" || strings.HasSuffix(domain, ".internal") {
+		return true
+	}
+	return false
+}
+
 // checkProxyRouting reports destinations that belong to China or a private
 // network but are currently leaving through a proxy outbound. That is almost
 // always a split-routing mistake: domestic and LAN traffic should go direct.
@@ -1422,6 +1537,12 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 			ipText = parsedHost
 			destPort = strings.TrimSpace(port)
 		}
+		if h, p, err := net.SplitHostPort(host); err == nil {
+			host = strings.TrimSpace(h)
+			if destPort == "" {
+				destPort = strings.TrimSpace(p)
+			}
+		}
 		ipText = strings.TrimSpace(ipText)
 		ip := net.ParseIP(ipText)
 		if ip == nil {
@@ -1431,20 +1552,60 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 				ipText = host
 			}
 		}
-		if ip == nil {
-			continue
-		}
 
-		if ip.IsLoopback() || ip.IsUnspecified() {
-			continue
-		}
-		isLocal := ip.IsPrivate() || ip.IsLinkLocalUnicast()
-		isDomestic := false
-		if !isLocal && e.locator != nil {
-			isDomestic = e.locator.IsDomestic(ipText)
-		}
-		if !isLocal && !isDomestic {
-			continue
+		var (
+			isLocal    bool
+			isDomestic bool
+			location   string
+		)
+
+		if ip != nil {
+			if ip.IsLoopback() || ip.IsUnspecified() {
+				continue
+			}
+			isLocal = ip.IsPrivate() || ip.IsLinkLocalUnicast()
+			if !isLocal && e.locator != nil {
+				isDomestic = e.locator.IsDomestic(ipText)
+			}
+			if !isLocal && !isDomestic && host != "" && isDomesticDomain(host) {
+				isDomestic = true
+			}
+			if !isLocal && !isDomestic {
+				continue
+			}
+
+			if isLocal {
+				location = "局域网/内网"
+			} else if e.locator != nil {
+				if resolvedLoc := strings.TrimSpace(e.locator.Locate(ipText)); resolvedLoc != "" && resolvedLoc != "未知" {
+					location = resolvedLoc
+				}
+			}
+			if location == "" && isDomestic {
+				location = "中国大陆"
+			}
+		} else {
+			targetDomain := host
+			if targetDomain == "" {
+				targetDomain = ipText
+			}
+			if targetDomain == "" {
+				continue
+			}
+
+			if isLocalDomain(targetDomain) {
+				isLocal = true
+				location = "局域网/内网"
+			} else if isDomesticDomain(targetDomain) {
+				isDomestic = true
+				location = "中国大陆 (域名)"
+			} else {
+				continue
+			}
+			ipText = targetDomain
+			if host == "" {
+				host = targetDomain
+			}
 		}
 
 		resolved := e.resolveChain(nodeID, nodeName, connection)
@@ -1457,17 +1618,18 @@ func (e *AlertEngine) checkProxyRouting(nodeID, nodeName string, connections []s
 		}
 		displayOutbound := outbound
 		if resolved.IsChained && resolved.FinalIsDirect && resolved.FinalNodeName != "" && resolved.FinalNodeName != nodeName {
-			displayOutbound = fmt.Sprintf("%s（经 %s 落地）", outbound, resolved.FinalNodeName)
+			displayOutbound = resolved.FinalNodeName
 		}
 		var chainPath string
 		if resolved.IsChained && len(resolved.Path) > 0 {
 			chainPath = strings.Join(resolved.Path, " → ") + " → " + outbound
 		}
 
-		location := "局域网/内网"
-		if !isLocal && e.locator != nil {
-			if resolvedLoc := strings.TrimSpace(e.locator.Locate(ipText)); resolvedLoc != "" && resolvedLoc != "未知" {
-				location = resolvedLoc
+		if location == "" {
+			if isLocal {
+				location = "局域网/内网"
+			} else {
+				location = "中国大陆"
 			}
 		}
 
@@ -1765,7 +1927,7 @@ func (e *AlertEngine) sendProxyRouteSummary(batch *proxyRouteAlertBatch) {
 				if len(sortedIPs) > len(shown) {
 					titleHTML += fmt.Sprintf(" 等 %d 个内网 IP", len(sortedIPs))
 				}
-			} else if issue.host != "" {
+			} else if issue.host != "" && issue.host != issue.destIP && !strings.HasPrefix(addrLabel, issue.host+":") {
 				titleHTML = fmt.Sprintf("<code>%s</code>（<code>%s</code>）", tgEscape(issue.host), tgEscape(addrLabel))
 			} else {
 				titleHTML = fmt.Sprintf("<code>%s</code>", tgEscape(addrLabel))
@@ -1796,8 +1958,10 @@ func (e *AlertEngine) sendProxyRouteSummary(batch *proxyRouteAlertBatch) {
 			barkTarget := addrLabel
 			if isMergedIPs {
 				barkTarget = formatLimitedList(sortedIPs, 3, "个内网 IP")
-			} else if issue.host != "" {
+			} else if issue.host != "" && issue.host != issue.destIP && !strings.HasPrefix(addrLabel, issue.host+":") {
 				barkTarget = fmt.Sprintf("%s (%s)", issue.host, addrLabel)
+			} else {
+				barkTarget = addrLabel
 			}
 			var itemLines []string
 			itemLines = append(itemLines, fmt.Sprintf("%d. %s [%s · %d条]", index+1, barkTarget, issue.location, issue.count))

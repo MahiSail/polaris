@@ -138,6 +138,7 @@ func (s *Store) generateMihomoYAML(ctx context.Context, name, fallbackServer str
 	appendDomainRules(rules.RejectDomains, "REJECT")
 	appendDomainRules(rules.DirectDomains, "DIRECT")
 	if rules.RulePreset == "china-direct" {
+		builder.WriteString("  - DOMAIN-SUFFIX,cn,DIRECT\n")
 		builder.WriteString("  - GEOSITE,CN,DIRECT\n")
 		builder.WriteString("  - GEOIP,CN,DIRECT,no-resolve\n")
 	}

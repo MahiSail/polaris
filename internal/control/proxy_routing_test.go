@@ -86,6 +86,129 @@ func TestProxyRoutingFlagsDomesticOrLANThroughProxy(t *testing.T) {
 	}
 }
 
+func TestProxyRoutingDomesticDomainsAndLocalDomains(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu       sync.Mutex
+		received []BarkMessage
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg BarkMessage
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		received = append(received, msg)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "message": "success"})
+	}))
+	defer server.Close()
+
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	if _, err := store.UpdateAlertSettings(ctx, AlertSettings{
+		BarkServer:          server.URL,
+		BarkDeviceKey:       "test_device_key",
+		OfflineAlertEnabled: true,
+		CooldownMinutes:     1,
+	}); err != nil {
+		t.Fatalf("update alert settings: %v", err)
+	}
+
+	engine := NewAlertEngine(store, nil)
+	engine.proxyRouteWait = 50 * time.Millisecond
+
+	// 1. Foreign domain through proxy should NOT alert
+	foreignConns := []storedConnection{{
+		Destination:  ":443",
+		Host:         "www.google.com",
+		OutboundName: "proxy-hk",
+		Network:      "tcp",
+	}}
+	engine.CheckConnectionsTelemetry("node-dom-1", "香港节点", 0, 0, foreignConns)
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	if len(received) != 0 {
+		t.Errorf("expected 0 alerts for google.com, got %d", len(received))
+	}
+	mu.Unlock()
+
+	// 2. Chinese .cn domain through proxy MUST alert
+	domesticConns := []storedConnection{{
+		Destination:  ":443",
+		Host:         "ios-api-2.duolingo.cn",
+		OutboundName: "proxy-hk",
+		Network:      "tcp",
+	}}
+	engine.CheckConnectionsTelemetry("node-dom-2", "香港节点", 0, 0, domesticConns)
+	waitForMessages(t, &mu, &received, 1)
+
+	mu.Lock()
+	if len(received) < 1 {
+		t.Fatalf("expected 1 alert for duolingo.cn, got %d", len(received))
+	}
+	body := received[0].Body
+	mu.Unlock()
+
+	if !strings.Contains(body, "ios-api-2.duolingo.cn") {
+		t.Errorf("expected body to contain duolingo.cn, got: %s", body)
+	}
+	if !strings.Contains(body, "中国大陆 (域名)") {
+		t.Errorf("expected location '中国大陆 (域名)', got: %s", body)
+	}
+
+	// 3. Domestic domain resolved to overseas IP (e.g. Anycast/CDN) MUST alert
+	mu.Lock()
+	received = nil
+	mu.Unlock()
+	cdnConns := []storedConnection{{
+		Destination:  "104.18.6.192:443",
+		Host:         "ios-api-2.duolingo.cn",
+		OutboundName: "proxy-hk",
+		Network:      "tcp",
+	}}
+	engine.CheckConnectionsTelemetry("node-dom-3", "香港节点", 0, 0, cdnConns)
+	waitForMessages(t, &mu, &received, 1)
+
+	mu.Lock()
+	if len(received) < 1 {
+		t.Fatalf("expected 1 alert for CDN domain, got %d", len(received))
+	}
+	cdnBody := received[0].Body
+	mu.Unlock()
+	if !strings.Contains(cdnBody, "ios-api-2.duolingo.cn") || !strings.Contains(cdnBody, "104.18.6.192") {
+		t.Errorf("expected cdnBody to contain domain and IP, got: %s", cdnBody)
+	}
+
+	// 4. Local domain (e.g. .local, .lan) through proxy MUST alert
+	mu.Lock()
+	received = nil
+	mu.Unlock()
+	localConns := []storedConnection{{
+		Destination:  "nas.local:5000",
+		Host:         "nas.local",
+		OutboundName: "proxy-hk",
+		Network:      "tcp",
+	}}
+	engine.CheckConnectionsTelemetry("node-dom-4", "香港节点", 0, 0, localConns)
+	waitForMessages(t, &mu, &received, 1)
+
+	mu.Lock()
+	if len(received) < 1 {
+		t.Fatalf("expected 1 alert for local domain, got %d", len(received))
+	}
+	localBody := received[0].Body
+	mu.Unlock()
+	if !strings.Contains(localBody, "nas.local") || !strings.Contains(localBody, "局域网/内网") {
+		t.Errorf("expected localBody to contain nas.local and 局域网/内网, got: %s", localBody)
+	}
+}
+
 func TestProxyRoutingSourceTrackingTelegram(t *testing.T) {
 	ctx := context.Background()
 	var (
