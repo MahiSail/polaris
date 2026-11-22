@@ -56,6 +56,11 @@ func TestLegacyMihomoConfigMigratesOnceWithoutResurrection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if store != nil {
+			_ = store.Close()
+		}
+	}()
 	configs, err := store.ListMihomoClientConfigs(t.Context())
 	if err != nil || len(configs) != 1 || len(configs[0].ProxyGroupIDs) != 1 {
 		t.Fatalf("migrated configs = %#v, %v", configs, err)
@@ -73,7 +78,7 @@ func TestLegacyMihomoConfigMigratesOnceWithoutResurrection(t *testing.T) {
 	if referenced == nil || len(referenced.Members) != 1 || referenced.Members[0].ID != endpoint.ID {
 		t.Fatalf("migrated proxy groups = %#v", migratedGroups)
 	}
-	if configs[0].RuleMode != "table" || len(configs[0].Rules) != 3 || configs[0].Rules[2].Type != "MATCH" {
+	if configs[0].RuleMode != "table" || len(configs[0].Rules) != 4 || configs[0].Rules[3].Type != "MATCH" {
 		t.Fatalf("migrated rules = %#v", configs[0])
 	}
 	_, yaml, err := store.GenerateStoredMihomoYAML(t.Context(), configs[0].ID)
