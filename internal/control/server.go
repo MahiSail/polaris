@@ -1527,6 +1527,13 @@ func (s *Server) clientSubscriptionContent(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Profile-Title", "base64:"+base64.StdEncoding.EncodeToString([]byte(subName)))
 	w.Header().Set("Profile-Update-Interval", "24")
+	upload, download, total, trafficErr := s.store.EndpointsTrafficStats(r.Context(), sub.EndpointIDs)
+	if trafficErr != nil {
+		log.Printf("calculate traffic for general subscription %s: %v", sub.ID, trafficErr)
+	}
+	if userInfo := formatSubscriptionUserInfo(upload, download, total, 0); userInfo != "" {
+		w.Header().Set("Subscription-Userinfo", userInfo)
+	}
 	if webURL := requestWebURL(r); webURL != "" {
 		w.Header().Set("Profile-Web-Page-Url", webURL)
 	}

@@ -132,11 +132,11 @@ func TestMihomoSubscriptionMetadataHeaders(t *testing.T) {
 		t.Errorf("Profile-Web-Page-Url header = %q, want http://panel.polaris.example.com/", webUrlHdr)
 	}
 
-	// 4. Subscription-Userinfo with expire timestamp
+	// 4. Subscription-Userinfo with traffic and expire timestamp
 	subUserInfoHdr := rec.Header().Get("Subscription-Userinfo")
-	wantExpire := fmt.Sprintf("expire=%d", expiryUnix)
-	if subUserInfoHdr != wantExpire {
-		t.Errorf("Subscription-Userinfo header = %q, want %q", subUserInfoHdr, wantExpire)
+	wantUserInfo := fmt.Sprintf("upload=0; download=0; expire=%d", expiryUnix)
+	if subUserInfoHdr != wantUserInfo {
+		t.Errorf("Subscription-Userinfo header = %q, want %q", subUserInfoHdr, wantUserInfo)
 	}
 
 	// 5. Content-Disposition with UTF-8 and sanitized ASCII fallback
@@ -159,7 +159,7 @@ func TestMihomoSubscriptionMetadataHeaders(t *testing.T) {
 	if rec304.Header().Get("Profile-Title") != wantTitle {
 		t.Errorf("304 response missing Profile-Title header: %q", rec304.Header().Get("Profile-Title"))
 	}
-	if rec304.Header().Get("Subscription-Userinfo") != wantExpire {
+	if rec304.Header().Get("Subscription-Userinfo") != wantUserInfo {
 		t.Errorf("304 response missing Subscription-Userinfo header: %q", rec304.Header().Get("Subscription-Userinfo"))
 	}
 }
@@ -320,5 +320,139 @@ func TestGeneralSubscriptionMetadataHeaders(t *testing.T) {
 
 	if rec.Header().Get("Profile-Web-Page-Url") != "http://sub.polaris.example.com/" {
 		t.Errorf("general subscription web page url = %q, want http://sub.polaris.example.com/", rec.Header().Get("Profile-Web-Page-Url"))
+	}
+
+	if rec.Header().Get("Subscription-Userinfo") != "upload=0; download=0" {
+		t.Errorf("general subscription user info = %q, want %q", rec.Header().Get("Subscription-Userinfo"), "upload=0; download=0")
+	}
+}
+
+func TestSubscriptionUserInfoWithTrafficAndQuota(t *testing.T) {
+	// 1. Test unit parser
+	if got := parseTrafficPlanBytes("2 TB"); got != 2*1024*1024*1024*1024 {
+		t.Errorf("parseTrafficPlanBytes('2 TB') = %d, want %d", got, int64(2*1024*1024*1024*1024))
+	}
+	if got := parseTrafficPlanBytes("500 GB"); got != 500*1024*1024*1024 {
+		t.Errorf("parseTrafficPlanBytes('500 GB') = %d, want %d", got, int64(500*1024*1024*1024))
+	}
+	if got := parseTrafficPlanBytes("2000"); got != 2000*1024*1024*1024 {
+		t.Errorf("parseTrafficPlanBytes('2000') = %d, want %d", got, int64(2000*1024*1024*1024))
+	}
+
+	// 2. Test formatter
+	if got := formatSubscriptionUserInfo(100, 200, 1000, 1700000000); got != "upload=100; download=200; total=1000; expire=1700000000" {
+		t.Errorf("formatSubscriptionUserInfo = %q", got)
+	}
+	if got := formatSubscriptionUserInfo(0, 0, 0, 0); got != "upload=0; download=0" {
+		t.Errorf("formatSubscriptionUserInfo zero = %q", got)
+	}
+
+	// 3. Database integration with node hosting plan & connection_records
+	ctx := t.Context()
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	nodeID := "node-traffic-1"
+	if _, err := store.db.Exec(`INSERT INTO nodes (id, name, public_key, client_address, traffic_plan, revoked_at, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)`,
+		nodeID, "专线服务器", make([]byte, 32), "hk-traffic.example.com", "1 TB", nowUnix()); err != nil {
+		t.Fatalf("insert node failed: %v", err)
+	}
+
+	listener, err := store.CreateListener(ctx, Listener{
+		NodeID:     nodeID,
+		Name:       "vless-in",
+		Domain:     "hk-traffic.example.com",
+		ListenAddr: "0.0.0.0",
+		Port:       443,
+		Enabled:    true,
+		Spec: ProtocolSpec{
+			Protocol:  "vless",
+			Network:   "tcp",
+			TLS:       TLSOptions{Enabled: true},
+			Transport: TransportOptions{Type: "httpupgrade"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateListener failed: %v", err)
+	}
+
+	endpoint, err := store.CreateEndpoint(ctx, Endpoint{
+		ListenerID: listener.ID,
+		Name:       "vip_user_007",
+		Alias:      "香港专线节点",
+		Enabled:    true,
+	}, EndpointCredentials{
+		UUID: "c0000000-0000-0000-0000-000000000007",
+	})
+	if err != nil {
+		t.Fatalf("CreateEndpoint failed: %v", err)
+	}
+
+	// Record traffic under alias
+	if err := store.SaveConnectionRecords(ctx, []ConnectionRecord{
+		{
+			ID:        "rec-1",
+			NodeID:    nodeID,
+			User:      "香港专线节点",
+			Upload:    1048576,  // 1 MB
+			Download:  10485760, // 10 MB
+			StartedAt: time.Now().Add(-time.Hour).Format(time.RFC3339),
+		},
+		{
+			ID:        "rec-2",
+			NodeID:    nodeID,
+			User:      "vip_user_007", // matching name
+			Upload:    2097152,        // 2 MB
+			Download:  20971520,       // 20 MB
+			StartedAt: time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
+		},
+	}); err != nil {
+		t.Fatalf("SaveConnectionRecords failed: %v", err)
+	}
+
+	group, err := store.CreateMihomoProxyGroup(ctx, MihomoProxyGroup{
+		Name:     "专线代理组",
+		Strategy: "select",
+		Members:  []MihomoGroupMember{{Kind: "endpoint", ID: endpoint.ID}},
+	})
+	if err != nil {
+		t.Fatalf("CreateMihomoProxyGroup failed: %v", err)
+	}
+
+	expireTime := time.Now().Add(7 * 24 * time.Hour).Truncate(time.Second)
+	config, err := store.CreateMihomoClientConfig(ctx, MihomoClientConfig{
+		Name:            "专线订阅",
+		ProxyGroupIDs:   []string{group.ID},
+		AccessExpiresAt: expireTime.Format(time.RFC3339),
+		Rules:           []MihomoRule{{Type: "MATCH", Action: group.Name}},
+	})
+	if err != nil {
+		t.Fatalf("CreateMihomoClientConfig failed: %v", err)
+	}
+
+	server, err := NewServer(store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, config.SubscriptionPath, nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("subscription pull status = %d", rec.Code)
+	}
+
+	// Total upload = 1MB + 2MB = 3145728
+	// Total download = 10MB + 20MB = 31457280
+	// Total quota = 1 TB = 1099511627776
+	wantHeader := fmt.Sprintf("upload=3145728; download=31457280; total=%d; expire=%d",
+		int64(1*1024*1024*1024*1024), expireTime.Unix())
+	gotHeader := rec.Header().Get("Subscription-Userinfo")
+	if gotHeader != wantHeader {
+		t.Errorf("Subscription-Userinfo header = %q, want %q", gotHeader, wantHeader)
 	}
 }

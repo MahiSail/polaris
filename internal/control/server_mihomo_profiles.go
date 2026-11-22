@@ -471,8 +471,12 @@ func (s *Server) mihomoClientSubscription(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Profile-Title", "base64:"+base64.StdEncoding.EncodeToString([]byte(name)))
 	w.Header().Set("Profile-Update-Interval", "24")
-	if access.ExpiresAt > 0 {
-		w.Header().Set("Subscription-Userinfo", fmt.Sprintf("expire=%d", access.ExpiresAt))
+	upload, download, total, trafficErr := s.store.MihomoClientConfigTraffic(r.Context(), configID)
+	if trafficErr != nil {
+		log.Printf("calculate traffic for client config %s: %v", configID, trafficErr)
+	}
+	if userInfo := formatSubscriptionUserInfo(upload, download, total, access.ExpiresAt); userInfo != "" {
+		w.Header().Set("Subscription-Userinfo", userInfo)
 	}
 	if webURL := requestWebURL(r); webURL != "" {
 		w.Header().Set("Profile-Web-Page-Url", webURL)
