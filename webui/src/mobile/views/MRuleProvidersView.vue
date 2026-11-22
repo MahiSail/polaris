@@ -137,16 +137,6 @@ onMounted(load)
 
 <template>
   <MPage title="规则供应商" :loading="loading">
-    <template #actions>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="loading"
-        aria-label="刷新"
-        @click="load()"
-      />
-    </template>
     <div class="m-listbar">
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或类型" />
     </div>

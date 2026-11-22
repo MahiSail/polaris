@@ -19,14 +19,6 @@
       >
         <el-icon><Download /></el-icon>
       </button>
-      <button
-        type="button"
-        class="m-header__btn"
-        aria-label="刷新记录"
-        @click="load(false)"
-      >
-        <el-icon><Refresh /></el-icon>
-      </button>
     </template>
 
     <div class="m-stack">
@@ -82,7 +74,7 @@
               {{ filters.network.toUpperCase() }}
             </el-tag>
             <span v-if="!hasAnyFilter" class="m-note">
-              保留最近 7 天 · {{ localTimeZoneLabel() }}
+              保留 7 天 · {{ localTimeZoneLabel() }}
             </span>
           </div>
           <el-button v-if="hasAnyFilter" size="small" text @click="resetFilters">
@@ -399,9 +391,8 @@ const sortFields = [
 const timePresets = [
   { label: '全部时间', key: '' },
   { label: '今天', key: 'today' },
-  { label: '近 3 天', key: '3d' },
-  { label: '近 7 天', key: '7d' },
-  { label: '近 30 天', key: '30d' },
+  { label: '3 天', key: '3d' },
+  { label: '7 天', key: '7d' },
 ]
 
 const loading = ref(false)
@@ -471,8 +462,6 @@ function applyTimePreset(key) {
     start.setDate(start.getDate() - 3)
   } else if (key === '7d') {
     start.setDate(start.getDate() - 7)
-  } else if (key === '30d') {
-    start.setDate(start.getDate() - 30)
   }
   filters.startLocal = toLocalInput(start)
   filters.endLocal = toLocalInput(now)

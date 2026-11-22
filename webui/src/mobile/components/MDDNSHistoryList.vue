@@ -11,7 +11,6 @@
             @keyup.enter="handleFilterChange"
             @clear="handleFilterChange"
           />
-          <el-button :loading="loading" @click="load(false)">刷新</el-button>
           <el-button
             v-if="canWrite && total > 0"
             type="danger"

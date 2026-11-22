@@ -143,8 +143,7 @@ onMounted(async () => {
 <template>
   <div class="page-shell">
     <PageHeader title="操作记录">
-      <span class="subtle" style="margin-right: 12px">保留最近 7 天 · {{ timeZoneLabel }}</span>
-      <el-button :icon="Refresh" :loading="loading" @click="refreshCurrent">刷新</el-button>
+      <span class="subtle">保留 7 天 · {{ timeZoneLabel }}</span>
     </PageHeader>
 
     <main class="page-content page-content--tight">

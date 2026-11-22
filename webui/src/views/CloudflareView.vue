@@ -252,7 +252,7 @@ onMounted(load)
       <el-tag :type="settings.connected ? 'success' : settings.configured ? 'danger' : 'warning'" effect="plain">
         {{ connectedLabel }}
       </el-tag>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
+
       <el-button v-if="isAdmin && tab === 'records'" :icon="Setting" @click="openSettings">设置</el-button>
       <el-button v-if="isAdmin && tab === 'records'" type="primary" :icon="Plus" :disabled="!recordsAvailable" @click="addRecord">新建</el-button>
       <el-button v-if="isAdmin && tab === 'certificates'" type="primary" :icon="Plus" @click="addCertificate">新建</el-button>

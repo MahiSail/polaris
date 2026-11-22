@@ -421,11 +421,6 @@ onBeforeUnmount(() => {
 
 <template>
   <MPage title="系统设置" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="load">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <MSegmented v-model="tab" :options="tabs" />
 
     <template v-if="tab === 'operators' && isAdmin">

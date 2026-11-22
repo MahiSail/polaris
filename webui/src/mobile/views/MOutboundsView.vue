@@ -192,11 +192,6 @@ onMounted(load)
 
 <template>
   <MPage title="上网出口" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="load">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <div class="m-listbar">
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索名称、地址或用户" />
       <div class="m-filters" style="flex-direction: column; align-items: stretch; gap: 8px;">

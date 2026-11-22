@@ -50,7 +50,6 @@
       <div class="m-section">
         <div class="m-filter-bar">
           <span class="m-section__title" style="padding: 0;">已创建的分享链接 ({{ pageLinks.length }})</span>
-          <el-button size="small" text :loading="loading" @click="loadLinks">刷新</el-button>
         </div>
 
         <div v-if="loading && pageLinks.length === 0" class="m-card m-note">加载中...</div>

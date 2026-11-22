@@ -17,19 +17,6 @@
         </el-button>
       </div>
 
-      <div class="m-filter-row">
-        <button
-          v-for="item in scopeFilters"
-          :key="item.value"
-          type="button"
-          class="m-pill"
-          :class="{ 'is-active': scopeFilter === item.value }"
-          @click="scopeFilter = item.value"
-        >
-          {{ item.label }}
-        </button>
-      </div>
-
       <div v-if="loading && tasks.length === 0" class="m-card m-note">正在加载探针列表...</div>
       <div v-else-if="filteredTasks.length === 0" class="m-card m-note">暂无匹配的探针任务</div>
 
@@ -185,8 +172,7 @@ const form = reactive({
 const filteredTasks = computed(() => {
   const q = keyword.value.trim().toLowerCase()
   return (tasks.value || []).filter((t) => {
-    if (scopeFilter.value === 'public' && !t.auto_join) return false
-    if (scopeFilter.value === 'custom' && t.auto_join) return false
+    if (t.auto_join === false) return false
     if (!q) return true
     return (
       String(t.name || '').toLowerCase().includes(q) ||

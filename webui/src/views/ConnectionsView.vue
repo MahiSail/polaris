@@ -101,9 +101,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-shell">
-    <PageHeader title="当前连接">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
-    </PageHeader>
+    <PageHeader title="当前连接" />
     <main class="page-content page-content--tight">
       <div class="search-toolbar">
         <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索 IP、目标、入站节点或出口" class="filter-search" />

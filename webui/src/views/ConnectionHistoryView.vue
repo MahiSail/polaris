@@ -56,9 +56,8 @@ async function fetchIPLocation(ip) {
 
 const dateShortcuts = [
   { text: '今天', value: () => [new Date(new Date().setHours(0, 0, 0, 0)), new Date()] },
-  { text: '近 3 天', value: () => [new Date(Date.now() - 3 * 24 * 3600 * 1000), new Date()] },
-  { text: '近 7 天', value: () => [new Date(Date.now() - 7 * 24 * 3600 * 1000), new Date()] },
-  { text: '近 30 天', value: () => [new Date(Date.now() - 30 * 24 * 3600 * 1000), new Date()] },
+  { text: '3 天', value: () => [new Date(Date.now() - 3 * 24 * 3600 * 1000), new Date()] },
+  { text: '7 天', value: () => [new Date(Date.now() - 7 * 24 * 3600 * 1000), new Date()] },
 ]
 
 function buildQueryParams() {
@@ -269,9 +268,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-shell">
     <PageHeader title="历史连接明细">
-      <span class="subtle" style="margin-right: 12px">数据保留最近 30 天 · {{ timeZoneLabel }}</span>
+      <span class="subtle" style="margin-right: 12px">数据保留 7 天 · {{ timeZoneLabel }}</span>
       <el-button :icon="Download" :loading="exporting" @click="exportCSV">导出 CSV</el-button>
-      <el-button :icon="Refresh" :loading="loading" @click="loadRecords">刷新</el-button>
     </PageHeader>
 
     <main class="page-content history-content">

@@ -380,12 +380,12 @@ const priceText = computed(() => {
 }
 .m-node-more {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid var(--sb-line-strong);
   background: var(--sb-surface-2);
   color: var(--sb-text-2);

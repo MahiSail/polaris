@@ -638,16 +638,6 @@ onMounted(() => { load(); loadAccess() })
 
 <template>
   <MPage v-if="mode === 'list'" title="客户端配置" :loading="loading">
-    <template #actions>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="loading || accessLoading"
-        aria-label="刷新"
-        @click="tab === 'configs' ? load() : loadAccess()"
-      />
-    </template>
     <MSegmented v-model="tab" :options="[{ value: 'configs', label: '客户端配置' }, { value: 'access', label: '访问记录' }]" />
 
     <template v-if="tab === 'configs'">
@@ -927,7 +917,7 @@ onMounted(() => { load(); loadAccess() })
           <label class="m-field__label">no-resolve</label>
           <el-switch v-model="editingRule.no_resolve" :disabled="!noResolveTypes.has(editingRule.type)" aria-label="no-resolve" />
         </div>
-        <el-button text type="danger" @click="removeRule(ruleIndex)">删除这条规则</el-button>
+        <el-button type="danger" plain class="wide" @click="removeRule(ruleIndex)">删除这条规则</el-button>
       </template>
       <template #footer>
         <el-button type="primary" @click="ruleSheet = false">完成</el-button>

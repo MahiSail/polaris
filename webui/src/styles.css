@@ -1034,6 +1034,10 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
   background: var(--sb-line);
 }
 
-
-
-
+/* 限制悬浮提示宽度，避免长文本整行占满屏幕 */
+.el-popper[role="tooltip"] {
+  max-width: min(380px, calc(100vw - 32px));
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
+}

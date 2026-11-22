@@ -62,9 +62,7 @@ function toggleSelectAllNodes(val) {
 const filteredTasks = computed(() => {
   const term = search.value.trim().toLowerCase()
   return tasks.value.filter((t) => {
-    const isPublic = t.auto_join !== false
-    if (scopeFilter.value === 'public' && !isPublic) return false
-    if (scopeFilter.value === 'custom' && isPublic) return false
+    if (t.auto_join === false) return false
     if (!term) return true
     const nodeNames = (t.node_ids || []).map((id) => getNodeName(id)).join(' ')
     return [t.name, t.target, nodeNames]
@@ -195,28 +193,22 @@ onMounted(load)
 <template>
   <div class="ping-tasks-view">
     <div class="toolbar">
-      <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">添加探针</el-button>
     </div>
 
     <section class="probes-panel">
       <p class="probe-intro">
-        支持配置集群共享的「公共探针」以及绑定到特定服务器的「独立探针」。每台服务器会同时执行公共探针与自身绑定的独立探针，实时测量网络延迟与丢包率。
+        支持配置集群共享的「公共探针」。每台服务器会执行公共探针，实时测量网络延迟与丢包率。
       </p>
 
       <div class="probe-filter-bar">
         <el-input
           v-model="search"
           class="probe-search"
-          placeholder="搜索探针名称、目标地址或服务器"
+          placeholder="搜索探针名称或目标地址"
           :prefix-icon="Search"
           clearable
         />
-        <el-radio-group v-model="scopeFilter" size="default">
-          <el-radio-button value="">全部 ({{ tasks.length }})</el-radio-button>
-          <el-radio-button value="public">公共探针 ({{ tasks.filter((t) => t.auto_join !== false).length }})</el-radio-button>
-          <el-radio-button value="custom">独立探针 ({{ tasks.filter((t) => t.auto_join === false).length }})</el-radio-button>
-        </el-radio-group>
       </div>
 
       <el-table :data="filteredTasks" v-loading="loading" class="probe-table">

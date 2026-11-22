@@ -5,17 +5,6 @@
     :loading="loading"
     @back="handleBack"
   >
-    <template #actions>
-      <el-button
-        v-if="!selectedNode"
-        circle
-        :icon="Refresh"
-        :loading="refreshing"
-        aria-label="刷新状态"
-        @click="refreshAll"
-      />
-    </template>
-
     <!-- 节点详情子视图 -->
     <MNodeDetailView
       v-if="selectedNode"

@@ -333,7 +333,6 @@ onBeforeUnmount(() => {
   <div class="page-shell">
     <PageHeader title="运行概览">
       <el-button v-if="canWrite" :icon="Share" @click="shareOpen = true">分享</el-button>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
     </PageHeader>
     <ShareDialog v-model="shareOpen" page="dashboard" />
     <main v-loading="loading" class="page-content dashboard-content">

@@ -199,7 +199,6 @@ onMounted(load)
 <template>
   <div class="page-shell">
     <PageHeader title="服务器访问规则">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建</el-button>
     </PageHeader>
     <main class="page-content page-content--tight">
@@ -215,7 +214,7 @@ onMounted(load)
           <el-table-column label="匹配条件" min-width="340"><template #default="{ row }"><strong>{{ matchText(row) }}</strong></template></el-table-column>
           <el-table-column label="处理方式" min-width="180"><template #default="{ row }"><el-tag :type="row.action === 'reject' ? 'danger' : 'primary'">{{ actionText(row) }}</el-tag></template></el-table-column>
           <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="200" fixed="right" class-name="action-column"><template #default="{ row }"><el-button v-if="canWrite" link :icon="Edit" @click="openEdit(row)">编辑</el-button><el-button v-if="canWrite" link @click="toggle(row)">{{ row.enabled ? '停用' : '启用' }}</el-button><el-button v-if="isAdmin" link type="danger" :icon="Delete" @click="remove(row)">删除</el-button></template></el-table-column>
+          <el-table-column label="操作" width="230" fixed="right" class-name="action-column"><template #default="{ row }"><el-button v-if="canWrite" link :icon="Edit" @click="openEdit(row)">编辑</el-button><el-button v-if="canWrite" link @click="toggle(row)">{{ row.enabled ? '停用' : '启用' }}</el-button><el-button v-if="isAdmin" link type="danger" :icon="Delete" @click="remove(row)">删除</el-button></template></el-table-column>
         </PagedTable>
       </div>
     </main>

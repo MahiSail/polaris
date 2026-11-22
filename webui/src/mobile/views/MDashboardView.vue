@@ -353,14 +353,6 @@ onBeforeUnmount(() => {
         aria-label="分享"
         @click="shareOpen = true"
       />
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="refreshing"
-        aria-label="刷新数据"
-        @click="load(false)"
-      />
     </template>
 
     <div v-if="offline > 0 && dismissedOffline !== offline" class="m-notice m-notice--warning offline">

@@ -168,7 +168,6 @@ defineExpose({ refresh: loadRecords })
         <el-option label="手动同步" value="manual" />
       </el-select>
       <div class="toolbar-spacer" />
-      <el-button :icon="Refresh" :loading="loading" @click="loadRecords">刷新</el-button>
       <el-button
         v-if="(isAdmin || canWrite) && query.total > 0"
         type="danger"

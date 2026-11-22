@@ -133,7 +133,6 @@ function onOpen() {
       <div class="share-dialog__list">
         <div class="share-dialog__list-head">
           <h4>已生效的链接</h4>
-          <el-button text size="small" :loading="loading" @click="loadShares">刷新</el-button>
         </div>
         <p v-if="!activeShares.length && !loading" class="share-dialog__empty">还没有生效中的分享链接</p>
         <div v-for="link in activeShares" :key="link.id" class="share-dialog__item">

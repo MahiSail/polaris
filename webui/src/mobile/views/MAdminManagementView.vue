@@ -1,14 +1,5 @@
 <template>
   <MPage :title="currentMeta.title" :back="true">
-    <template #actions>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        aria-label="刷新"
-        @click="refreshSection"
-      />
-    </template>
 
     <div class="m-stack">
       <div class="m-filter-row" style="gap: 6px; padding: 2px 0 4px;">

@@ -324,11 +324,6 @@ onMounted(load)
 
 <template>
   <MPage title="安全中心" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="load">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <div class="m-stack" style="gap: 10px; margin-bottom: 12px;">
       <MSegmented v-model="tab" :options="tabs" />
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索服务器、地址或规则" />

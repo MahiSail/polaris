@@ -518,7 +518,6 @@ onMounted(() => { load(); loadAccess() })
 <template>
   <div class="page-shell">
     <PageHeader v-if="mode === 'list'" title="客户端配置">
-      <el-button :icon="Refresh" @click="load(); loadAccess()">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openForm()">新建</el-button>
     </PageHeader>
     <main v-if="mode === 'list'" v-loading="loading" class="page-content">
@@ -824,38 +823,44 @@ onMounted(() => { load(); loadAccess() })
 .access-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
 .option-meta { float: right; margin-left: 18px; color: var(--sb-muted); font-size: 12px; }
 
-/* 整页编辑：左侧导航固定，右侧只渲染当前一节并独立滚动，
-   这样无论规则有多少条，导航和顶部的保存按钮都不会被推走。 */
-.form-page { flex-direction: row; gap: 1.25rem; align-items: stretch; overflow: hidden; }
-.form-nav { flex: 0 0 clamp(11rem, 18vw, 13.75rem); display: flex; flex-direction: column; gap: 0.375rem; }
+/* 整页编辑：扁平分栏布局，无悬浮卡片与阴影效果 */
+.form-page { flex-direction: row; gap: 0; align-items: stretch; overflow: hidden; }
+.form-nav {
+  flex: 0 0 clamp(11rem, 18vw, 13.75rem);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 16px;
+  border-right: 1px solid var(--sb-line);
+}
 .form-nav__item {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 12px 14px;
-  border: 1px solid transparent;
-  border-radius: var(--sb-radius-sm);
+  padding: 10px 12px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--sb-muted);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: all .15s ease;
+  transition: background .15s ease, color .15s ease;
 }
 .form-nav__item:hover {
   background: var(--sb-surface-2);
   color: var(--sb-text);
-  border-color: var(--sb-line);
 }
 .form-nav__item.active {
-  border-color: var(--sb-line-strong);
-  background: var(--sb-panel-solid);
+  border-left-color: var(--sb-accent);
+  background: var(--sb-surface-2);
   color: var(--sb-text) !important;
-  box-shadow: var(--sh-neu-sm);
+  box-shadow: none;
 }
 .form-nav__label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 550; color: inherit; }
 .form-nav__hint { font-size: 12px; line-height: 1.4; color: var(--sb-muted); }
-.form-body { flex: 1 1 auto; min-width: 0; overflow: auto; }
+.form-body { flex: 1 1 auto; min-width: 0; overflow: auto; padding-left: 20px; box-shadow: none; background: transparent; }
 .form-body__inner { width: 100%; max-width: none; }
 .raw-config-editor { display: block; width: 100%; }
 :deep(.raw-config-editor .el-textarea__inner) {

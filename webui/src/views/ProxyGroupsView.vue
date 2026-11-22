@@ -166,7 +166,6 @@ onMounted(load)
 <template>
   <div class="page-shell">
     <PageHeader title="代理分组">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="resetForm()">新建</el-button>
     </PageHeader>
     <main class="page-content">
@@ -225,7 +224,7 @@ onMounted(load)
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="130" fixed="right" class-name="action-column">
+          <el-table-column label="操作" width="160" fixed="right" class-name="action-column">
             <template #default="{ row }">
               <el-button v-if="canWrite" link :icon="Edit" @click="resetForm(row)">编辑</el-button>
               <el-button v-if="isAdmin" link type="danger" :icon="Delete" @click="remove(row)">删除</el-button>

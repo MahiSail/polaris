@@ -267,11 +267,6 @@ onMounted(load)
 
 <template>
   <MPage title="服务器访问规则" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="load">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <div class="m-listbar">
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索匹配条件或处理方式" />
       <div class="m-filters">

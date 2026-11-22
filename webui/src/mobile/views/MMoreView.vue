@@ -232,7 +232,7 @@ async function confirmLogout() {
 }
 .entry + .entry { border-top: 1px solid var(--sb-line); }
 .entry:active { background: rgba(148, 163, 184, .10); }
-.entry .el-icon { flex: none; color: var(--sb-accent); }
+.entry .el-icon { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--sb-accent); }
 .entry span { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .entry i { flex: none; color: var(--sb-muted); font-style: normal; font-size: 18px; }
 .entry__value { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--sb-muted); font-style: normal; font-size: 13px; }

@@ -209,16 +209,6 @@ onMounted(load)
 
 <template>
   <MPage title="代理分组" :loading="loading">
-    <template #actions>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="loading"
-        aria-label="刷新"
-        @click="load()"
-      />
-    </template>
     <div class="m-listbar">
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索分组或节点" />
       <div class="m-filters">

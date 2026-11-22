@@ -342,9 +342,7 @@ onMounted(load)
 
 <template>
   <div class="page-shell">
-    <PageHeader title="系统设置">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
-    </PageHeader>
+    <PageHeader title="系统设置" />
     <main class="page-content">
       <div class="table-panel">
         <el-tabs v-if="isAdmin" v-model="tab" class="panel-tabs">

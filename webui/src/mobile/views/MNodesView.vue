@@ -5,18 +5,6 @@
     :loading="loading"
     @back="handlePageBack"
   >
-    <template #actions>
-      <template v-if="!detailNode && !isShareMode">
-        <el-button
-          circle
-          :icon="Refresh"
-          :loading="refreshing"
-          aria-label="刷新"
-          @click="load(false)"
-        />
-      </template>
-    </template>
-
     <!-- 详情子页面 -->
     <MNodeDetailView
       v-if="detailNode"
@@ -342,7 +330,7 @@
         <template v-else-if="editTab === 'network'">
           <div class="m-field">
             <label class="m-field__label">多出口 IP 别名管理</label>
-            <div class="m-field__hint" style="margin-bottom: 6px;">自动从服务器网卡获取或手动添加出口 IP 并绑定语义别名。</div>
+            <div class="m-field__hint" style="margin-bottom: 6px;">自动从服务器网卡获取出口 IP 并绑定语义别名。</div>
 
             <div class="m-filter-row" style="margin-bottom: 8px;">
               <el-input v-model="newCustomEgressIP" placeholder="手动添加 IPv4/IPv6" style="flex: 1;" />

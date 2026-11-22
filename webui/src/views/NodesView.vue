@@ -1086,7 +1086,6 @@ onBeforeUnmount(() => {
         一键升级所有 Agent ({{ upgradableAgentNodes.length }})
       </el-button>
       <el-button v-if="canWrite" :icon="Connection" @click="probesDialog = true">探针</el-button>
-      <el-button :icon="Refresh" :loading="refreshing" @click="load(false, true)">刷新</el-button>
       <el-button v-if="canWrite" :icon="Share" @click="shareOpen = true">分享</el-button>
       <el-button v-if="isAdmin" type="primary" :icon="Plus" @click="generateToken">新增</el-button>
     </PageHeader>
@@ -1564,52 +1563,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div v-else class="dlg-empty">当前未配置公共探针，可点击右上角「管理公共探针」添加。</div>
-          </div>
-
-          <div class="dlg-block" :class="{ 'is-on': (editForm.custom_probes || []).length > 0 }">
-            <div class="dlg-block-head">
-              <div>
-                <div class="dlg-block-title">本机独立探针（单独配置）</div>
-                <div class="dlg-help">除公共探针外，为当前服务器单独增加专属探测目标（如特定运营商回程、落地目标等）。</div>
-              </div>
-              <el-button size="small" :icon="Plus" @click="addCustomProbe">添加独立探针</el-button>
-            </div>
-            <div v-if="(editForm.custom_probes || []).length" class="dlg-ip-list">
-              <div v-for="(probe, idx) in editForm.custom_probes" :key="probe.id || `new-${idx}`" class="dlg-ip-row dlg-probe-edit-row">
-                <span class="dlg-ip-kind is-v6">独立</span>
-                <el-input
-                  v-model="probe.name"
-                  size="small"
-                  placeholder="探针名称（如：广州电信）"
-                  class="dlg-probe-input-name"
-                />
-                <el-input
-                  v-model="probe.target"
-                  size="small"
-                  placeholder="目标 host:port（如 1.1.1.1:443）"
-                  class="dlg-probe-input-target font-mono"
-                />
-                <el-input-number
-                  v-model="probe.interval"
-                  size="small"
-                  :min="5"
-                  :max="3600"
-                  :step="5"
-                  controls-position="right"
-                  class="dlg-probe-input-interval"
-                  title="探测间隔（秒）"
-                />
-                <el-button
-                  text
-                  type="danger"
-                  size="small"
-                  :icon="Delete"
-                  title="删除该独立探针"
-                  @click="removeCustomProbe(idx)"
-                />
-              </div>
-            </div>
-            <div v-else class="dlg-empty">暂未配置本机独立探针，点击右上角「添加独立探针」即可为该服务器单独配置。</div>
           </div>
         </section>
       </el-form>

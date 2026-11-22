@@ -1,32 +1,18 @@
 <template>
   <MPage title="热门设备" :loading="loading">
-    <template #actions>
-      <el-button
-        circle
-        size="small"
-        :icon="Refresh"
-        :loading="loading"
-        aria-label="刷新"
-        @click="load"
-      />
-    </template>
-
     <div class="m-stack">
-      <div class="m-card" style="padding: 10px 12px;">
-        <MSegmented
-          v-model="range"
-          :options="[
-            { value: '24h', label: '最近 24 小时' },
-            { value: '7d', label: '最近 7 天' },
-            { value: '30d', label: '最近 30 天' },
-          ]"
-        />
-        <div class="m-filter-bar" style="margin-top: 8px;">
-          <span class="m-note">保留最近 30 天 · {{ timeZoneLabel }}</span>
-          <button type="button" class="m-pill" @click="navigate('connection-history')">
-            历史连接明细
-          </button>
-        </div>
+      <MSegmented
+        v-model="range"
+        :options="[
+          { value: '24h', label: '24 小时' },
+          { value: '7d', label: '7 天' },
+        ]"
+      />
+      <div class="m-filter-bar">
+        <span class="m-note">保留 7 天 · {{ timeZoneLabel }}</span>
+        <button type="button" class="m-pill" @click="navigate('connection-history')">
+          历史连接明细
+        </button>
       </div>
 
       <!-- 4 Separate Summary Stats (PC parity) -->
@@ -71,17 +57,18 @@
             </strong>
           </div>
 
-          <div class="m-filter-bar" style="margin-bottom: 6px;">
+          <div class="m-filter-bar" style="margin-bottom: 6px; flex-wrap: nowrap;">
             <span class="m-note truncate" style="flex: 1; min-width: 0;">{{ row.source_location || '归属地未知' }}</span>
-            <button
+            <span
               v-if="row.user"
-              type="button"
-              class="m-pill"
-              style="max-width: 58%; overflow: hidden; text-overflow: ellipsis;"
+              role="button"
+              tabindex="0"
+              class="m-pill m-pill--info"
+              style="max-width: 58%; overflow: hidden; text-overflow: ellipsis; border-radius: 6px; cursor: pointer; display: inline-block;"
               @click.stop="filterByUser(row.user)"
             >
               接入节点：{{ row.user }}
-            </button>
+            </span>
           </div>
 
           <div class="m-filter-bar" style="font-size: 12px; color: var(--sb-text-2); margin-bottom: 4px;">

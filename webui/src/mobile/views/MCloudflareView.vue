@@ -302,11 +302,6 @@ onMounted(load)
 
 <template>
   <MPage title="域名解析" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="load">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <!-- 连接状态和「设置」入口连在一起：改的就是这条状态里说的那件事。 -->
     <div class="m-notice conn" :class="settings.connected ? 'm-notice--info' : settings.configured ? 'm-notice--danger' : 'm-notice--warning'">
       <span class="conn__text">

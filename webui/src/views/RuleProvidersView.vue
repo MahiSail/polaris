@@ -102,7 +102,6 @@ onMounted(load)
 <template>
   <div class="page-shell">
     <PageHeader title="规则供应商">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建</el-button>
     </PageHeader>
 
@@ -119,7 +118,7 @@ onMounted(load)
           <el-table-column label="保存路径" min-width="170" show-overflow-tooltip><template #default="{ row }"><span class="mono">{{ row.path }}</span></template></el-table-column>
           <el-table-column label="更新间隔" width="108"><template #default="{ row }">{{ row.interval }} 秒</template></el-table-column>
           <el-table-column label="下载代理" width="120" prop="proxy" show-overflow-tooltip />
-          <el-table-column label="操作" width="146" fixed="right" class-name="action-column">
+          <el-table-column label="操作" width="160" fixed="right" class-name="action-column">
             <template #default="{ row }">
               <el-button v-if="canWrite" link :icon="Edit" @click="openEdit(row)">编辑</el-button>
               <el-button v-if="isAdmin" link type="danger" :icon="Delete" @click="remove(row)">删除</el-button>

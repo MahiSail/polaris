@@ -418,6 +418,7 @@ const LATENCY_RANGES = [
   { hours: 1, label: '1 小时' },
   { hours: 6, label: '6 小时' },
   { hours: 24, label: '24 小时' },
+  { hours: 168, label: '7 天' },
 ]
 
 const tab = ref('resources')
@@ -432,7 +433,7 @@ const ranges = computed(() => (tab.value === 'latency' ? LATENCY_RANGES : RESOUR
 const tabsNote = computed(() => {
   if (tab.value === 'latency') return `${probes.value.length} 个探测`
   if (tab.value === 'facts') return '硬件 · 网络 · 计费 · DDNS'
-  return `最近 ${hours.value} 小时`
+  return hours.value === 168 ? '7 天' : `${hours.value} 小时`
 })
 
 const host = computed(() => props.live?.host || props.metrics.host || {})
@@ -1023,8 +1024,8 @@ onMounted(loadHistory)
 .only-btn.active { border-color: var(--sb-accent); background: color-mix(in oklab, var(--sb-accent) 12%, transparent); color: var(--sb-accent); }
 .detail-empty { margin: 0; padding: 1.5rem; text-align: center; color: var(--sb-muted); font-size: 0.78125rem; }
 
-.fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; align-items: start; }
-.fact-card { min-width: 0; padding: 0.875rem 1rem; border: 1px solid var(--sb-line); border-radius: 1rem; }
+.fact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; align-items: stretch; }
+.fact-card { min-width: 0; height: 100%; display: flex; flex-direction: column; padding: 0.875rem 1rem; border: 1px solid var(--sb-line); border-radius: 1rem; }
 .fact-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .fact-title {
   margin: 0;

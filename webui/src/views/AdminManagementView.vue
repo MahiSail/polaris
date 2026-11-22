@@ -70,9 +70,7 @@ onMounted(load)
 
 <template>
   <div class="page-shell admin-management-view">
-    <PageHeader :title="meta.title">
-      <el-button :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
-    </PageHeader>
+    <PageHeader :title="meta.title" />
     <main class="page-content">
       <section class="admin-hero neu">
         <div class="admin-hero__icon"><el-icon :size="22"><component :is="meta.icon" /></el-icon></div>

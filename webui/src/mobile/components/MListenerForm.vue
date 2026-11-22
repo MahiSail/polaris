@@ -545,17 +545,13 @@ function save() {
               :options="accountOutboundOptions(account)"
               title="选择出口或链式节点"
             />
-            <div style="margin-top: 8px">
-              <button type="button" class="m-pill" @click="promptAddCustomIP(account)">
-                + 手动添加出口 IP
-              </button>
-            </div>
+
           </div>
           <div class="m-field m-field--inline">
             <label class="m-field__label">启用该节点</label>
             <el-switch v-model="account.enabled" aria-label="启用该节点" />
           </div>
-          <el-button text type="danger" :icon="Delete" :disabled="accounts.length === 1" @click="removeAccount(index)">删除该节点</el-button>
+          <el-button type="danger" plain :icon="Delete" :disabled="accounts.length === 1" style="width: 100%;" @click="removeAccount(index)">删除该节点</el-button>
         </div>
       </div>
     </div>

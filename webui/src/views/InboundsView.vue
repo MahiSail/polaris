@@ -278,7 +278,6 @@ onMounted(load)
 <template>
   <div class="page-shell">
     <PageHeader title="接入服务">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建</el-button>
     </PageHeader>
 

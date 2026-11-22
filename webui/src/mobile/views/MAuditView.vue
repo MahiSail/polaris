@@ -188,13 +188,8 @@ onMounted(async () => {
 
 <template>
   <MPage title="操作记录" :loading="loading">
-    <template #actions>
-      <button type="button" class="m-header__btn" :disabled="loading" aria-label="刷新" @click="refreshCurrent">
-        <el-icon><Refresh /></el-icon>
-      </button>
-    </template>
     <MSegmented v-model="tab" :options="tabs" />
-    <div class="m-count">保留最近 7 天 · 时间按 {{ timeZoneLabel }} 显示</div>
+    <div class="m-count">保留 7 天 · 时间按 {{ timeZoneLabel }} 显示</div>
 
     <!-- 1. 系统操作 -->
     <template v-if="tab === 'tasks'">

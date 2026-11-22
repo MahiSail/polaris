@@ -16,7 +16,6 @@
             </div>
           </div>
         </div>
-        <el-button circle :icon="Refresh" aria-label="刷新详情" @click="refreshAll" />
       </div>
 
       <div class="m-action-strip">
@@ -100,7 +99,7 @@
           {{ r.label }}
         </button>
       </div>
-      <span class="m-note">最近 {{ hours }} 小时</span>
+      <span class="m-note">{{ hours === 168 ? '7 天' : `${hours} 小时` }}</span>
     </div>
 
     <!-- Tab 1: Resources -->

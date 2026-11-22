@@ -149,7 +149,6 @@ onMounted(load)
 <template>
   <div class="page-shell">
     <PageHeader title="上网出口">
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
       <el-button v-if="canWrite" type="primary" :icon="Plus" @click="openCreate">新建</el-button>
     </PageHeader>
     <main class="page-content">
@@ -170,7 +169,7 @@ onMounted(load)
             </template>
           </el-table-column>
           <el-table-column label="状态" width="88"><template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
-          <el-table-column label="操作" width="264" fixed="right" class-name="action-column">
+          <el-table-column label="操作" width="290" fixed="right" class-name="action-column">
             <template #default="{ row }">
               <template v-if="row.type !== 'direct'">
                 <el-button link :icon="Connection" @click="openTest(row)">测试</el-button>

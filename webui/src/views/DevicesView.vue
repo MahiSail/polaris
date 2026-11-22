@@ -63,12 +63,10 @@ onMounted(() => {
   <div class="page-shell">
     <PageHeader title="热门设备">
       <el-radio-group v-model="popularRange" size="small" @change="loadPopular">
-        <el-radio-button label="24h">最近 24 小时</el-radio-button>
-        <el-radio-button label="7d">最近 7 天</el-radio-button>
-        <el-radio-button label="30d">最近 30 天</el-radio-button>
+        <el-radio-button label="24h">24 小时</el-radio-button>
+        <el-radio-button label="7d">7 天</el-radio-button>
       </el-radio-group>
-      <span class="subtle" style="margin: 0 12px">数据保留最近 30 天 · {{ timeZoneLabel }}</span>
-      <el-button :icon="Refresh" :loading="popularLoading" @click="refreshAll">刷新</el-button>
+      <span class="subtle" style="margin-left: 12px">数据保留 7 天 · {{ timeZoneLabel }}</span>
     </PageHeader>
 
     <main class="page-content devices-content">
