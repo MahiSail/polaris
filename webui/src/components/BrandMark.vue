@@ -1,17 +1,25 @@
 <script setup>
-// 北极星 + 轨道环：用 currentColor 着色，放在渐变底块或纯色背景上都能用。
-defineProps({ size: { type: Number, default: 22 } })
+// Polaris 统一品牌标识：顶级工业美学一体化北极星（B-Final 负空间钻石光孔枢纽）
+// 具备 G2 级三次贝塞尔连续平滑收腰、四极端面防次像素虚焦切角（R=0.6px）、内部精密负空间光瞳（R=0.55px 圆角）。
+// 基于 currentColor 纯单色语义自适应深浅主题，零脱离悬浮物，100% 向心凝聚。
+defineProps({ size: { type: [Number, String], default: 22 } })
 </script>
 
 <template>
-  <svg :width="size" :height="size" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+  <svg :width="size" :height="size" viewBox="0 0 32 32" fill="none" aria-hidden="true" class="polaris-mark">
     <path
-      d="M16 2.5 18.9 12.3 28.5 16 18.9 19.7 16 29.5 13.1 19.7 3.5 16 13.1 12.3Z"
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M 15.35 3.2 C 15.35 2.6 16.65 2.6 16.65 3.2 C 16.65 11.2 20.8 15.35 28.8 15.35 C 29.4 15.35 29.4 16.65 28.8 16.65 C 20.8 16.65 16.65 20.8 16.65 28.8 C 16.65 29.4 15.35 29.4 15.35 28.8 C 15.35 20.8 11.2 16.65 3.2 16.65 C 2.6 16.65 2.6 15.35 3.2 15.35 C 11.2 15.35 15.35 11.2 15.35 3.2 Z M 15.61 13.19 C 15.82 12.98 16.18 12.98 16.39 13.19 L 18.81 15.61 C 19.02 15.82 19.02 16.18 18.81 16.39 L 16.39 18.81 C 16.18 19.02 15.82 19.02 15.61 18.81 L 13.19 16.39 C 12.98 16.18 12.98 15.82 13.19 15.61 Z"
       fill="currentColor"
-    />
-    <circle
-      cx="16" cy="16" r="13"
-      stroke="currentColor" stroke-opacity=".5" stroke-width="1.4" stroke-dasharray="3.6 5.4"
     />
   </svg>
 </template>
+
+<style scoped>
+.polaris-mark {
+  display: block;
+  flex-shrink: 0;
+  user-select: none;
+}
+</style>

@@ -772,8 +772,9 @@ html.dark .el-pagination.is-background .el-pager li.is-active {
   align-items: center;
   justify-content: center;
   border-radius: 0.625rem;
-  background: linear-gradient(135deg, var(--sb-accent), var(--sb-accent-2));
-  box-shadow: 0 0 22px -4px color-mix(in oklab, var(--sb-accent) 80%, transparent);
+  color: var(--sb-accent);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
 }
 .login-brand__copy { position: absolute; left: clamp(2rem, 4.5vw, 4rem); right: clamp(2rem, 4.5vw, 4rem); bottom: clamp(2rem, 5vw, 4.5rem); max-width: 32.5rem; }
 .login-brand__copy h1 { margin: 0; font-size: clamp(1.5rem, 2.6vw, 2.125rem); line-height: 1.3; font-weight: 620; letter-spacing: 1px; }

@@ -406,45 +406,24 @@ onBeforeUnmount(() => {
   <el-container v-else class="app-layout">
     <el-aside :width="sidebarCollapsed ? '4rem' : 'clamp(13.25rem, 15vw, 15rem)'" class="app-sidebar" :class="{ 'is-collapsed': sidebarCollapsed }">
       <div class="sidebar-header">
-        <el-popover placement="right-start" :width="308" trigger="click" :disabled="isShareMode" popper-class="update-popover">
-          <template #reference>
-            <button
-              type="button"
-              class="app-brand"
-              :aria-label="`${brandName} ${brandTagline}，查看版本与更新`"
-              @click="sidebarCollapsed ? toggleSidebar() : null"
-            >
-              <span class="app-brand__mark"><BrandMark :size="21" /></span>
-              <span v-if="!sidebarCollapsed" class="app-brand__text">
-                <strong>{{ brandName }}</strong>
-                <small>
-                  {{ brandTagline }}
-                  <em class="app-brand__version">
-                    v{{ appState.systemUpdate?.current_version || '—' }}
-                    <i v-if="appState.systemUpdate?.update_available" class="app-brand__dot" aria-hidden="true" />
-                  </em>
-                </small>
-              </span>
-            </button>
-          </template>
-          <div class="update-pop">
-            <h4>软件版本</h4>
-            <p>当前版本 <strong>v{{ appState.systemUpdate?.current_version || '未知' }}</strong></p>
-            <p v-if="appState.systemUpdate?.check_error" class="update-pop__warn">检查更新失败：{{ appState.systemUpdate.check_error }}</p>
-            <p v-else-if="appState.systemUpdate?.update_available">
-              最新版本 <strong>v{{ appState.systemUpdate.latest_version }}</strong>。更新控制端后，可在「服务器」页面逐台升级 agent。
-            </p>
-            <p v-else>已是最新版本。打开控制台时会自动检查。</p>
-            <div class="update-pop__actions">
-              <el-button v-if="!isShareMode" size="small" :loading="updateChecking" @click="checkSystemUpdate">重新检查</el-button>
-              <el-button
-                v-if="isAdmin && appState.systemUpdate?.update_available"
-                size="small" type="primary" :loading="updateApplying"
-                @click="applySystemUpdate"
-              >更新管理平台</el-button>
-            </div>
-          </div>
-        </el-popover>
+        <button
+          type="button"
+          class="app-brand"
+          :aria-label="`${brandName} ${brandTagline}`"
+          @click="sidebarCollapsed ? toggleSidebar() : navigate('dashboard')"
+        >
+          <span class="app-brand__mark"><BrandMark :size="21" /></span>
+          <span v-if="!sidebarCollapsed" class="app-brand__text">
+            <strong>{{ brandName }}</strong>
+            <small>
+              {{ brandTagline }}
+              <em class="app-brand__version">
+                v{{ appState.systemUpdate?.current_version || '—' }}
+                <i v-if="appState.systemUpdate?.update_available" class="app-brand__dot" aria-hidden="true" />
+              </em>
+            </small>
+          </span>
+        </button>
         <button
           v-if="!sidebarCollapsed"
           type="button"
@@ -680,10 +659,12 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   color: var(--sb-accent);
-  background: linear-gradient(135deg, var(--sb-accent-soft), transparent), var(--sb-surface-2);
-  border: 1px solid color-mix(in oklab, var(--sb-accent) 35%, transparent);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
   border-radius: 10px;
-  box-shadow: 0 0 20px -4px color-mix(in oklab, var(--sb-accent) 60%, transparent);
+}
+.app-brand:hover .app-brand__mark {
+  border-color: var(--sb-muted);
 }
 .app-brand__text { min-width: 0; }
 .app-brand strong { display: block; color: var(--sb-text); font-size: 16px; line-height: 1.2; letter-spacing: .6px; }

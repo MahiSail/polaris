@@ -418,10 +418,10 @@ onBeforeUnmount(() => {
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--sb-accent), var(--sb-accent-2));
-  color: #fff;
-  box-shadow: var(--sh-neu-sm);
+  border-radius: 10px;
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
+  color: var(--sb-accent);
 }
 
 .brand-icon {

@@ -79,18 +79,10 @@ async function save() {
   place-items: center;
   margin-bottom: 16px;
   border-radius: 13px;
+  color: var(--sb-accent);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
   transition: all 0.2s ease;
-}
-html.dark .m-first__icon {
-  color: #0E1015;
-  background: linear-gradient(135deg, #F8FAFC, #CBD5E1);
-  box-shadow: 0 0 22px -4px rgba(248, 250, 252, 0.4);
-}
-html.light .m-first__icon,
-html:not(.dark) .m-first__icon {
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #0F172A, #334155);
-  box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.3);
 }
 .m-first h1 {
   margin: 0 0 8px;

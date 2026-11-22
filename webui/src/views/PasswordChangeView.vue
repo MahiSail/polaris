@@ -69,11 +69,10 @@ async function save() {
   display: grid;
   place-items: center;
   margin-bottom: 18px;
-  color: #04121f;
-  background: linear-gradient(135deg, var(--sb-accent), var(--sb-accent-2));
+  color: var(--sb-accent);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
   border-radius: 12px;
-  font-size: 22px;
-  box-shadow: 0 0 24px -6px color-mix(in oklab, var(--sb-accent) 70%, transparent);
 }
 .password-card h1 { margin: 0 0 8px; color: #fff; font-size: 24px; font-weight: 620; letter-spacing: .4px; }
 .password-card p { margin: 0 0 22px; color: var(--sb-muted); }

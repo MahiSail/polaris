@@ -129,18 +129,10 @@ async function finishAuthentication(result) {
   display: grid;
   place-items: center;
   border-radius: 14px;
+  color: var(--sb-accent);
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-strong);
   transition: all 0.2s ease;
-}
-html.dark .m-login__mark {
-  color: #0E1015;
-  background: linear-gradient(135deg, #F8FAFC, #CBD5E1);
-  box-shadow: 0 0 24px -4px rgba(248, 250, 252, 0.4);
-}
-html.light .m-login__mark,
-html:not(.dark) .m-login__mark {
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #0F172A, #334155);
-  box-shadow: 0 6px 20px -4px rgba(15, 23, 42, 0.3);
 }
 .m-login__brand strong {
   color: var(--sb-text);
