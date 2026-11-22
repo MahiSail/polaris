@@ -742,8 +742,11 @@ html.dark .m-native-input {
   box-sizing: border-box !important;
   display: inline-flex !important;
   align-items: center !important;
-  padding: 3px !important;
-  border-radius: 8px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  gap: 6px !important;
 }
 .m-filters > .m-seg:only-child,
 .m-filters[style*="column"] > .m-seg {
@@ -764,14 +767,14 @@ html.dark .m-native-input {
   margin-top: 6px;
 }
 .m-filters .m-seg .m-seg__item {
-  min-height: 32px !important;
-  height: 32px !important;
+  min-height: 38px !important;
+  height: 38px !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1 !important;
-  padding: 0 12px !important;
-  border-radius: 6px !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
   font-size: 13px !important;
 }
 

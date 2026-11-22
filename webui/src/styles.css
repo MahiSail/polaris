@@ -319,14 +319,20 @@ html.light .page-header {
   font-weight: 600;
   letter-spacing: .4px;
   border-bottom: 1px solid var(--sb-line) !important;
+  text-align: center !important;
+}
+.table-panel .el-table th.el-table__cell .cell,
+.el-table th.el-table__cell .cell {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
 }
 /* 一页十行加上表头、工具栏和分页条要能放进笔记本视口，
    否则分页就失去了去掉滚动条的意义。 */
 .table-panel .el-table td.el-table__cell { height: 46px; padding: 0; border-bottom: 1px solid rgba(100, 104, 123, .08); }
-/* 首末列贴着面板边缘会很挤，统一留出和面板内边距一致的空隙。 */
-.table-panel .el-table th.el-table__cell:first-child > .cell,
+/* 首末列内容贴着面板边缘会很挤，统一留出和面板内边距一致的空隙；表头保持水平居中。 */
 .table-panel .el-table td.el-table__cell:first-child > .cell { padding-left: 20px; }
-.table-panel .el-table th.el-table__cell:last-child > .cell,
 .table-panel .el-table td.el-table__cell:last-child > .cell { padding-right: 20px; }
 /* 固定列的底色（body 单元格采用实体卡片底色，hover 时高亮） */
 .table-panel .el-table td.el-table__cell.el-table-fixed-column--left,
@@ -614,19 +620,19 @@ html:not(.dark) .el-button--primary.is-disabled:hover {
 .el-radio-group {
   display: inline-flex;
   align-items: center;
-  padding: 3px;
-  background: var(--neu-inset-bg);
-  border: 1px solid var(--sb-line);
-  border-radius: var(--sb-radius-sm);
-  box-shadow: var(--sh-inset);
-  gap: 2px;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  gap: 6px !important;
 }
 .el-radio-button {
   display: inline-flex;
 }
 .el-radio-button__inner {
-  border: none !important;
-  background: transparent !important;
+  border: 1px solid var(--sb-line-strong) !important;
+  background: var(--sb-surface) !important;
   color: var(--sb-muted) !important;
   font-weight: 500 !important;
   padding: 5px 12px !important;
@@ -634,22 +640,36 @@ html:not(.dark) .el-button--primary.is-disabled:hover {
   transition: all 0.2s ease !important;
   box-shadow: none !important;
   font-size: 12px !important;
+  cursor: pointer !important;
+}
+.el-radio-button:first-child .el-radio-button__inner,
+.el-radio-button:last-child .el-radio-button__inner {
+  border-radius: 6px !important;
+  border-left: 1px solid var(--sb-line-strong) !important;
 }
 .el-radio-button:hover .el-radio-button__inner {
   color: var(--sb-text) !important;
+  border-color: var(--sb-line-strong) !important;
+}
+html.dark .el-radio-button__inner {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: var(--sb-line) !important;
+  color: var(--sb-muted) !important;
 }
 html.dark .el-radio-button.is-active .el-radio-button__inner {
-  background: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
   color: #F8FAFC !important;
   font-weight: 600 !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
 }
 html.light .el-radio-button.is-active .el-radio-button__inner,
 html:not(.dark) .el-radio-button.is-active .el-radio-button__inner {
-  background: #FFFFFF !important;
-  color: #0F172A !important;
+  background: #0F172A !important;
+  border-color: #0F172A !important;
+  color: #FFFFFF !important;
   font-weight: 600 !important;
-  box-shadow: 0 1px 3px rgba(100, 104, 123, 0.2) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18) !important;
 }
 
 .el-pagination.is-background .el-pager li.is-active {

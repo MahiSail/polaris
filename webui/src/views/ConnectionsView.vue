@@ -1,8 +1,11 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleClose, Refresh, Search } from '@element-plus/icons-vue'
 import { formatBytes, formatDateTime, includesText } from '../format'
 import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../connections'
+import { del } from '../api'
+import { isShareMode } from '../share'
 import PageHeader from '../components/PageHeader.vue'
 import PagedTable from '../components/PagedTable.vue'
 
@@ -12,6 +15,8 @@ const loading = ref(true)
 const selectedNode = ref('')
 const selectedOutbound = ref('')
 const keyword = ref('')
+const closingIds = ref(new Set())
+const closingAll = ref(false)
 let stopConnections
 
 // sing-box reports the destination as an address, and the sniffed domain
@@ -52,7 +57,12 @@ const rows = computed(() => {
       target: targetLabel(connection),
     }))
   })
-  return mergeChainedConnections(flat, appState.nodes)
+  return mergeChainedConnections(flat, appState.nodes).map((row) => ({
+    ...row,
+    source_display: row.source_ip || row.source || '',
+    total_rate: (Number(row.download_rate) || 0) + (Number(row.upload_rate) || 0),
+    total_bytes: (Number(row.download) || 0) + (Number(row.upload) || 0),
+  }))
 })
 const collectedAt = computed(() => [...connectionSnapshots.value.values()].map((result) => result.collected_at).filter(Boolean).sort().at(-1) || '')
 const outboundOptions = computed(() => [...new Set(rows.value.map((row) => row.exit).filter(Boolean))].sort())
@@ -70,6 +80,76 @@ async function load() {
     await loadNodes()
   } finally {
     loading.value = false
+  }
+}
+
+async function handleCloseConnection(row) {
+  if (!row?.node_id || !row?.id) return
+  try {
+    await ElMessageBox.confirm(`确定要关闭目标为 ${row.target || '该连接'} 的连接吗？`, '提示', {
+      confirmButtonText: '确定关闭',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonClass: 'el-button--danger',
+    })
+  } catch {
+    return
+  }
+  closingIds.value.add(row.id)
+  try {
+    await del(`/nodes/${encodeURIComponent(row.node_id)}/connections/${encodeURIComponent(row.id)}`)
+    ElMessage.success('连接已关闭')
+    const snapshot = connectionSnapshots.value.get(row.node_id)
+    if (snapshot && Array.isArray(snapshot.connections)) {
+      snapshot.connections = snapshot.connections.filter((c) => c.id !== row.id)
+      connectionSnapshots.value = new Map(connectionSnapshots.value)
+    }
+  } catch (err) {
+    ElMessage.error(err.message || '关闭连接失败')
+  } finally {
+    closingIds.value.delete(row.id)
+  }
+}
+
+async function handleCloseAll() {
+  const nodeName = appState.nodes.find((n) => n.id === selectedNode.value)?.name
+  const targetDesc = selectedNode.value
+    ? `当前服务器（${nodeName || selectedNode.value}）的所有活动连接`
+    : '所有服务器上的全部活动连接'
+  try {
+    await ElMessageBox.confirm(
+      `确定要关闭${targetDesc}吗？这会强制切断正在进行的网络会话。`,
+      '警告',
+      {
+        confirmButtonText: '确定全部关闭',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
+    )
+  } catch {
+    return
+  }
+  closingAll.value = true
+  try {
+    const path = selectedNode.value
+      ? `/nodes/${encodeURIComponent(selectedNode.value)}/connections`
+      : '/connections'
+    await del(path)
+    ElMessage.success('已请求关闭连接')
+    if (selectedNode.value) {
+      const snap = connectionSnapshots.value.get(selectedNode.value)
+      if (snap) snap.connections = []
+    } else {
+      for (const snap of connectionSnapshots.value.values()) {
+        snap.connections = []
+      }
+    }
+    connectionSnapshots.value = new Map(connectionSnapshots.value)
+  } catch (err) {
+    ElMessage.error(err.message || '关闭连接失败')
+  } finally {
+    closingAll.value = false
   }
 }
 
@@ -111,34 +191,45 @@ onBeforeUnmount(() => {
         <el-select v-model="selectedOutbound" clearable placeholder="全部出口" class="filter-select">
           <el-option v-for="exit in outboundOptions" :key="exit" :label="exit" :value="exit" />
         </el-select>
+        <el-button
+          v-if="!isShareMode"
+          type="danger"
+          plain
+          :icon="CircleClose"
+          :loading="closingAll"
+          :disabled="filteredRows.length === 0"
+          @click="handleCloseAll"
+        >
+          {{ selectedNode ? '关闭当前服务器连接' : '关闭所有连接' }}
+        </el-button>
         <span class="toolbar__spacer" />
         <span class="subtle">{{ filteredRows.length }} 条 · {{ formatDateTime(collectedAt, '暂无数据') }}</span>
       </div>
       <div class="table-panel">
         <PagedTable :rows="filteredRows" :loading="loading" empty-text="当前没有活动连接">
-          <el-table-column label="服务器" prop="node_name" min-width="160" show-overflow-tooltip />
-          <el-table-column label="来源" min-width="160" show-overflow-tooltip>
+          <el-table-column label="服务器" prop="node_name" min-width="160" sortable="custom" show-overflow-tooltip />
+          <el-table-column label="来源" prop="source_display" min-width="160" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="mono">{{ row.source_ip || row.source || '—' }}</div>
               <div class="subtle">{{ row.source_location || '未知' }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="目标" min-width="200" show-overflow-tooltip>
+          <el-table-column label="目标" prop="target" min-width="200" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
               <strong>{{ row.target }}</strong>
               <div v-if="row.destination_location" class="subtle" style="font-size: 11px">{{ row.destination_location }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="入站节点" min-width="160" show-overflow-tooltip>
+          <el-table-column label="入站节点" prop="entry" min-width="160" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
               <div>{{ row.entry }}</div>
               <div class="subtle">{{ (row.network || '').toUpperCase() || '—' }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="出口" min-width="220" class-name="tag-cell" show-overflow-tooltip>
+          <el-table-column label="出口" prop="exit" min-width="220" sortable="custom" class-name="tag-cell" show-overflow-tooltip>
             <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.exit }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="实时速率" width="130" show-overflow-tooltip>
+          <el-table-column label="实时速率" prop="total_rate" width="130" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
               <template v-if="row.has_rates">
                 <div class="mono">↓ {{ formatBytes(row.download_rate, '/s') }}</div>
@@ -147,13 +238,28 @@ onBeforeUnmount(() => {
               <span v-else class="subtle">等待上报</span>
             </template>
           </el-table-column>
-          <el-table-column label="累计流量" width="120" show-overflow-tooltip>
+          <el-table-column label="累计流量" prop="total_bytes" width="120" sortable="custom" show-overflow-tooltip>
             <template #default="{ row }">
               <div class="mono">↓ {{ formatBytes(row.download) }}</div>
               <div class="mono subtle">↑ {{ formatBytes(row.upload) }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="时间" width="170" show-overflow-tooltip><template #default="{ row }">{{ formatDateTime(row.started_at) }}</template></el-table-column>
+          <el-table-column label="时间" prop="started_at" width="170" sortable="custom" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
+          </el-table-column>
+          <el-table-column v-if="!isShareMode" label="操作" width="80" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                type="danger"
+                link
+                size="small"
+                :loading="closingIds.has(row.id)"
+                @click="handleCloseConnection(row)"
+              >
+                关闭
+              </el-button>
+            </template>
+          </el-table-column>
         </PagedTable>
       </div>
     </main>

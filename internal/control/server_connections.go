@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/liyuwei007036/polaris/internal/security"
@@ -341,4 +343,85 @@ func (s *Server) popularDevices(w http.ResponseWriter, r *http.Request) {
 		"devices": devices,
 	})
 }
+
+// closeNodeConnection terminates one specific active connection on a given node.
+func (s *Server) closeNodeConnection(w http.ResponseWriter, r *http.Request) {
+	operator, err := s.writer(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	connID := strings.TrimSpace(r.PathValue("conn_id"))
+	if nodeID == "" || connID == "" {
+		writeError(w, userErrorf("缺少节点或连接标识"))
+		return
+	}
+	payload, err := json.Marshal(map[string]string{"id": connID})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if _, err := s.AskNode(r.Context(), nodeID, "connection.close", string(payload)); err != nil {
+		writeError(w, err)
+		return
+	}
+	_ = s.store.AppendAudit(r.Context(), operator.ID, "connection.close", "node", nodeID, fmt.Sprintf("closed connection %s", connID))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// closeAllConnections closes all connections on a specific node or across the whole fleet.
+func (s *Server) closeAllConnections(w http.ResponseWriter, r *http.Request) {
+	operator, err := s.writer(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	nodeID := strings.TrimSpace(r.PathValue("id"))
+	if nodeID == "" {
+		nodeID = strings.TrimSpace(r.URL.Query().Get("node_id"))
+	}
+	if nodeID != "" {
+		if _, err := s.AskNode(r.Context(), nodeID, "connection.close", `{"id":"all"}`); err != nil {
+			writeError(w, err)
+			return
+		}
+		_ = s.store.AppendAudit(r.Context(), operator.ID, "connection.close_all", "node", nodeID, "closed all connections on node")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Close all connections across all active nodes in the fleet
+	s.controlMu.Lock()
+	nodes := make([]string, 0, len(s.controls))
+	for id := range s.controls {
+		nodes = append(nodes, id)
+	}
+	s.controlMu.Unlock()
+
+	var wg sync.WaitGroup
+	var lastErr error
+	var errMu sync.Mutex
+	for _, id := range nodes {
+		wg.Add(1)
+		go func(nid string) {
+			defer wg.Done()
+			if _, err := s.AskNode(r.Context(), nid, "connection.close", `{"id":"all"}`); err != nil {
+				errMu.Lock()
+				lastErr = err
+				errMu.Unlock()
+			}
+		}(id)
+	}
+	wg.Wait()
+
+	if len(nodes) > 0 && lastErr != nil && len(nodes) == 1 {
+		writeError(w, lastErr)
+		return
+	}
+
+	_ = s.store.AppendAudit(r.Context(), operator.ID, "connection.close_all", "fleet", "", "closed all connections across fleet")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 

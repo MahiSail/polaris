@@ -452,6 +452,9 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	// Fail2Ban state.
 	mux.HandleFunc("GET /api/v1/security/overview", s.securityOverview)
 	mux.HandleFunc("GET /api/v1/nodes/{id}/connections", s.nodeConnections)
+	mux.HandleFunc("DELETE /api/v1/nodes/{id}/connections/{conn_id}", s.closeNodeConnection)
+	mux.HandleFunc("DELETE /api/v1/nodes/{id}/connections", s.closeAllConnections)
+	mux.HandleFunc("DELETE /api/v1/connections", s.closeAllConnections)
 	mux.HandleFunc("GET /api/v1/events/connections", s.browserConnectionsStream)
 	mux.HandleFunc("GET /api/v1/events/live", s.browserLiveStream)
 	mux.HandleFunc("GET /api/v1/devices/connections", s.listDeviceConnections)

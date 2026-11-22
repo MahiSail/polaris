@@ -10,12 +10,45 @@ const props = defineProps({
   pageSize: { type: Number, default: 10 },
   rowKey: { type: String, default: 'id' },
   emptyText: { type: String, default: '暂无数据' },
+  defaultSort: { type: Object, default: () => ({}) },
 })
+
+const emit = defineEmits(['sort-change'])
 
 const page = ref(1)
 const size = ref(props.pageSize)
 const total = computed(() => props.rows.length)
-const pageRows = computed(() => props.rows.slice((page.value - 1) * size.value, page.value * size.value))
+
+const sortProp = ref(props.defaultSort?.prop || '')
+const sortOrder = ref(props.defaultSort?.order || '')
+
+function handleSortChange({ column, prop, order }) {
+  sortProp.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  emit('sort-change', { column, prop, order })
+}
+
+const sortedRows = computed(() => {
+  if (!sortProp.value || !sortOrder.value) return props.rows
+  const multiplier = sortOrder.value === 'descending' ? -1 : 1
+  const prop = sortProp.value
+  return [...props.rows].sort((a, b) => {
+    const va = a[prop]
+    const vb = b[prop]
+    if (va === vb) return 0
+    if (va === null || va === undefined || va === '') return 1
+    if (vb === null || vb === undefined || vb === '') return -1
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return (va - vb) * multiplier
+    }
+    const sa = String(va)
+    const sb = String(vb)
+    return sa.localeCompare(sb, 'zh-CN', { numeric: true, sensitivity: 'base' }) * multiplier
+  })
+})
+
+const pageRows = computed(() => sortedRows.value.slice((page.value - 1) * size.value, page.value * size.value))
 // While the first load is still in flight the table is empty, and the mask is
 // translucent — leaving the empty text underneath made it look as if the list
 // had already been fetched and really was empty.
@@ -31,7 +64,14 @@ watch(total, () => {
 <template>
   <div class="paged-table">
     <div class="paged-table__body">
-      <el-table v-loading="props.loading" :data="pageRows" :row-key="props.rowKey" :empty-text="emptyText">
+      <el-table
+        v-loading="props.loading"
+        :data="pageRows"
+        :row-key="props.rowKey"
+        :empty-text="emptyText"
+        :default-sort="props.defaultSort"
+        @sort-change="handleSortChange"
+      >
         <slot />
       </el-table>
     </div>

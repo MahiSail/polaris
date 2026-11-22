@@ -1,10 +1,12 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import { writeClipboard } from '../../clipboard'
 import { formatBytes, formatDateTime, includesText } from '../../format'
 import { connectionSnapshots, mergeChainedConnections, subscribeConnections } from '../../connections'
+import { del } from '../../api'
+import { isShareMode } from '../../share'
 import MPage from '../components/MPage.vue'
 import MPicker from '../components/MPicker.vue'
 import MActionSheet from '../components/MActionSheet.vue'
@@ -15,6 +17,7 @@ const loading = ref(true)
 const selectedNode = ref('')
 const selectedOutbound = ref('')
 const keyword = ref('')
+const closingAll = ref(false)
 // 连接可能有上千条，全画出来手机会卡住；先给一页，看得完再要下一页。
 const visible = ref(30)
 let stopConnections
@@ -135,6 +138,9 @@ const connActions = computed(() => {
   if (keyword.value || selectedNode.value || selectedOutbound.value) {
     list.push({ key: 'clear-filters', label: '清除筛选条件' })
   }
+  if (!isShareMode && row.node_id && row.id) {
+    list.push({ key: 'close-conn', label: '关闭此连接', danger: true })
+  }
   return list
 })
 
@@ -152,6 +158,71 @@ async function runConnAction(key) {
     keyword.value = ''
     selectedNode.value = ''
     selectedOutbound.value = ''
+  } else if (key === 'close-conn') {
+    try {
+      await ElMessageBox.confirm(`确定要关闭目标为 ${row.target || '该连接'} 的连接吗？`, '提示', {
+        confirmButtonText: '确定关闭',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      })
+    } catch {
+      return
+    }
+    try {
+      await del(`/nodes/${encodeURIComponent(row.node_id)}/connections/${encodeURIComponent(row.id)}`)
+      ElMessage.success('连接已关闭')
+      const snapshot = connectionSnapshots.value.get(row.node_id)
+      if (snapshot && Array.isArray(snapshot.connections)) {
+        snapshot.connections = snapshot.connections.filter((c) => c.id !== row.id)
+        connectionSnapshots.value = new Map(connectionSnapshots.value)
+      }
+      detailOpen.value = false
+    } catch (err) {
+      ElMessage.error(err.message || '关闭连接失败')
+    }
+  }
+}
+
+async function handleCloseAll() {
+  const nodeName = appState.nodes.find((n) => n.id === selectedNode.value)?.name
+  const targetDesc = selectedNode.value
+    ? `当前服务器（${nodeName || selectedNode.value}）的所有活动连接`
+    : '所有服务器上的全部活动连接'
+  try {
+    await ElMessageBox.confirm(
+      `确定要关闭${targetDesc}吗？这会强制切断正在进行的网络会话。`,
+      '警告',
+      {
+        confirmButtonText: '确定全部关闭',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
+    )
+  } catch {
+    return
+  }
+  closingAll.value = true
+  try {
+    const path = selectedNode.value
+      ? `/nodes/${encodeURIComponent(selectedNode.value)}/connections`
+      : '/connections'
+    await del(path)
+    ElMessage.success('已请求关闭连接')
+    if (selectedNode.value) {
+      const snap = connectionSnapshots.value.get(selectedNode.value)
+      if (snap) snap.connections = []
+    } else {
+      for (const snap of connectionSnapshots.value.values()) {
+        snap.connections = []
+      }
+    }
+    connectionSnapshots.value = new Map(connectionSnapshots.value)
+  } catch (err) {
+    ElMessage.error(err.message || '关闭连接失败')
+  } finally {
+    closingAll.value = false
   }
 }
 
@@ -196,7 +267,18 @@ onBeforeUnmount(() => {
         <MPicker v-model="selectedOutbound" chip :options="outboundOptions" title="按出口筛选" placeholder="全部出口" />
       </div>
     </div>
-    <div class="m-count">{{ filteredRows.length }} 条 · 采集于 {{ formatDateTime(collectedAt, '暂无数据') }}</div>
+    <div class="m-count-bar">
+      <div class="m-count">{{ filteredRows.length }} 条 · 采集于 {{ formatDateTime(collectedAt, '暂无数据') }}</div>
+      <button
+        v-if="!isShareMode && filteredRows.length > 0"
+        type="button"
+        class="m-close-all-link"
+        :disabled="closingAll"
+        @click="handleCloseAll"
+      >
+        {{ selectedNode ? '关闭此服务器连接' : '关闭所有连接' }}
+      </button>
+    </div>
 
     <article
       v-for="row in shown"
@@ -477,5 +559,26 @@ onBeforeUnmount(() => {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--sb-muted);
+}
+.m-count-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.m-count-bar .m-count {
+  margin-bottom: 0;
+}
+.m-close-all-link {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  color: var(--el-color-danger, #f56c6c);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.m-close-all-link:disabled {
+  opacity: 0.5;
 }
 </style>

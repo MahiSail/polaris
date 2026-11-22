@@ -137,6 +137,8 @@ func executeTask(ctx context.Context, task Task, options TaskOptions) TaskResult
 		return configurePingProbes(task, options.DataDir)
 	case "dns.update":
 		return updateDNS(ctx, task, options.DataDir)
+	case "connection.close":
+		return closeConnection(ctx, task)
 	default:
 		return TaskResult{Status: "failed", Summary: "task kind is not implemented by this agent build"}
 	}
@@ -1633,3 +1635,31 @@ func commandSummary(name string, output []byte, err error) string {
 	}
 	return fmt.Sprintf("%s: %v: %s", name, err, text)
 }
+
+func closeConnection(ctx context.Context, task Task) TaskResult {
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if task.Payload != "" {
+		_ = json.Unmarshal([]byte(task.Payload), &payload)
+	}
+	targetURL := clashAPIBase + "/connections"
+	if payload.ID != "" && payload.ID != "all" {
+		targetURL += "/" + url.PathEscape(payload.ID)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, targetURL, nil)
+	if err != nil {
+		return TaskResult{Status: "failed", Summary: "创建关闭连接请求失败: " + err.Error()}
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return TaskResult{Status: "failed", Summary: "关闭连接失败: " + err.Error()}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusNoContent {
+		return TaskResult{Status: "failed", Summary: fmt.Sprintf("sing-box 返回错误: %d", resp.StatusCode)}
+	}
+	return TaskResult{Status: "succeeded", Summary: "连接已关闭"}
+}
+
