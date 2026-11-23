@@ -22,7 +22,7 @@ export function friendlyError(message) {
     'invalid request': '提交的内容不完整或格式不正确，请检查后重试',
   }
   if (messages[message]) return messages[message]
-  if (typeof message === 'string' && /[\u3400-\u9fff]/.test(message)) return message
+  if (typeof message === 'string' && message.trim()) return message.trim()
   return '操作未完成，请检查填写内容和服务器状态后重试'
 }
 

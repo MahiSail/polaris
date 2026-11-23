@@ -373,12 +373,12 @@ func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privat
 			return oldIP, "", fmt.Errorf("delete old public IP (%s): %w", existing.ID, err)
 		}
 
-		// Wait briefly for unassignment to propagate in OCI networking
-		for i := 0; i < 10; i++ {
+		// Wait for unassignment to propagate in OCI networking (up to 20 seconds)
+		for i := 0; i < 20; i++ {
 			select {
 			case <-ctx.Done():
 				return oldIP, "", ctx.Err()
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(1 * time.Second):
 			}
 			curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
 			if curr == nil {
