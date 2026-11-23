@@ -61,6 +61,18 @@
           </svg>
           配置
         </button>
+        <button
+          v-if="canWrite && isOracleNode"
+          type="button"
+          class="action-btn neu-track neu-press"
+          title="通过 Oracle Cloud API 一键更换公网 IP"
+          @click="$emit('change-oci-ip', node)"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+          </svg>
+          更换 IP
+        </button>
         <button v-if="canWrite && node.online" type="button" class="action-btn neu-track neu-press" @click="$emit('probe', node)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5">
             <circle cx="12" cy="12" r="10" />
@@ -388,11 +400,17 @@ const props = defineProps({
   live: { type: Object, default: null },
   singBoxLatest: { type: Object, default: () => ({}) },
 })
-defineEmits(['back', 'edit', 'probe', 'upgrade-agent', 'upgrade-singbox'])
+defineEmits(['back', 'edit', 'probe', 'upgrade-agent', 'upgrade-singbox', 'change-oci-ip'])
 
 const appState = inject('appState', null)
 const isAdmin = inject('isAdmin', { value: false })
 const canWrite = inject('canWrite', ref(false))
+
+const isOracleNode = computed(() =>
+  (props.node?.provider && props.node.provider.toLowerCase().includes('oracle')) ||
+  Boolean(props.node?.oci_vnic_id) ||
+  Boolean(props.node?.oci_region),
+)
 
 const agentUpdateAvailable = computed(() =>
   isNewerVersion(appState?.systemUpdate?.latest_version, props.node.agent_version),

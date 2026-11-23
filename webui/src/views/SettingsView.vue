@@ -13,7 +13,7 @@ import {
   TrendCharts,
   Upload,
 } from '@element-plus/icons-vue'
-import { api, post, put, uploadFile } from '../api'
+import { api, del, post, put, uploadFile } from '../api'
 import { formatDateTime, includesText } from '../format'
 import PageHeader from '../components/PageHeader.vue'
 import PagedTable from '../components/PagedTable.vue'
@@ -223,6 +223,7 @@ async function load() {
       isAdmin.value ? api('/operators').catch(() => ({ operators: [] })) : Promise.resolve({ operators: [] }),
       isAdmin.value ? api('/alerts/settings').catch(() => ({ settings: null })) : Promise.resolve({ settings: null }),
       loadIPDBStatus(),
+      loadOCIAccounts(),
     ])
     operators.value = operatorResult.operators || []
     if (alertsResult?.settings) {
@@ -335,6 +336,192 @@ async function disableOperatorTOTP(row) {
   await post(`/operators/${row.id}/totp/reset`, {})
   ElMessage.success('两步验证已关闭')
   await load()
+}
+
+const ociAccounts = ref([])
+const ociLoading = ref(false)
+const ociAccountDialog = ref(false)
+const ociAccountForm = reactive({
+  id: '',
+  name: '',
+  tenancy_id: '',
+  user_id: '',
+  fingerprint: '',
+  region: 'ap-tokyo-1',
+  private_key: '',
+  has_private_key: false,
+  private_key_masked: '',
+  is_default: false,
+  enabled: true,
+})
+const ociAccountSaving = ref(false)
+const ociAccountTesting = ref(false)
+
+async function loadOCIAccounts() {
+  if (!isAdmin.value) return
+  ociLoading.value = true
+  try {
+    const res = await api('/oci/accounts')
+    ociAccounts.value = (res.accounts || []).map((acc) => ({ ...acc, _testing: false }))
+  } catch {
+    // ignore initial load error
+  } finally {
+    ociLoading.value = false
+  }
+}
+
+function openCreateOCIAccount() {
+  Object.assign(ociAccountForm, {
+    id: '',
+    name: '',
+    tenancy_id: '',
+    user_id: '',
+    fingerprint: '',
+    region: 'ap-tokyo-1',
+    private_key: '',
+    has_private_key: false,
+    private_key_masked: '',
+    is_default: ociAccounts.value.length === 0,
+    enabled: true,
+  })
+  ociAccountDialog.value = true
+}
+
+function openEditOCIAccount(account) {
+  Object.assign(ociAccountForm, {
+    id: account.id,
+    name: account.name,
+    tenancy_id: account.tenancy_id,
+    user_id: account.user_id,
+    fingerprint: account.fingerprint,
+    region: account.region,
+    private_key: '',
+    has_private_key: !!account.has_private_key,
+    private_key_masked: account.private_key_masked || '',
+    is_default: !!account.is_default,
+    enabled: !!account.enabled,
+  })
+  ociAccountDialog.value = true
+}
+
+async function saveOCIAccount() {
+  if (!ociAccountForm.name.trim()) return ElMessage.warning('请输入账号备注名称')
+  if (!ociAccountForm.tenancy_id.trim()) return ElMessage.warning('请输入租户 OCID')
+  if (!ociAccountForm.user_id.trim()) return ElMessage.warning('请输入用户 OCID')
+  if (!ociAccountForm.fingerprint.trim()) return ElMessage.warning('请输入公钥指纹')
+  if (!ociAccountForm.region.trim()) return ElMessage.warning('请输入默认区域')
+  if (!ociAccountForm.id && !ociAccountForm.private_key.trim()) {
+    return ElMessage.warning('新建账号必须提供 API RSA 私钥')
+  }
+
+  ociAccountSaving.value = true
+  try {
+    const payload = {
+      name: ociAccountForm.name.trim(),
+      tenancy_id: ociAccountForm.tenancy_id.trim(),
+      user_id: ociAccountForm.user_id.trim(),
+      fingerprint: ociAccountForm.fingerprint.trim(),
+      region: ociAccountForm.region.trim(),
+      private_key: ociAccountForm.private_key,
+      is_default: ociAccountForm.is_default,
+      enabled: ociAccountForm.enabled,
+    }
+    if (ociAccountForm.id) {
+      await put(`/oci/accounts/${ociAccountForm.id}`, payload)
+      ElMessage.success('OCI 账号已更新')
+    } else {
+      await post('/oci/accounts', payload)
+      ElMessage.success('OCI 账号已创建')
+    }
+    ociAccountDialog.value = false
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    ociAccountSaving.value = false
+  }
+}
+
+async function setDefaultAccount(row) {
+  try {
+    await post(`/oci/accounts/${row.id}/default`, {})
+    ElMessage.success(`已将「${row.name}」设为默认 OCI 账号`)
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '设置默认账号失败')
+  }
+}
+
+async function deleteAccount(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 OCI 账号「${row.name}」吗？绑定该账号的节点将无法更换 IP。`,
+      '删除账号',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await del(`/oci/accounts/${row.id}`)
+    ElMessage.success('账号已删除')
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '删除失败')
+  }
+}
+
+async function testExistingAccount(row) {
+  row._testing = true
+  try {
+    const res = await post(`/oci/accounts/${row.id}/test`, {})
+    ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+  } finally {
+    row._testing = false
+  }
+}
+
+async function testFormAccount() {
+  if (ociAccountForm.id && !ociAccountForm.private_key.trim()) {
+    ociAccountTesting.value = true
+    try {
+      const res = await post(`/oci/accounts/${ociAccountForm.id}/test`, {})
+      ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+    } finally {
+      ociAccountTesting.value = false
+    }
+    return
+  }
+
+  if (
+    !ociAccountForm.tenancy_id.trim()
+    || !ociAccountForm.user_id.trim()
+    || !ociAccountForm.fingerprint.trim()
+    || !ociAccountForm.region.trim()
+    || !ociAccountForm.private_key.trim()
+  ) {
+    return ElMessage.warning('请填写完整的租户、用户、指纹、区域和私钥后测试')
+  }
+
+  ociAccountTesting.value = true
+  try {
+    const res = await post('/oci/accounts/test', {
+      tenancy_id: ociAccountForm.tenancy_id.trim(),
+      user_id: ociAccountForm.user_id.trim(),
+      fingerprint: ociAccountForm.fingerprint.trim(),
+      region: ociAccountForm.region.trim(),
+      private_key: ociAccountForm.private_key,
+    })
+    ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+  } finally {
+    ociAccountTesting.value = false
+  }
 }
 
 onMounted(load)
@@ -696,6 +883,62 @@ onMounted(load)
               </section>
             </div>
           </el-tab-pane>
+
+          <el-tab-pane v-if="isAdmin" label="Oracle Cloud" name="oci">
+            <div class="tools-scroll" v-loading="ociLoading">
+              <section class="notify-section">
+                <div class="notify-section__head" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                  <div>
+                    <h3>Oracle Cloud (OCI) 多账号凭据管理</h3>
+                    <p>管理多个 Oracle Cloud 租户账号与 API 凭据。节点可绑定指定账号或继承默认账号，执行一键更换公网 IP 与 DDNS 自动联动。</p>
+                  </div>
+                  <div>
+                    <el-button type="primary" :icon="Plus" @click="openCreateOCIAccount">添加 OCI 账号</el-button>
+                  </div>
+                </div>
+                <div class="notify-card" style="padding: 0; overflow: hidden;">
+                  <el-table :data="ociAccounts" empty-text="尚未添加任何 OCI 账号" style="width: 100%">
+                    <el-table-column label="账号备注" prop="name" min-width="150">
+                      <template #default="{ row }">
+                        <span style="font-weight: 600;">{{ row.name }}</span>
+                        <el-tag v-if="row.is_default" size="small" type="success" effect="plain" style="margin-left: 8px;">默认</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="默认区域" prop="region" width="140" />
+                    <el-table-column label="租户 OCID" min-width="180">
+                      <template #default="{ row }">
+                        <span class="mono" style="font-size: 12px; opacity: 0.85;" :title="row.tenancy_id">
+                          {{ row.tenancy_id ? (row.tenancy_id.length > 28 ? row.tenancy_id.substring(0, 16) + '...' + row.tenancy_id.slice(-8) : row.tenancy_id) : '—' }}
+                        </span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="公钥指纹" min-width="150">
+                      <template #default="{ row }">
+                        <span class="mono" style="font-size: 12px; opacity: 0.85;" :title="row.fingerprint">
+                          {{ row.fingerprint }}
+                        </span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="状态" width="100">
+                      <template #default="{ row }">
+                        <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                          {{ row.enabled ? '已启用' : '已停用' }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="230" class-name="action-column">
+                      <template #default="{ row }">
+                        <el-button link :loading="row._testing" @click="testExistingAccount(row)">测试</el-button>
+                        <el-button v-if="!row.is_default" link @click="setDefaultAccount(row)">设为默认</el-button>
+                        <el-button link @click="openEditOCIAccount(row)">编辑</el-button>
+                        <el-button link type="danger" @click="deleteAccount(row)">删除</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </section>
+            </div>
+          </el-tab-pane>
         </el-tabs>
         <section v-else class="security-card">
           <div>
@@ -707,6 +950,82 @@ onMounted(load)
     </main>
 
     <el-dialog :model-value="dialog === 'operator'" title="新建管理账户" width="min(540px, 94vw)" @close="dialog = ''"><el-form label-position="top"><el-form-item label="用户名"><el-input v-model="operator.username" placeholder="3 至 64 位，可使用字母、数字、点、下划线和短横线" /></el-form-item><el-form-item label="初始密码"><el-input v-model="operator.password" type="password" show-password /><div class="form-tip">用户首次登录时必须修改此密码。</div></el-form-item><el-form-item label="权限"><el-select v-model="operator.role" style="width: 100%"><el-option label="管理员" value="admin" /><el-option label="运维人员" value="operator" /><el-option label="只读用户" value="viewer" /></el-select></el-form-item></el-form><template #footer><el-button @click="dialog = ''">取消</el-button><el-button type="primary" :disabled="!operator.username || operator.password.length < 12" @click="saveOperator">创建</el-button></template></el-dialog>
+
+    <el-dialog
+      v-model="ociAccountDialog"
+      :title="ociAccountForm.id ? '编辑 OCI 账号' : '添加 OCI 账号'"
+      width="min(640px, 94vw)"
+      destroy-on-close
+    >
+      <el-form label-position="top">
+        <el-row :gutter="14">
+          <el-col :xs="24" :sm="16">
+            <el-form-item label="账号备注名称" required>
+              <el-input v-model="ociAccountForm.name" placeholder="例如: 个人主力号 / 团队测试号" clearable />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-form-item label="默认账号">
+              <el-switch v-model="ociAccountForm.is_default" active-text="设为默认" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="14">
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="租户 OCID (Tenancy ID)" required>
+              <el-input v-model="ociAccountForm.tenancy_id" placeholder="ocid1.tenancy.oc1..aaaa..." clearable />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="用户 OCID (User ID)" required>
+              <el-input v-model="ociAccountForm.user_id" placeholder="ocid1.user.oc1..aaaa..." clearable />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="14">
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="公钥指纹 (Fingerprint)" required>
+              <el-input v-model="ociAccountForm.fingerprint" placeholder="例如: 20:3b:97:13:55:1c:..." clearable />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="默认区域 (Region)" required>
+              <el-input v-model="ociAccountForm.region" placeholder="例如: ap-tokyo-1, us-ashburn-1" clearable />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="API RSA 私钥 (PEM 格式)" :required="!ociAccountForm.id">
+          <div v-if="ociAccountForm.has_private_key && !ociAccountForm.private_key" style="margin-bottom: 8px; font-size: 13px;">
+            <el-tag type="success" size="small">已配置私钥</el-tag>
+            <span class="mono" style="margin-left: 8px; opacity: 0.8; font-size: 12px;">{{ ociAccountForm.private_key_masked }}</span>
+            <span style="margin-left: 8px; opacity: 0.6; font-size: 12px;">（如需更新，请在下方直接粘贴新私钥；留空则保持现有私钥不变）</span>
+          </div>
+          <el-input
+            v-model="ociAccountForm.private_key"
+            type="textarea"
+            :rows="4"
+            placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+            class="mono"
+          />
+        </el-form-item>
+
+        <el-form-item label="账号状态">
+          <el-switch v-model="ociAccountForm.enabled" active-text="启用此账号" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <el-button :icon="Connection" :loading="ociAccountTesting" @click="testFormAccount">连通性测试</el-button>
+          <div>
+            <el-button @click="ociAccountDialog = false">取消</el-button>
+            <el-button type="primary" :loading="ociAccountSaving" @click="saveOCIAccount">保存账号</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

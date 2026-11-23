@@ -144,6 +144,11 @@ type Node struct {
 	ProviderURL    string            `json:"provider_url"`
 	TrafficPlan    string            `json:"traffic_plan"`
 	Bandwidth      string            `json:"bandwidth"`
+	OCIAccountID     string          `json:"oci_account_id,omitempty"`
+	OCIVnicID        string          `json:"oci_vnic_id,omitempty"`
+	OCIPrivateIPID   string          `json:"oci_private_ip_id,omitempty"`
+	OCICompartmentID string          `json:"oci_compartment_id,omitempty"`
+	OCIRegion        string          `json:"oci_region,omitempty"`
 }
 
 type AgentStatus struct {
@@ -1212,7 +1217,8 @@ const nodeSelectColumns = `id, name, client_address, agent_version, os, COALESCE
 	COALESCE(ddns_record_ids, '[]'), COALESCE(ddns_domains, '[]'), COALESCE(ddns_bind_ip, ''), COALESCE(ddns_record_ips, '{}'),
 	COALESCE(last_observed_ip, ''), COALESCE(ip_addresses, '[]'),
 	COALESCE(ip_aliases, '{}'), COALESCE(ip_mappings, '{}'), COALESCE(expires_on, ''), COALESCE(price, ''), COALESCE(price_period, ''),
-	COALESCE(currency, ''), COALESCE(provider, ''), COALESCE(provider_url, ''), COALESCE(traffic_plan, ''), COALESCE(bandwidth, '')`
+	COALESCE(currency, ''), COALESCE(provider, ''), COALESCE(provider_url, ''), COALESCE(traffic_plan, ''), COALESCE(bandwidth, ''),
+	COALESCE(oci_account_id, ''), COALESCE(oci_vnic_id, ''), COALESCE(oci_private_ip_id, ''), COALESCE(oci_compartment_id, ''), COALESCE(oci_region, '')`
 
 func scanNodeRow(scan func(dest ...any) error, thresholdUnix int64) (Node, error) {
 	var node Node
@@ -1226,6 +1232,7 @@ func scanNodeRow(scan func(dest ...any) error, thresholdUnix int64) (Node, error
 		&node.LastObservedIP, &rawIPs,
 		&rawAliases, &rawMappings, &node.ExpiresOn, &node.Price, &node.PricePeriod,
 		&node.Currency, &node.Provider, &node.ProviderURL, &node.TrafficPlan, &node.Bandwidth,
+		&node.OCIAccountID, &node.OCIVnicID, &node.OCIPrivateIPID, &node.OCICompartmentID, &node.OCIRegion,
 	); err != nil {
 		return Node{}, err
 	}
@@ -2950,6 +2957,29 @@ CREATE TABLE IF NOT EXISTS alert_settings (
   updated_at INTEGER NOT NULL
 );
 INSERT OR IGNORE INTO alert_settings (id, updated_at) VALUES (1, unixepoch());
+CREATE TABLE IF NOT EXISTS oci_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  tenancy_id TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  fingerprint TEXT NOT NULL DEFAULT '',
+  region TEXT NOT NULL DEFAULT '',
+  private_key_encrypted BLOB,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO oci_settings (id, updated_at) VALUES (1, unixepoch());
+CREATE TABLE IF NOT EXISTS oci_accounts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  tenancy_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  region TEXT NOT NULL,
+  private_key_encrypted BLOB NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS ddns_change_records (
   id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
@@ -3006,6 +3036,9 @@ CREATE INDEX IF NOT EXISTS idx_ddns_change_records_domain ON ddns_change_records
 		"expires_on TEXT NOT NULL DEFAULT ''", "price TEXT NOT NULL DEFAULT ''", "price_period TEXT NOT NULL DEFAULT ''",
 		"currency TEXT NOT NULL DEFAULT ''", "provider TEXT NOT NULL DEFAULT ''", "provider_url TEXT NOT NULL DEFAULT ''",
 		"traffic_plan TEXT NOT NULL DEFAULT ''", "bandwidth TEXT NOT NULL DEFAULT ''",
+		"oci_account_id TEXT NOT NULL DEFAULT ''",
+		"oci_vnic_id TEXT NOT NULL DEFAULT ''", "oci_private_ip_id TEXT NOT NULL DEFAULT ''",
+		"oci_compartment_id TEXT NOT NULL DEFAULT ''", "oci_region TEXT NOT NULL DEFAULT ''",
 	} {
 		if err := s.addNodeColumn(ctx, column); err != nil {
 			return err

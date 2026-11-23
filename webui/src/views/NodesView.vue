@@ -1,6 +1,6 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ElLoading, ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import {
   BellFilled,
   Check,
@@ -168,14 +168,25 @@ const editForm = ref({
   ddns_record_ips: {},
   ip_aliases: {},
   expires_on: '', price: '', price_period: '', currency: 'USD', provider: '', provider_url: '', traffic_value: '', traffic_unit: 'MB', bandwidth: '', bandwidth_value: '', bandwidth_unit: 'Gbps',
+  oci_account_id: '', oci_vnic_id: '', oci_private_ip_id: '', oci_compartment_id: '', oci_region: '',
   custom_probes: [],
 })
+const ociAccounts = ref([])
+async function loadOCIAccounts() {
+  try {
+    const res = await api('/oci/accounts').catch(() => ({ accounts: [] }))
+    ociAccounts.value = res.accounts || []
+  } catch {
+    ociAccounts.value = []
+  }
+}
 const publicProbes = computed(() => pingTasks.value.filter((t) => t.auto_join !== false))
 const editTab = ref('basic')
 const editTabs = computed(() => [
   { key: 'basic', label: '基本信息' },
   { key: 'plan', label: '套餐与到期' },
   { key: 'network', label: '网络与 DDNS', badge: editNodeAllIPs.value.length || '' },
+  { key: 'oci', label: 'Oracle Cloud' },
   { key: 'probes', label: '探针配置', badge: (editForm.value.custom_probes || []).filter((p) => p.name || p.target).length || '' },
 ])
 const editHeader = computed(() => buildDialogHeader(editNode.value, editForm.value.name))
@@ -511,6 +522,7 @@ async function load(silent = false, forceRefresh = false) {
   if (loadSystemUpdate) loadSystemUpdate().catch(() => {})
   loadSingBoxLatest(forceRefresh).catch(() => {})
   loadPingTasks().catch(() => {})
+  loadOCIAccounts().catch(() => {})
 }
 
 function getResourcePercent(used, total) {
@@ -841,6 +853,11 @@ async function openEdit(node, initialTab = 'basic') {
     ip_aliases: { ...(node.ip_aliases || {}) },
     expires_on: node.expires_on || '', price: node.price || '', price_period: node.price_period || '', currency: node.currency || 'USD',
     provider: node.provider || '', provider_url: node.provider_url || '',
+    oci_account_id: node.oci_account_id || '',
+    oci_vnic_id: node.oci_vnic_id || '',
+    oci_private_ip_id: node.oci_private_ip_id || '',
+    oci_compartment_id: node.oci_compartment_id || '',
+    oci_region: node.oci_region || '',
     ...parseTrafficPlan(node.traffic_plan),
     ...parseBandwidth(node.bandwidth),
     bandwidth: node.bandwidth || '',
@@ -848,6 +865,7 @@ async function openEdit(node, initialTab = 'basic') {
   }
   editTab.value = typeof initialTab === 'string' && initialTab ? initialTab : 'basic'
   loadCloudflareRecords()
+  loadOCIAccounts().catch(() => {})
   loadPingTasks().then(() => {
     if (editNode.value?.id === node.id) {
       editForm.value.custom_probes = getCustomProbesForNode(node.id)
@@ -897,6 +915,13 @@ async function saveEdit() {
       bandwidth: editForm.value.bandwidth_value ? `${editForm.value.bandwidth_value} ${editForm.value.bandwidth_unit}` : '',
       custom_probes: customProbes,
     })
+    await put(`/nodes/${editNode.value.id}/oci`, {
+      account_id: (editForm.value.oci_account_id || '').trim(),
+      vnic_id: (editForm.value.oci_vnic_id || '').trim(),
+      private_ip_id: (editForm.value.oci_private_ip_id || '').trim(),
+      compartment_id: (editForm.value.oci_compartment_id || '').trim(),
+      region: (editForm.value.oci_region || '').trim(),
+    })
     ElMessage.success('服务器信息已保存')
     editDialog.value = false
     await load()
@@ -904,6 +929,53 @@ async function saveEdit() {
     ElMessage.error(error instanceof Error ? error.message : '服务器信息保存失败')
   } finally {
     editSaving.value = false
+  }
+}
+
+async function promptChangeOciIP(node) {
+  if (!node) return
+  const currentIP = node.last_observed_ip || node.client_address || '未知'
+  try {
+    await ElMessageBox.confirm(
+      `确定要为服务器「${node.name}」更换公网 IP 吗？\n当前公网 IP: ${currentIP}\n\n注意：更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。`,
+      '更换公网 IP (Oracle Cloud)',
+      {
+        confirmButtonText: '确认更换',
+        cancelButtonText: '取消',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+      },
+    )
+  } catch {
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: `正在通过 Oracle Cloud API 为「${node.name}」更换公网 IP 并同步...`,
+    background: 'rgba(0, 0, 0, 0.7)',
+  })
+
+  try {
+    const res = await post(`/nodes/${node.id}/oci/change-ip`, {})
+    loadingInstance.close()
+    ElNotification({
+      title: '更换公网 IP 成功',
+      message: res.message || `IP 已成功从 ${res.old_ip} 切换为 ${res.new_ip}`,
+      type: 'success',
+      duration: 6000,
+    })
+    if (editDialog.value && editNode.value?.id === node.id) {
+      editDialog.value = false
+    }
+    await load(true)
+  } catch (err) {
+    loadingInstance.close()
+    ElMessageBox.alert(
+      err instanceof Error ? err.message : '更换公网 IP 失败，请检查 OCI 全局配置与该节点的网络设置。',
+      '更换公网 IP 失败',
+      { type: 'error' },
+    )
   }
 }
 
@@ -1019,6 +1091,7 @@ function handleCardCommand(node, command) {
   else if (command === 'revoke') revoke(node)
   else if (command === 'syncDDNS') triggerManualDDNS(node)
   else if (command === 'ddnsHistory') openDDNSHistory(node)
+  else if (command === 'changeOciIP') promptChangeOciIP(node)
 }
 
 function onAuthSuccess() {
@@ -1110,6 +1183,7 @@ onBeforeUnmount(() => {
         @probe="openNetworkProbe"
         @upgrade-agent="upgradeAgent"
         @upgrade-singbox="upgradeSingBox"
+        @change-oci-ip="promptChangeOciIP"
       />
 
       <!-- 主视图：概览 + 工具栏 + 服务器网格/列表 -->
@@ -1541,6 +1615,51 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </template>
+          </div>
+        </section>
+
+        <section v-show="editTab === 'oci'" class="dlg-pane">
+          <div class="dlg-block">
+            <div class="dlg-block-head">
+              <div>
+                <div class="dlg-block-title">Oracle Cloud (OCI) 网络配置</div>
+                <div class="dlg-help">配置该服务器在 Oracle Cloud 上的资源标识。系统设置中启用 OCI 后，即可一键更换公网 IP。</div>
+              </div>
+            </div>
+            <div style="margin-top: 12px;">
+              <el-form-item label="绑定 OCI 账号">
+                <el-select v-model="editForm.oci_account_id" placeholder="选择关联的 OCI 账号" clearable style="width: 100%;">
+                  <el-option label="默认账号（自动继承系统设置中的默认 OCI 账号）" value="" />
+                  <el-option
+                    v-for="acc in ociAccounts"
+                    :key="acc.id"
+                    :label="acc.name + (acc.is_default ? ' (默认)' : '') + ' · ' + acc.region"
+                    :value="acc.id"
+                  />
+                </el-select>
+                <div class="dlg-hint" style="font-size: 12px; opacity: 0.7; margin-top: 4px;">指定该节点调用的 Oracle Cloud API 凭据。留空则自动使用系统默认账号。</div>
+              </el-form-item>
+              <el-form-item label="VNIC OCID (虚拟网卡)">
+                <el-input v-model="editForm.oci_vnic_id" placeholder="ocid1.vnic.oc1..aaaa..." clearable />
+                <div class="dlg-hint" style="font-size: 12px; opacity: 0.7; margin-top: 4px;">推荐填写。配置 VNIC 后，系统换 IP 时可自动解析区间与主私有 IP。</div>
+              </el-form-item>
+              <el-form-item label="主私有 IP OCID (Private IP OCID)">
+                <el-input v-model="editForm.oci_private_ip_id" placeholder="可选，留空将自动从 VNIC 解析" clearable />
+              </el-form-item>
+              <el-form-item label="区间 OCID (Compartment OCID)">
+                <el-input v-model="editForm.oci_compartment_id" placeholder="可选，留空将自动从 VNIC 解析" clearable />
+              </el-form-item>
+              <el-form-item label="区域覆盖 (Region Override)">
+                <el-input v-model="editForm.oci_region" placeholder="例如: ap-tokyo-1（留空则继承系统设置中的全局默认区域）" clearable />
+              </el-form-item>
+              <div v-if="editNode" style="margin-top: 16px; padding: 12px 14px; background: var(--sb-surface-2); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 500;">快捷更换 IP</div>
+                  <div style="font-size: 12px; opacity: 0.7;">当前公网 IP: {{ editNode.last_observed_ip || editNode.client_address || '—' }}</div>
+                </div>
+                <el-button type="warning" :icon="Refresh" @click="promptChangeOciIP(editNode)">立即一键更换 IP</el-button>
+              </div>
+            </div>
           </div>
         </section>
 

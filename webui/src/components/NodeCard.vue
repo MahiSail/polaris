@@ -46,6 +46,7 @@
               <el-dropdown-item v-if="node.online" command="networkProbe"><el-icon><Connection /></el-icon>线路排查</el-dropdown-item>
               <el-dropdown-item v-if="node.ddns_enabled" command="syncDDNS"><el-icon><Refresh /></el-icon>同步 DDNS</el-dropdown-item>
               <el-dropdown-item v-if="node.ddns_enabled" command="ddnsHistory"><el-icon><Clock /></el-icon>DDNS 变更记录</el-dropdown-item>
+              <el-dropdown-item v-if="isOracleNode" command="changeOciIP"><el-icon><Refresh /></el-icon>更换公网 IP</el-dropdown-item>
               <el-dropdown-item v-if="isAdmin && singBoxUpdateAvailable" command="upgradeSingBox"><el-icon><Top /></el-icon>升级 sing-box</el-dropdown-item>
               <el-dropdown-item command="revoke" divided class="danger-item"><el-icon><RemoveFilled /></el-icon>移除</el-dropdown-item>
             </el-dropdown-menu>
@@ -435,6 +436,12 @@ const appState = inject('appState', null)
 const isAdmin = inject('isAdmin', { value: false })
 
 const canUpgrade = computed(() => props.canManage && Boolean(isAdmin?.value))
+
+const isOracleNode = computed(() =>
+  (props.node?.provider && props.node.provider.toLowerCase().includes('oracle')) ||
+  Boolean(props.node?.oci_vnic_id) ||
+  Boolean(props.node?.oci_region),
+)
 
 const agentUpdateAvailable = computed(() =>
   isNewerVersion(appState?.systemUpdate?.latest_version, props.node.agent_version),
