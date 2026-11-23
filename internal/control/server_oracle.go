@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -374,15 +375,10 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 
 	compartmentID := strings.TrimSpace(node.OCICompartmentID)
 	privateIPID := strings.TrimSpace(node.OCIPrivateIPID)
+	vnicID := strings.TrimSpace(node.OCIVnicID)
 
 	// If identifiers are incomplete, attempt auto-resolution via VNIC ID
-	if compartmentID == "" || privateIPID == "" {
-		vnicID := strings.TrimSpace(node.OCIVnicID)
-		if vnicID == "" {
-			writeError(w, errors.New("未配置该节点的 VNIC OCID 或主私有 IP OCID，无法在 OCI 执行换 IP 操作"))
-			return
-		}
-
+	if vnicID != "" {
 		if compartmentID == "" {
 			vnic, err := client.GetVNIC(r.Context(), vnicID)
 			if err != nil {
@@ -403,10 +399,19 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 
 		// Cache resolved IDs back to node
 		_ = s.store.UpdateNodeOCI(r.Context(), node.ID, node.OCIAccountID, vnicID, privateIPID, compartmentID, cfg.Region)
+	} else if compartmentID == "" || privateIPID == "" {
+		writeError(w, errors.New("未配置该节点的 VNIC OCID 或主私有 IP OCID，无法在 OCI 执行换 IP 操作"))
+		return
 	}
 
+	// Use an independent operation context with a safe timeout (90s).
+	// This ensures that once old IP deletion starts, allocating the replacement IP
+	// and updating node state won't be interrupted midway even if client cancels or disconnects.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer opCancel()
+
 	// Perform atomic IP rotation on OCI
-	oldIP, newIP, err := client.RotateEphemeralIP(r.Context(), compartmentID, privateIPID)
+	oldIP, newIP, err := client.RotateEphemeralIP(opCtx, compartmentID, privateIPID)
 	if err != nil {
 		writeError(w, fmt.Errorf("OCI 更换公网 IP 失败: %w", err))
 		return

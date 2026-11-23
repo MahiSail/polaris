@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -358,23 +359,26 @@ func (c *OCIClient) GetVNIC(ctx context.Context, vnicID string) (*OCIVNIC, error
 
 // RotateEphemeralIP executes the full atomic sequence:
 // 1. Look up existing public IP via getByPrivateIpId.
-// 2. Delete/release the existing IP.
+// 2. Delete/release the existing IP if present.
 // 3. Wait for unassignment to take effect in OCI.
-// 4. Request a brand new Ephemeral Public IP from the Oracle pool, with automatic conflict recovery.
+// 4. Request a brand new Ephemeral Public IP from the Oracle pool, with robust conflict recovery.
 func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privateIPID string) (oldIP, newIP string, err error) {
+	log.Printf("[OCI] Starting ephemeral IP rotation for private IP %s (compartment: %s)", privateIPID, compartmentID)
+
 	existing, err := c.GetPublicIPByPrivateIP(ctx, privateIPID)
 	if err != nil {
-		return "", "", fmt.Errorf("query existing public IP: %w", err)
+		log.Printf("[OCI] Query existing public IP error: %v (continuing to allocation attempt)", err)
 	}
 
 	if existing != nil && existing.ID != "" {
 		oldIP = existing.IPAddress
+		log.Printf("[OCI] Found existing public IP: %s (ID: %s), deleting...", oldIP, existing.ID)
 		if err := c.DeletePublicIP(ctx, existing.ID); err != nil {
 			return oldIP, "", fmt.Errorf("delete old public IP (%s): %w", existing.ID, err)
 		}
 
-		// Wait for unassignment to propagate in OCI networking (up to 20 seconds)
-		for i := 0; i < 20; i++ {
+		// Wait for unassignment to propagate in OCI networking (up to 30 seconds)
+		for i := 0; i < 30; i++ {
 			select {
 			case <-ctx.Done():
 				return oldIP, "", ctx.Err()
@@ -382,32 +386,39 @@ func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privat
 			}
 			curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
 			if curr == nil {
+				log.Printf("[OCI] Existing public IP unassigned after %d seconds", i+1)
 				break
 			}
 		}
+	} else {
+		log.Printf("[OCI] No existing public IP found on private IP %s, allocating new directly", privateIPID)
 	}
 
-	// Attempt creation of new ephemeral public IP with conflict recovery
+	// Attempt creation of new ephemeral public IP with conflict recovery and adequate retry budget (up to 30 attempts, ~60s)
 	var created *OCIPublicIP
-	conflictRegex := regexp.MustCompile(`(ocid1\.publicip\.[^\s"']+)`)
+	conflictRegex := regexp.MustCompile(`(ocid1\.publicip\.[a-z0-9_.-]+)`)
 
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 1; attempt <= 30; attempt++ {
 		created, err = c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
 		if err == nil {
+			log.Printf("[OCI] Successfully allocated new ephemeral public IP: %s (ID: %s)", created.IPAddress, created.ID)
 			break
 		}
 
-		// If conflict indicates an existing public IP is still attached, delete it and retry
+		// If conflict indicates an existing public IP is still attached or detaching, handle and retry
 		if strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "Conflict") {
 			matches := conflictRegex.FindStringSubmatch(err.Error())
 			if len(matches) > 1 {
 				stalePublicIPID := matches[1]
+				log.Printf("[OCI] Attempt %d: 409 Conflict with stale public IP %s, issuing delete and waiting...", attempt, stalePublicIPID)
 				_ = c.DeletePublicIP(ctx, stalePublicIPID)
+			} else {
+				log.Printf("[OCI] Attempt %d: 409 Conflict (unassignment in flight), waiting 2s...", attempt)
 			}
 			select {
 			case <-ctx.Done():
 				return oldIP, "", ctx.Err()
-			case <-time.After(1 * time.Second):
+			case <-time.After(2 * time.Second):
 			}
 			continue
 		}
