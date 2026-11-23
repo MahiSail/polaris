@@ -196,7 +196,11 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 	}
 
 	// 3. Test RotateEphemeralIP
-	oldIP, newIP, err := client.RotateEphemeralIP(ctx, "ocid1.compartment.test", privIP.ID)
+	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(ctx, "ocid1.compartment.test", privIP.ID, RotateEphemeralIPOptions{
+		ExcludeSubnets: false,
+		CheckGFW:       false,
+		MaxRounds:      1,
+	})
 	if err != nil {
 		t.Fatalf("RotateEphemeralIP: %v", err)
 	}
@@ -282,7 +286,11 @@ func TestOCIClient_RotateEphemeralIP_ConflictRecovery(t *testing.T) {
 	client.httpClient = ts.Client()
 	client.baseURL = ts.URL
 
-	oldIP, newIP, err := client.RotateEphemeralIP(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.1")
+	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.1", RotateEphemeralIPOptions{
+		ExcludeSubnets: false,
+		CheckGFW:       false,
+		MaxRounds:      5,
+	})
 	if err != nil {
 		t.Fatalf("expected successful recovery from 409 conflict, got: %v", err)
 	}
@@ -355,7 +363,11 @@ func TestOCIClient_RotateEphemeralIP_SubnetFiltering(t *testing.T) {
 	client.httpClient = ts.Client()
 	client.baseURL = ts.URL
 
-	_, newIP, err := client.RotateEphemeralIP(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.sub")
+	_, newIP, err := client.RotateEphemeralIPWithOptions(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.sub", RotateEphemeralIPOptions{
+		ExcludeSubnets: true,
+		CheckGFW:       false,
+		MaxRounds:      8,
+	})
 	if err != nil {
 		t.Fatalf("RotateEphemeralIP failed: %v", err)
 	}

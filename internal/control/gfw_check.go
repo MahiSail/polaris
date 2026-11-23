@@ -149,9 +149,8 @@ func CheckGFWBlocked(ctx context.Context, ip string, port int) (blocked bool, re
 		if domErr == nil && domStatus != "open" {
 			return true, fmt.Sprintf("TCP port %d open overseas but blocked/filtered in mainland China (%s)", port, domStatus), nil
 		}
-		if domErr != nil {
-			return true, fmt.Sprintf("TCP port %d open overseas but mainland China probe failed: %v", port, domErr), nil
-		}
+		// If domestic probe request itself failed (network/DNS/HTTP error), do not falsely assume the target IP is blocked.
+		// Instead, fall through to ICMP ping check or report detection warning.
 	}
 
 	// Step 2: Fall back to ICMP Ping differential test if port is not globally open
@@ -165,6 +164,10 @@ func CheckGFWBlocked(ctx context.Context, ip string, port int) (blocked bool, re
 		if domPingErr == nil && (!domAlive || domLoss == 100) {
 			return true, fmt.Sprintf("ICMP ping responsive overseas but 100%% packet loss in mainland China"), nil
 		}
+	}
+
+	if domErr != nil && domPingErr != nil {
+		return false, "Domestic probe node unavailable", fmt.Errorf("domestic probe failed (port check: %v, ping check: %v)", domErr, domPingErr)
 	}
 
 	return false, "Not blocked (or port closed globally)", nil

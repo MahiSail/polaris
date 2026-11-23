@@ -259,7 +259,11 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 	}
 	client.SetBaseURL(mockOCI.URL)
 
-	oldIP, newIP, err := client.RotateEphemeralIP(context.Background(), "ocid1.compartment.srv1", "ocid1.privateip.srv1")
+	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(context.Background(), "ocid1.compartment.srv1", "ocid1.privateip.srv1", RotateEphemeralIPOptions{
+		ExcludeSubnets: false,
+		CheckGFW:       false,
+		MaxRounds:      1,
+	})
 	if err != nil {
 		t.Fatalf("RotateEphemeralIP: %v", err)
 	}
