@@ -334,6 +334,31 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var reqBody struct {
+		ExcludeSubnets *bool `json:"exclude_subnets"`
+		CheckGFW       *bool `json:"check_gfw"`
+		MaxRounds      int   `json:"max_rounds"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&reqBody)
+	}
+
+	opts := RotateEphemeralIPOptions{
+		ExcludeSubnets: true,
+		CheckGFW:       true,
+		GFWCheckPort:   22,
+		MaxRounds:      5,
+	}
+	if reqBody.ExcludeSubnets != nil {
+		opts.ExcludeSubnets = *reqBody.ExcludeSubnets
+	}
+	if reqBody.CheckGFW != nil {
+		opts.CheckGFW = *reqBody.CheckGFW
+	}
+	if reqBody.MaxRounds > 0 {
+		opts.MaxRounds = reqBody.MaxRounds
+	}
+
 	ociRotateMu.Lock()
 	if ociRotatingNodes[nodeID] {
 		ociRotateMu.Unlock()
@@ -404,14 +429,14 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use an independent operation context with a safe timeout (90s).
-	// This ensures that once old IP deletion starts, allocating the replacement IP
-	// and updating node state won't be interrupted midway even if client cancels or disconnects.
-	opCtx, opCancel := context.WithTimeout(context.Background(), 90*time.Second)
+	// Use an independent operation context with a safe timeout (180s).
+	// This ensures that multi-round subnet filtering (up to 8 rounds)
+	// won't be interrupted midway even if client cancels or disconnects.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer opCancel()
 
 	// Perform atomic IP rotation on OCI
-	oldIP, newIP, err := client.RotateEphemeralIP(opCtx, compartmentID, privateIPID)
+	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(opCtx, compartmentID, privateIPID, opts)
 	if err != nil {
 		writeError(w, fmt.Errorf("OCI 更换公网 IP 失败: %w", err))
 		return
@@ -434,7 +459,22 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Record audit event
-	auditMsg := fmt.Sprintf("Oracle 公网 IP 已从 %s 更换为 %s", oldIP, newIP)
+	var notes []string
+	if opts.ExcludeSubnets {
+		if !IsExcludedSubnet(newIP, DefaultExcludedSubnetPrefixes) {
+			notes = append(notes, "网段干净")
+		} else {
+			notes = append(notes, "已保留分配IP")
+		}
+	}
+	if opts.CheckGFW {
+		notes = append(notes, "国内连通正常")
+	}
+	filterNote := "已完成更换"
+	if len(notes) > 0 {
+		filterNote = strings.Join(notes, "，")
+	}
+	auditMsg := fmt.Sprintf("Oracle 公网 IP 已从 %s 更换为 %s (%s)", oldIP, newIP, filterNote)
 	if ddnsTriggered {
 		auditMsg += " (已触发 DDNS 自动更新)"
 	}

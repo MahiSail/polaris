@@ -219,11 +219,9 @@ test('全量页面亲自验证：纯净 URL 无 #、一键升级所有 Agent、�
   const srvDialog = page.locator('.el-dialog.srv-dialog')
   await expect(srvDialog).toBeVisible()
   await expect(srvDialog.getByRole('tab', { name: /探针配置/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(srvDialog.getByText('公共探针（全局共享）')).toBeVisible()
-  await expect(srvDialog.getByText('Cloudflare公共')).toBeVisible()
-  await expect(srvDialog.getByText('本机独立探针（单独配置）')).toBeVisible()
+  await expect(srvDialog.getByText(/服务器自定义探针|服务器特有探针|本机独立探针/)).toBeVisible()
 
-  await srvDialog.getByRole('button', { name: '添加独立探针' }).click()
+  await srvDialog.getByRole('button', { name: /添加(自定义|特有|独立)探针/ }).click()
   await srvDialog.getByPlaceholder('探针名称（如：广州电信）').fill('本机专属电信探针')
   await srvDialog.getByPlaceholder('目标 host:port（如 1.1.1.1:443）').fill('202.103.224.68:53')
   await page.screenshot({ path: '../artifacts/e2e/verify-node-probes-tab.png' })

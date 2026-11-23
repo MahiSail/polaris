@@ -357,81 +357,190 @@ func (c *OCIClient) GetVNIC(ctx context.Context, vnicID string) (*OCIVNIC, error
 	return &vnic, nil
 }
 
-// RotateEphemeralIP executes the full atomic sequence:
-// 1. Look up existing public IP via getByPrivateIpId.
-// 2. Delete/release the existing IP if present.
-// 3. Wait for unassignment to take effect in OCI.
-// 4. Request a brand new Ephemeral Public IP from the Oracle pool, with robust conflict recovery.
+// DefaultExcludedSubnetPrefixes contains subnets that have poor reputation, high Google captcha rates,
+// or are heavily blocked by AI and streaming platforms (Tier 3/4 subnets).
+var DefaultExcludedSubnetPrefixes = []string{
+	"168.138.", // 第四梯队·重度污染 (历史滥用极多，频繁弹 Google 验证码)
+	"129.221.", // 第三梯队·普通中庸 (ARIN 历史广播段，流媒体及部分风控较严)
+	"129.153.", // 第四梯队·不建议 (老牌广播段，ChatGPT/风控拦截率高)
+	"150.136.", // 第四梯队·不建议 (老牌广播大段，污染较重)
+	"140.238.", // 第四梯队·不建议 (老牌广播大段)
+}
+
+// IsExcludedSubnet reports whether the given IP matches any excluded prefix.
+func IsExcludedSubnet(ip string, prefixes []string) bool {
+	trimmed := strings.TrimSpace(ip)
+	for _, p := range prefixes {
+		if strings.HasPrefix(trimmed, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// RotateEphemeralIPOptions defines customizable options for IP rotation.
+type RotateEphemeralIPOptions struct {
+	// ExcludeSubnets controls whether to reject IPs in polluted/poor subnets.
+	ExcludeSubnets bool
+	// ExcludedSubnetPrefixes is the custom list of subnet prefixes to reject (defaults to DefaultExcludedSubnetPrefixes).
+	ExcludedSubnetPrefixes []string
+	// CheckGFW controls whether to perform third-party China mainland reachability probing.
+	CheckGFW bool
+	// GFWCheckPort is the TCP port tested against GFW (defaults to 22 if <= 0).
+	GFWCheckPort int
+	// MaxRounds is the maximum total rotation attempts across subnet filtering and GFW checks (defaults to 5, clamped between 1 and 20).
+	MaxRounds int
+}
+
+// RotateEphemeralIP executes ephemeral IP rotation with default settings (subnet filtering enabled, GFW check enabled, max 8 rounds).
 func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privateIPID string) (oldIP, newIP string, err error) {
-	log.Printf("[OCI] Starting ephemeral IP rotation for private IP %s (compartment: %s)", privateIPID, compartmentID)
+	return c.RotateEphemeralIPWithOptions(ctx, compartmentID, privateIPID, RotateEphemeralIPOptions{
+		ExcludeSubnets: true,
+		CheckGFW:       true,
+		GFWCheckPort:   22,
+		MaxRounds:      8,
+	})
+}
+
+// RotateEphemeralIPWithOptions executes ephemeral IP rotation with user-controlled options.
+func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmentID, privateIPID string, opts RotateEphemeralIPOptions) (oldIP, newIP string, err error) {
+	maxRounds := opts.MaxRounds
+	if maxRounds <= 0 {
+		maxRounds = 5
+	} else if maxRounds > 20 {
+		maxRounds = 20
+	}
+
+	gfwPort := opts.GFWCheckPort
+	if gfwPort <= 0 {
+		gfwPort = 22
+	}
+
+	prefixes := opts.ExcludedSubnetPrefixes
+	if len(prefixes) == 0 {
+		prefixes = DefaultExcludedSubnetPrefixes
+	}
+
+	log.Printf("[OCI] Starting ephemeral IP rotation for private IP %s (compartment: %s, excludeSubnets: %v, checkGFW: %v, maxRounds: %d)",
+		privateIPID, compartmentID, opts.ExcludeSubnets, opts.CheckGFW, maxRounds)
 
 	existing, err := c.GetPublicIPByPrivateIP(ctx, privateIPID)
 	if err != nil {
 		log.Printf("[OCI] Query existing public IP error: %v (continuing to allocation attempt)", err)
 	}
 
+	var currentToReleaseID string
 	if existing != nil && existing.ID != "" {
 		oldIP = existing.IPAddress
-		log.Printf("[OCI] Found existing public IP: %s (ID: %s), deleting...", oldIP, existing.ID)
-		if err := c.DeletePublicIP(ctx, existing.ID); err != nil {
-			return oldIP, "", fmt.Errorf("delete old public IP (%s): %w", existing.ID, err)
-		}
-
-		// Wait for unassignment to propagate in OCI networking (up to 30 seconds)
-		for i := 0; i < 30; i++ {
-			select {
-			case <-ctx.Done():
-				return oldIP, "", ctx.Err()
-			case <-time.After(1 * time.Second):
-			}
-			curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
-			if curr == nil {
-				log.Printf("[OCI] Existing public IP unassigned after %d seconds", i+1)
-				break
-			}
-		}
+		currentToReleaseID = existing.ID
+		log.Printf("[OCI] Found existing public IP: %s (ID: %s)", oldIP, existing.ID)
 	} else {
 		log.Printf("[OCI] No existing public IP found on private IP %s, allocating new directly", privateIPID)
 	}
 
-	// Attempt creation of new ephemeral public IP with conflict recovery and adequate retry budget (up to 30 attempts, ~60s)
-	var created *OCIPublicIP
 	conflictRegex := regexp.MustCompile(`(ocid1\.publicip\.[a-z0-9_.-]+)`)
+	var lastCreated *OCIPublicIP
 
-	for attempt := 1; attempt <= 30; attempt++ {
-		created, err = c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
-		if err == nil {
-			log.Printf("[OCI] Successfully allocated new ephemeral public IP: %s (ID: %s)", created.IPAddress, created.ID)
+	for round := 1; round <= maxRounds; round++ {
+		// Step A: If there is an IP to release, delete it and wait for unassignment to propagate
+		if currentToReleaseID != "" {
+			log.Printf("[OCI] Round %d: Deleting public IP (ID: %s)...", round, currentToReleaseID)
+			if err := c.DeletePublicIP(ctx, currentToReleaseID); err != nil {
+				return oldIP, "", fmt.Errorf("delete public IP (%s): %w", currentToReleaseID, err)
+			}
+
+			for i := 0; i < 20; i++ {
+				select {
+				case <-ctx.Done():
+					return oldIP, "", ctx.Err()
+				case <-time.After(1 * time.Second):
+				}
+				curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
+				if curr == nil {
+					log.Printf("[OCI] Round %d: Public IP unassigned after %d seconds", round, i+1)
+					break
+				}
+			}
+			currentToReleaseID = ""
+		}
+
+		// Step B: Allocate new ephemeral public IP with conflict recovery
+		var created *OCIPublicIP
+		for attempt := 1; attempt <= 20; attempt++ {
+			created, err = c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
+			if err == nil {
+				log.Printf("[OCI] Round %d: Successfully allocated ephemeral public IP: %s (ID: %s)", round, created.IPAddress, created.ID)
+				break
+			}
+
+			if strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "Conflict") {
+				matches := conflictRegex.FindStringSubmatch(err.Error())
+				if len(matches) > 1 {
+					stalePublicIPID := matches[1]
+					log.Printf("[OCI] Round %d Attempt %d: 409 Conflict with %s, issuing delete...", round, attempt, stalePublicIPID)
+					_ = c.DeletePublicIP(ctx, stalePublicIPID)
+				} else {
+					log.Printf("[OCI] Round %d Attempt %d: 409 Conflict, waiting 2s...", round, attempt)
+				}
+				select {
+				case <-ctx.Done():
+					return oldIP, "", ctx.Err()
+				case <-time.After(2 * time.Second):
+				}
+				continue
+			}
+
+			return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
+		}
+
+		if created == nil {
+			return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
+		}
+		lastCreated = created
+
+		// Step C: Check if the newly allocated IP matches excluded subnets (if enabled)
+		if opts.ExcludeSubnets && IsExcludedSubnet(created.IPAddress, prefixes) {
+			log.Printf("[OCI] Round %d: Allocated IP %s belongs to excluded/ordinary subnet. Filtering out...", round, created.IPAddress)
+			if round < maxRounds {
+				currentToReleaseID = created.ID
+				select {
+				case <-ctx.Done():
+					return oldIP, created.IPAddress, ctx.Err()
+				case <-time.After(1 * time.Second):
+				}
+				continue
+			}
 			break
 		}
 
-		// If conflict indicates an existing public IP is still attached or detaching, handle and retry
-		if strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "Conflict") {
-			matches := conflictRegex.FindStringSubmatch(err.Error())
-			if len(matches) > 1 {
-				stalePublicIPID := matches[1]
-				log.Printf("[OCI] Attempt %d: 409 Conflict with stale public IP %s, issuing delete and waiting...", attempt, stalePublicIPID)
-				_ = c.DeletePublicIP(ctx, stalePublicIPID)
-			} else {
-				log.Printf("[OCI] Attempt %d: 409 Conflict (unassignment in flight), waiting 2s...", attempt)
+		// Step D: Verify if the newly allocated IP is blocked by the GFW (if enabled)
+		if opts.CheckGFW {
+			log.Printf("[OCI] Round %d: Testing GFW accessibility via third-party probes for %s...", round, created.IPAddress)
+			gfwBlocked, reason, checkErr := CheckGFWBlocked(ctx, created.IPAddress, gfwPort)
+			if checkErr != nil {
+				log.Printf("[OCI] Round %d: GFW detection warning: %v (continuing with allocation)", round, checkErr)
+			} else if gfwBlocked {
+				log.Printf("[OCI] Round %d: Allocated IP %s is BLOCKED by GFW in mainland China (%s)! Discarding and rotating...", round, created.IPAddress, reason)
+				if round < maxRounds {
+					currentToReleaseID = created.ID
+					select {
+					case <-ctx.Done():
+						return oldIP, created.IPAddress, ctx.Err()
+					case <-time.After(1 * time.Second):
+					}
+					continue
+				}
+				break
 			}
-			select {
-			case <-ctx.Done():
-				return oldIP, "", ctx.Err()
-			case <-time.After(2 * time.Second):
-			}
-			continue
 		}
 
-		// For other non-conflict errors, return immediately
-		return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
+		log.Printf("[OCI] Round %d: Allocated IP %s successfully passed all enabled checks. Rotation complete!", round, created.IPAddress)
+		return oldIP, created.IPAddress, nil
 	}
 
-	if created == nil {
-		return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
-	}
-
-	return oldIP, created.IPAddress, nil
+	// Fallback: If max rounds reached, keep the last valid allocated IP to avoid leaving instance offline
+	log.Printf("[OCI] Reached max rotation rounds (%d). Keeping last allocated IP %s.", maxRounds, lastCreated.IPAddress)
+	return oldIP, lastCreated.IPAddress, nil
 }
 
 // ListInstances retrieves all compute instances in the tenancy and resolves their primary VNIC and public IP.

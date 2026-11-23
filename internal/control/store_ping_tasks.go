@@ -192,9 +192,20 @@ func (s *Store) SyncNodePingTasks(ctx context.Context, nodeID string, customProb
 		return err
 	}
 	existingByID := make(map[int64]PingTask)
+	publicByID := make(map[int64]PingTask)
 	for _, t := range existing {
-		if !t.AutoJoin && containsString(t.NodeIDs, nodeID) {
+		if t.AutoJoin {
+			publicByID[t.ID] = t
+		} else if containsString(t.NodeIDs, nodeID) {
 			existingByID[t.ID] = t
+		}
+	}
+
+	for _, item := range normalized {
+		if item.ID > 0 {
+			if _, isPublic := publicByID[item.ID]; isPublic {
+				return errors.New("禁止在服务器单独配置中修改公共探针")
+			}
 		}
 	}
 

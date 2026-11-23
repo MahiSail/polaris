@@ -126,7 +126,7 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(OCIPublicIP{
 				ID:             "ocid1.publicip.test.new",
-				IPAddress:      "129.153.20.20",
+				IPAddress:      "140.245.20.20",
 				Lifetime:       "EPHEMERAL",
 				LifecycleState: "ASSIGNED",
 			})
@@ -203,8 +203,8 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 	if oldIP != "140.238.10.10" {
 		t.Errorf("expected old IP 140.238.10.10, got %s", oldIP)
 	}
-	if newIP != "129.153.20.20" {
-		t.Errorf("expected new IP 129.153.20.20, got %s", newIP)
+	if newIP != "140.245.20.20" {
+		t.Errorf("expected new IP 140.245.20.20, got %s", newIP)
 	}
 	if !deletedOldIP {
 		t.Error("expected old IP to be deleted")
@@ -249,12 +249,12 @@ func TestOCIClient_RotateEphemeralIP_ConflictRecovery(t *testing.T) {
 				_, _ = w.Write([]byte(`{ "code" : "Conflict", "message" : "Private IP: ocid1.privateip.test.1 already has a public IP ocid1.publicip.test.stale assigned to it." }`))
 				return
 			}
-			// Second attempt succeeds
+			// Second attempt succeeds with a clean IP
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(OCIPublicIP{
 				ID:             "ocid1.publicip.test.new2",
-				IPAddress:      "129.153.30.30",
+				IPAddress:      "140.245.30.30",
 				Lifetime:       "EPHEMERAL",
 				LifecycleState: "ASSIGNED",
 			})
@@ -286,11 +286,86 @@ func TestOCIClient_RotateEphemeralIP_ConflictRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected successful recovery from 409 conflict, got: %v", err)
 	}
-	if newIP != "129.153.30.30" {
-		t.Errorf("expected new IP 129.153.30.30, got %s", newIP)
+	if newIP != "140.245.30.30" {
+		t.Errorf("expected new IP 140.245.30.30, got %s", newIP)
 	}
 	if !deletedConflictingIP {
 		t.Error("expected conflicting public IP to be deleted automatically")
 	}
 	_ = oldIP
+}
+
+func TestOCIClient_RotateEphemeralIP_SubnetFiltering(t *testing.T) {
+	privKey, pemStr := generateTestRSAKey(t)
+	pubKey := &privKey.PublicKey
+
+	allocatedCount := 0
+	deletedOrdinaryIP := false
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		verifyOCISignature(t, pubKey, r, nil)
+
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			// No initial IP or unassigned after deletion
+			w.WriteHeader(http.StatusNotFound)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":
+			allocatedCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			if allocatedCount == 1 {
+				// Round 1: Return an ordinary/excluded IP (129.221.*)
+				_ = json.NewEncoder(w).Encode(OCIPublicIP{
+					ID:             "ocid1.publicip.test.ordinary",
+					IPAddress:      "129.221.88.99",
+					Lifetime:       "EPHEMERAL",
+					LifecycleState: "ASSIGNED",
+				})
+				return
+			}
+			// Round 2: Return a clean preferred IP (140.245.*)
+			_ = json.NewEncoder(w).Encode(OCIPublicIP{
+				ID:             "ocid1.publicip.test.clean",
+				IPAddress:      "140.245.100.200",
+				Lifetime:       "EPHEMERAL",
+				LifecycleState: "ASSIGNED",
+			})
+
+		case r.Method == http.MethodDelete && r.URL.Path == "/20160918/publicIps/ocid1.publicip.test.ordinary":
+			deletedOrdinaryIP = true
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewOCIClient(OCIConfig{
+		TenancyID:     "ocid1.tenancy.test",
+		UserID:        "ocid1.user.test",
+		Fingerprint:   "aa:bb:cc:dd",
+		Region:        "ap-singapore-1",
+		PrivateKeyPEM: pemStr,
+	})
+	if err != nil {
+		t.Fatalf("NewOCIClient: %v", err)
+	}
+	client.httpClient = ts.Client()
+	client.baseURL = ts.URL
+
+	_, newIP, err := client.RotateEphemeralIP(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.sub")
+	if err != nil {
+		t.Fatalf("RotateEphemeralIP failed: %v", err)
+	}
+	if newIP != "140.245.100.200" {
+		t.Errorf("expected clean IP 140.245.100.200, got %s", newIP)
+	}
+	if !deletedOrdinaryIP {
+		t.Error("expected ordinary IP 129.221.88.99 to be deleted automatically")
+	}
+	if allocatedCount != 2 {
+		t.Errorf("expected 2 allocation rounds, got %d", allocatedCount)
+	}
 }

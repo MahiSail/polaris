@@ -432,28 +432,18 @@
 
         <!-- Tab: probes -->
         <template v-else-if="editTab === 'probes'">
-          <div class="m-card m-card--flat">
-            <div class="m-filter-bar" style="margin-bottom: 6px;">
-              <strong style="font-size: 13px;">公共默认探针 ({{ publicProbes.length }})</strong>
-              <button type="button" class="m-pill" @click="probeManagerOpen = true">管理全局探针</button>
-            </div>
-            <div v-if="publicProbes.length === 0" class="m-note">暂无全局默认探针</div>
-            <div v-else class="m-filter-row">
-              <el-tag v-for="t in publicProbes" :key="t.id" size="small" effect="plain">
-                {{ t.name }} ({{ t.target }})
-              </el-tag>
-            </div>
-          </div>
-
           <div class="m-field">
             <div class="m-filter-bar" style="margin-bottom: 8px;">
-              <label class="m-field__label" style="margin: 0;">服务器专属探针 ({{ (editForm.custom_probes || []).length }})</label>
+              <label class="m-field__label" style="margin: 0;">服务器自定义探针 ({{ (editForm.custom_probes || []).length }})</label>
               <button type="button" class="m-pill" @click="addCustomProbe">
-                + 添加
+                + 添加自定义探针
               </button>
             </div>
+            <div class="m-card__note" style="margin-bottom: 8px;">
+              为当前服务器配置专属探测目标，仅在当前服务器生效。
+            </div>
             <div v-if="!(editForm.custom_probes || []).length" class="m-card m-card--flat m-note">
-              暂无专属探针
+              当前未配置自定义探针，点击右上角添加
             </div>
             <div v-else class="m-list">
               <div
@@ -462,10 +452,10 @@
                 style="background: var(--sb-surface-2); padding: 10px; border-radius: 8px; border: 1px solid var(--sb-line); display: flex; flex-direction: column; gap: 6px;"
               >
                 <div class="m-filter-bar">
-                  <strong style="font-size: 12px;">专属探针 #{{ idx + 1 }}</strong>
+                  <strong style="font-size: 12px;">自定义探针 #{{ idx + 1 }}</strong>
                   <button type="button" class="m-pill" style="color: var(--sb-danger);" @click="removeCustomProbe(idx)">删除</button>
                 </div>
-                <el-input v-model="probe.name" size="small" placeholder="名称，如：香港联通" />
+                <el-input v-model="probe.name" size="small" placeholder="名称，如：香港电信" />
                 <el-input v-model="probe.target" size="small" placeholder="目标 IP/域名:端口" />
                 <div class="m-filter-bar">
                   <span class="m-note">间隔（秒）</span>
@@ -613,6 +603,74 @@
       <MDDNSHistoryList v-if="ddnsHistorySheet" :node-id="ddnsHistoryNode?.id || ''" />
     </MSheet>
 
+    <!-- 移动端 OCI 更换 IP 抽屉 -->
+    <MSheet
+      v-model="ociRotateSheet"
+      title="更换公网 IP (Oracle Cloud)"
+    >
+      <div v-if="ociRotateNode" class="m-oci-rotate-body">
+        <div class="m-oci-rotate-card">
+          <div class="m-oci-rotate-row">
+            <span class="label">目标服务器</span>
+            <span class="val font-semibold">{{ ociRotateNode.name }}</span>
+          </div>
+          <div class="m-oci-rotate-row">
+            <span class="label">当前公网 IP</span>
+            <span class="val font-mono">{{ ociRotateNode.last_observed_ip || ociRotateNode.client_address || '未知' }}</span>
+          </div>
+          <div class="m-oci-rotate-row">
+            <span class="label">绑定账号</span>
+            <span class="val">{{ getOciAccountDisplay(ociRotateNode.oci_account_id) }}</span>
+          </div>
+        </div>
+
+        <div class="m-oci-options">
+          <label class="m-oci-check-item">
+            <input type="checkbox" v-model="ociRotateForm.exclude_subnets" />
+            <div class="m-oci-check-info">
+              <strong>自动排除污染/黑洞网段</strong>
+              <span>避开 168.138.*、129.221.* 等重度污染段，抽到自动重试</span>
+            </div>
+          </label>
+
+          <label class="m-oci-check-item">
+            <input type="checkbox" v-model="ociRotateForm.check_gfw" />
+            <div class="m-oci-check-info">
+              <strong>探测中国大陆对该 IP 的连通性</strong>
+              <span>调用第三方探针测大陆 TCP，若被防火长城阻断则自动重换</span>
+            </div>
+          </label>
+
+          <div class="m-oci-rounds-item">
+            <div class="m-oci-rounds-label">
+              <strong>两项合计最多换 IP 次数</strong>
+              <span>两项检测合计最多尝试轮数</span>
+            </div>
+            <el-input-number
+              v-model="ociRotateForm.max_rounds"
+              :min="1"
+              :max="15"
+              :step="1"
+              size="small"
+              controls-position="right"
+              style="width: 105px"
+            />
+          </div>
+        </div>
+
+        <div class="m-oci-alert">
+          <span>⚠️ 更换期间主机网络有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动同步域名解析。</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="m-sheet-actions">
+          <button type="button" class="m-btn m-btn--subtle" @click="ociRotateSheet = false">取消</button>
+          <button type="button" class="m-btn m-btn--primary" :disabled="!ociRotateNode" @click="confirmRotateOCI">确认更换</button>
+        </div>
+      </template>
+    </MSheet>
+
     <template v-if="isAdmin && !detailNode && !isShareMode" #fab>
       <button type="button" class="m-fab" aria-label="添加服务器" @click="generateToken">
         <el-icon :size="24"><Plus /></el-icon>
@@ -622,7 +680,7 @@
 </template>
 
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElLoading, ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { Check, Plus, Refresh, Share } from '@element-plus/icons-vue'
 import { performAgentUpgrade, performAllAgentsUpgrade } from '../../agent_upgrade'
@@ -918,26 +976,31 @@ async function promptChangeOciIP(node) {
     return
   }
 
-  const currentIP = node.last_observed_ip || node.client_address || '未知'
-  const matchedAcc = ociAccounts.value.find((a) => a.id === node.oci_account_id)
-  const accName = matchedAcc ? `${matchedAcc.name} (${matchedAcc.region})` : '系统默认 OCI 账号'
-  const vnicDisplay = node.oci_vnic_id ? `${node.oci_vnic_id.slice(0, 18)}...${node.oci_vnic_id.slice(-8)}` : '已自动关联网卡'
+  ociRotateNode.value = node
+  ociRotateForm.exclude_subnets = true
+  ociRotateForm.check_gfw = true
+  ociRotateForm.max_rounds = 5
+  ociRotateSheet.value = true
+}
 
-  try {
-    await ElMessageBox.confirm(
-      `确定要为服务器「${node.name}」更换公网 IP 吗？\n\n• 当前公网 IP：${currentIP}\n• 绑定 Oracle 账号：${accName}\n• 关联网卡：${vnicDisplay}\n\n注意：更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。`,
-      '更换公网 IP (Oracle Cloud)',
-      {
-        confirmButtonText: '确认更换',
-        cancelButtonText: '取消',
-        type: 'warning',
-        distinguishCancelAndClose: true,
-      },
-    )
-  } catch {
-    return
-  }
+const ociRotateSheet = ref(false)
+const ociRotateNode = ref(null)
+const ociRotateForm = reactive({
+  exclude_subnets: true,
+  check_gfw: true,
+  max_rounds: 5,
+})
 
+function getOciAccountDisplay(accId) {
+  const matched = ociAccounts.value.find((a) => a.id === accId)
+  return matched ? `${matched.name} (${matched.region})` : '系统默认 OCI 账号'
+}
+
+async function confirmRotateOCI() {
+  const node = ociRotateNode.value
+  if (!node) return
+
+  ociRotateSheet.value = false
   const loadingInstance = ElLoading.service({
     lock: true,
     text: `正在为「${node.name}」更换公网 IP 并同步...`,
@@ -945,7 +1008,11 @@ async function promptChangeOciIP(node) {
   })
 
   try {
-    const res = await post(`/nodes/${node.id}/oci/change-ip`, {})
+    const res = await post(`/nodes/${node.id}/oci/change-ip`, {
+      exclude_subnets: ociRotateForm.exclude_subnets,
+      check_gfw: ociRotateForm.check_gfw,
+      max_rounds: ociRotateForm.max_rounds,
+    })
     loadingInstance.close()
     ElNotification({
       title: '更换公网 IP 成功',
@@ -1181,9 +1248,10 @@ async function loadPingTasks() {
 
 function getCustomProbesForNode(nodeId) {
   if (!nodeId) return []
+  const targetId = String(nodeId).trim()
   return pingTasks.value
-    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
-    .map((t) => ({ id: t.id, name: t.name, target: t.target, interval: t.interval || 60 }))
+    .filter((t) => !t.auto_join && Array.isArray(t.node_ids) && t.node_ids.map(String).map((s) => s.trim()).includes(targetId))
+    .map((t) => ({ id: Number(t.id) || 0, name: t.name || '', target: t.target || '', interval: Number(t.interval) || 60 }))
 }
 
 function openDetail(nodeOrId) {
@@ -1352,6 +1420,7 @@ function syncDDNSDomainsFromSelection(selectedIds) {
 
 async function openEdit(node, initialTab = 'basic') {
   editNode.value = node
+  await loadPingTasks().catch(() => {})
   const recordIds = node.ddns_record_ids?.length
     ? [...node.ddns_record_ids]
     : node.ddns_record_id
@@ -1401,11 +1470,6 @@ async function openEdit(node, initialTab = 'basic') {
   loadOCIAccounts().then(() => {
     loadMobileOCIInstancesAndAutoBind(editForm.value.oci_account_id)
   }).catch(() => {})
-  loadPingTasks().then(() => {
-    if (editNode.value?.id === node.id) {
-      editForm.value.custom_probes = getCustomProbesForNode(node.id)
-    }
-  })
 }
 
 function addCustomEgressIP() {
@@ -1444,7 +1508,7 @@ async function saveNode() {
     if (!name && !target) continue
     if (!name || !target) {
       editTab.value = 'probes'
-      ElMessage.warning('请完整填写专属探针的名称和目标地址')
+      ElMessage.warning('请完整填写自定义探针的名称和目标地址')
       return
     }
     customProbes.push({
@@ -1707,5 +1771,92 @@ onUnmounted(() => {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.m-oci-rotate-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.m-oci-rotate-card {
+  background: var(--sb-surface-2, #f5f5f7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.m-oci-rotate-row {
+  display: flex;
+  justify-content: space-between;
+}
+.m-oci-rotate-row .label {
+  color: var(--sb-text-3, #888);
+}
+.m-oci-rotate-row .val {
+  color: var(--sb-text-1, #111);
+}
+.m-oci-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-oci-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.m-oci-check-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.m-oci-check-info strong {
+  font-size: 14px;
+  color: var(--sb-text-1, #111);
+}
+.m-oci-check-info span {
+  font-size: 12px;
+  color: var(--sb-text-3, #888);
+  line-height: 1.4;
+}
+.m-oci-rounds-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+}
+.m-oci-rounds-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.m-oci-rounds-label strong {
+  font-size: 14px;
+  color: var(--sb-text-1, #111);
+}
+.m-oci-rounds-label span {
+  font-size: 12px;
+  color: var(--sb-text-3, #888);
+}
+.m-oci-alert {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--sb-text-2, #555);
+  line-height: 1.5;
+}
+.m-sheet-actions {
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px 16px;
+}
+.m-sheet-actions .m-btn {
+  flex: 1;
 }
 </style>

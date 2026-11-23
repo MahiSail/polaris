@@ -278,13 +278,14 @@ async function loadPingTasks() {
 
 function getCustomProbesForNode(nodeId) {
   if (!nodeId) return []
+  const targetId = String(nodeId).trim()
   return pingTasks.value
-    .filter((t) => t.auto_join === false && Array.isArray(t.node_ids) && t.node_ids.includes(nodeId))
+    .filter((t) => !t.auto_join && Array.isArray(t.node_ids) && t.node_ids.map(String).map((s) => s.trim()).includes(targetId))
     .map((t) => ({
-      id: t.id,
+      id: Number(t.id) || 0,
       name: t.name || '',
       target: t.target || '',
-      interval: t.interval || 60,
+      interval: Number(t.interval) || 60,
     }))
 }
 
@@ -908,6 +909,7 @@ async function triggerManualDDNS(node) {
 
 async function openEdit(node, initialTab = 'basic') {
   editNode.value = node
+  await loadPingTasks().catch(() => {})
 
   const recordIds = (node.ddns_record_ids && node.ddns_record_ids.length)
     ? [...node.ddns_record_ids]
@@ -944,11 +946,6 @@ async function openEdit(node, initialTab = 'basic') {
   loadOCIAccounts().then(() => {
     loadOCIInstancesAndAutoBind(editForm.value.oci_account_id)
   }).catch(() => {})
-  loadPingTasks().then(() => {
-    if (editNode.value?.id === node.id) {
-      editForm.value.custom_probes = getCustomProbesForNode(node.id)
-    }
-  })
   editDialog.value = true
 }
 
@@ -961,7 +958,7 @@ async function saveEdit() {
     if (!name && !target) continue
     if (!name || !target) {
       editTab.value = 'probes'
-      ElMessage.warning('请完整填写独立探针的名称和目标地址')
+      ElMessage.warning('请完整填写自定义探针的名称和目标地址')
       return
     }
     const interval = Number(p.interval) >= 5 && Number(p.interval) <= 3600 ? Math.round(Number(p.interval)) : 60
@@ -1000,6 +997,7 @@ async function saveEdit() {
       compartment_id: (editForm.value.oci_compartment_id || '').trim(),
       region: (editForm.value.oci_region || '').trim(),
     })
+    await loadPingTasks().catch(() => {})
     ElMessage.success('服务器信息已保存')
     editDialog.value = false
     await load()
@@ -1028,26 +1026,31 @@ async function promptChangeOciIP(node) {
     return
   }
 
-  const currentIP = node.last_observed_ip || node.client_address || '未知'
-  const matchedAcc = ociAccounts.value.find((a) => a.id === node.oci_account_id)
-  const accName = matchedAcc ? `${matchedAcc.name} (${matchedAcc.region})` : '系统默认 OCI 账号'
-  const vnicDisplay = node.oci_vnic_id ? `${node.oci_vnic_id.slice(0, 18)}...${node.oci_vnic_id.slice(-8)}` : '已自动关联网卡'
+  ociRotateNode.value = node
+  ociRotateForm.exclude_subnets = true
+  ociRotateForm.check_gfw = true
+  ociRotateForm.max_rounds = 5
+  ociRotateVisible.value = true
+}
 
-  try {
-    await ElMessageBox.confirm(
-      `确定要为服务器「${node.name}」更换公网 IP 吗？\n\n• 当前公网 IP：${currentIP}\n• 绑定 Oracle 账号：${accName}\n• 关联网卡：${vnicDisplay}\n\n注意：更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。`,
-      '更换公网 IP (Oracle Cloud)',
-      {
-        confirmButtonText: '确认更换',
-        cancelButtonText: '取消',
-        type: 'warning',
-        distinguishCancelAndClose: true,
-      },
-    )
-  } catch {
-    return
-  }
+const ociRotateVisible = ref(false)
+const ociRotateNode = ref(null)
+const ociRotateForm = reactive({
+  exclude_subnets: true,
+  check_gfw: true,
+  max_rounds: 5,
+})
 
+function getOciAccountDisplay(accId) {
+  const matched = ociAccounts.value.find((a) => a.id === accId)
+  return matched ? `${matched.name} (${matched.region})` : '系统默认 OCI 账号'
+}
+
+async function confirmRotateOCI() {
+  const node = ociRotateNode.value
+  if (!node) return
+
+  ociRotateVisible.value = false
   const loadingInstance = ElLoading.service({
     lock: true,
     text: `正在通过 Oracle Cloud API 为「${node.name}」更换公网 IP 并同步...`,
@@ -1055,7 +1058,11 @@ async function promptChangeOciIP(node) {
   })
 
   try {
-    const res = await post(`/nodes/${node.id}/oci/change-ip`, {})
+    const res = await post(`/nodes/${node.id}/oci/change-ip`, {
+      exclude_subnets: ociRotateForm.exclude_subnets,
+      check_gfw: ociRotateForm.check_gfw,
+      max_rounds: ociRotateForm.max_rounds,
+    })
     loadingInstance.close()
     ElNotification({
       title: '更换公网 IP 成功',
@@ -1830,23 +1837,50 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-show="editTab === 'probes'" class="dlg-pane">
-          <div class="dlg-block">
+          <div class="dlg-block" :class="{ 'is-on': (editForm.custom_probes || []).length > 0 }">
             <div class="dlg-block-head">
               <div>
-                <div class="dlg-block-title">公共探针（全局共享）</div>
-                <div class="dlg-help">所有服务器默认继承并执行以下公共探针，无需重复添加。</div>
+                <div class="dlg-block-title">服务器自定义探针</div>
+                <div class="dlg-help">为当前服务器单独配置专属探测目标（如落地机质量检测、特定运营商回程等），仅在当前服务器生效。</div>
               </div>
-              <el-button size="small" :icon="Connection" @click="probesDialog = true">管理公共探针</el-button>
+              <el-button size="small" type="primary" :icon="Plus" @click="addCustomProbe">添加自定义探针</el-button>
             </div>
-            <div v-if="publicProbes.length" class="dlg-ip-list">
-              <div v-for="p in publicProbes" :key="p.id" class="dlg-ip-row">
-                <span class="dlg-ip-kind is-v4">公共</span>
-                <span class="dlg-probe-name">{{ p.name }}</span>
-                <span class="dlg-ip-addr font-mono">{{ p.target }}</span>
-                <span class="dlg-probe-interval font-mono">{{ p.interval }}s</span>
+            <div v-if="(editForm.custom_probes || []).length" class="dlg-ip-list">
+              <div v-for="(probe, idx) in editForm.custom_probes" :key="probe.id || `new-${idx}`" class="dlg-ip-row dlg-probe-edit-row">
+                <span class="dlg-ip-kind is-v6">自定义</span>
+                <el-input
+                  v-model="probe.name"
+                  size="small"
+                  placeholder="探针名称（如：广州电信）"
+                  class="dlg-probe-input-name"
+                />
+                <el-input
+                  v-model="probe.target"
+                  size="small"
+                  placeholder="目标 host:port（如 1.1.1.1:443）"
+                  class="dlg-probe-input-target font-mono"
+                />
+                <el-input-number
+                  v-model="probe.interval"
+                  size="small"
+                  :min="5"
+                  :max="3600"
+                  :step="5"
+                  controls-position="right"
+                  class="dlg-probe-input-interval"
+                  title="探测间隔（秒）"
+                />
+                <el-button
+                  text
+                  type="danger"
+                  size="small"
+                  :icon="Delete"
+                  title="删除该自定义探针"
+                  @click="removeCustomProbe(idx)"
+                />
               </div>
             </div>
-            <div v-else class="dlg-empty">当前未配置公共探针。</div>
+            <div v-else class="dlg-empty">当前未配置自定义探针，点击右上角「添加自定义探针」即可为该服务器单独配置。</div>
           </div>
         </section>
       </el-form>
@@ -1968,11 +2002,118 @@ onBeforeUnmount(() => {
     >
       <DDNSHistoryTable :node-id="ddnsHistoryNode?.id || ''" in-dialog />
     </el-dialog>
+
+    <!-- OCI IP 更换配置弹窗 -->
+    <el-dialog
+      v-model="ociRotateVisible"
+      title="更换公网 IP (Oracle Cloud)"
+      width="min(540px, 94vw)"
+      append-to-body
+      destroy-on-close
+    >
+      <div v-if="ociRotateNode" class="oci-rotate-body">
+        <div class="oci-rotate-card">
+          <div class="oci-rotate-row">
+            <span class="label">目标服务器：</span>
+            <span class="val font-semibold">{{ ociRotateNode.name }}</span>
+          </div>
+          <div class="oci-rotate-row">
+            <span class="label">当前公网 IP：</span>
+            <span class="val font-mono">{{ ociRotateNode.last_observed_ip || ociRotateNode.client_address || '未知' }}</span>
+          </div>
+          <div class="oci-rotate-row">
+            <span class="label">绑定 OCI 账号：</span>
+            <span class="val">{{ getOciAccountDisplay(ociRotateNode.oci_account_id) }}</span>
+          </div>
+        </div>
+
+        <el-form label-position="top" class="mt-3">
+          <el-form-item class="mb-3">
+            <el-checkbox v-model="ociRotateForm.exclude_subnets">
+              <span class="font-medium">自动排除污染/黑洞网段</span>
+            </el-checkbox>
+            <div class="oci-rotate-tip">排除 168.138.*、129.221.* 等重度污染/风控网段，抽到此类 IP 自动重换。</div>
+          </el-form-item>
+
+          <el-form-item class="mb-3">
+            <el-checkbox v-model="ociRotateForm.check_gfw">
+              <span class="font-medium">探测中国大陆对该 IP 的连通性 (防被墙)</span>
+            </el-checkbox>
+            <div class="oci-rotate-tip">调用国内节点探测大陆 TCP 连通性，若抽到被防火长城阻断的 IP 自动重换。</div>
+          </el-form-item>
+
+          <el-form-item label="两项合计最多换 IP 次数" class="mb-1">
+            <div class="flex items-center gap-3">
+              <el-input-number
+                v-model="ociRotateForm.max_rounds"
+                :min="1"
+                :max="15"
+                :step="1"
+                controls-position="right"
+                style="width: 130px"
+              />
+              <span class="text-xs text-muted">两项检测合计最多尝试换 IP 的次数（1 ~ 15 次，建议 5 次）</span>
+            </div>
+          </el-form-item>
+        </el-form>
+
+        <div class="oci-rotate-alert">
+          <span style="font-size: 16px; line-height: 1">⚠️</span>
+          <span>更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="ociRotateVisible = false">取消</el-button>
+          <el-button type="primary" :disabled="!ociRotateNode" @click="confirmRotateOCI">确认更换</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 
 <style scoped>
+.oci-rotate-card {
+  background: var(--sb-surface-2);
+  border: 1px solid var(--sb-line-subtle);
+  border-radius: var(--sb-radius-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.8;
+  margin-bottom: 14px;
+}
+.oci-rotate-row {
+  display: flex;
+  justify-content: space-between;
+}
+.oci-rotate-row .label {
+  color: var(--sb-text-3);
+}
+.oci-rotate-row .val {
+  color: var(--sb-text-1);
+}
+.oci-rotate-tip {
+  font-size: 12px;
+  color: var(--sb-text-3);
+  margin-left: 24px;
+  line-height: 1.4;
+}
+.oci-rotate-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--sb-radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--sb-text-2);
+  line-height: 1.5;
+  margin-top: 14px;
+}
+
 :global(.el-popper) {
   line-height: 1.6;
   font-size: 12px;

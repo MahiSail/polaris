@@ -85,7 +85,7 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":
 			_ = json.NewEncoder(w).Encode(OCIPublicIP{
 				ID:             "ocid1.publicip.new",
-				IPAddress:      "129.153.2.2",
+				IPAddress:      "140.245.2.2",
 				Lifetime:       "EPHEMERAL",
 				LifecycleState: "ASSIGNED",
 			})
@@ -263,7 +263,7 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RotateEphemeralIP: %v", err)
 	}
-	if oldIP != "140.238.1.1" || newIP != "129.153.2.2" {
+	if oldIP != "140.238.1.1" || newIP != "140.245.2.2" {
 		t.Fatalf("unexpected rotation: old=%s, new=%s", oldIP, newIP)
 	}
 }

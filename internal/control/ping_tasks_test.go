@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -76,7 +77,14 @@ func TestPingTasksPublicAndPerNodeReconcile(t *testing.T) {
 		t.Fatalf("expected node-b to receive only 1 public probe, got %#v", payloadB)
 	}
 
-	// 4. Clear dedicated probes on node-a and verify public probe remains intact
+	// 4. Attempt to modify public probe in node-a specific configuration must fail
+	if err := store.SyncNodePingTasks(ctx, "node-a", []PingTask{
+		{ID: pubProbe.ID, Name: "TamperedPublic", Target: "8.8.8.8:53", Interval: 10},
+	}); err == nil || !strings.Contains(err.Error(), "禁止在服务器单独配置中修改公共探针") {
+		t.Fatalf("expected error containing '禁止在服务器单独配置中修改公共探针', got %v", err)
+	}
+
+	// 5. Clear dedicated probes on node-a and verify public probe remains intact
 	if err := store.SyncNodePingTasks(ctx, "node-a", []PingTask{}); err != nil {
 		t.Fatalf("SyncNodePingTasks empty node-a: %v", err)
 	}
