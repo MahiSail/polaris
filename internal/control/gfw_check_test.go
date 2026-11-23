@@ -427,3 +427,108 @@ func TestOCIClient_RotateEphemeralIP_UserOptions(t *testing.T) {
 		t.Errorf("expected 168.138.1.1 when ExcludeSubnets=false, got %s", newIP)
 	}
 }
+
+
+func TestCheckGFWBlocked_DomesticProbeFailure_DoesNotLoop(t *testing.T) {
+	// Setup domestic server returning HTTP 500 Internal Server Error (simulating probe API failure or DNS error)
+	domServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"code": 500, "msg": "probe error"}`))
+	}))
+	defer domServer.Close()
+
+	// Setup overseas server returning open
+	overseasServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(gfwPortCheckResp{
+			Code: 200,
+			Msg:  "ok",
+			Data: &struct {
+				Host    string `json:"host"`
+				Port    int    `json:"port"`
+				Status  string `json:"status"`
+				Elapsed int    `json:"elapsed"`
+			}{
+				Host:   "140.245.88.88",
+				Port:   22,
+				Status: "open",
+			},
+		})
+	}))
+	defer overseasServer.Close()
+
+	origDom := GFWCheckDomesticBaseURL
+	origOverseas := GFWCheckOverseasBaseURL
+	origClient := GFWCheckHTTPClient
+	defer func() {
+		GFWCheckDomesticBaseURL = origDom
+		GFWCheckOverseasBaseURL = origOverseas
+		GFWCheckHTTPClient = origClient
+	}()
+
+	GFWCheckDomesticBaseURL = domServer.URL
+	GFWCheckOverseasBaseURL = overseasServer.URL
+	GFWCheckHTTPClient = domServer.Client()
+
+	ctx := context.Background()
+
+	// 1. Direct check: blocked MUST be false even though overseas is open, because domestic probe is down
+	blocked, reason, err := CheckGFWBlocked(ctx, "140.245.88.88", 22)
+	if err == nil {
+		t.Error("expected err due to domestic probe 500, got nil")
+	}
+	if blocked {
+		t.Errorf("CRITICAL BUG: domestic probe failure must NOT mark IP as blocked! reason=%s", reason)
+	}
+
+	// 2. Integration check with RotateEphemeralIP: should successfully allocate on Round 1 and NOT discard/loop
+	privKey, pemStr := generateTestRSAKey(t)
+	pubKey := &privKey.PublicKey
+
+	rotationAttempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		verifyOCISignature(t, pubKey, r, nil)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":
+			rotationAttempts++
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(OCIPublicIP{
+				ID:        "ocid1.publicip.test.clean",
+				IPAddress: "140.245.88.88",
+			})
+		}
+	}))
+	defer ts.Close()
+
+	cfg := OCIConfig{
+		TenancyID:     "ocid1.tenancy.test",
+		UserID:        "ocid1.user.test",
+		Fingerprint:   "aa:bb:cc:dd",
+		Region:        "ap-singapore-1",
+		PrivateKeyPEM: pemStr,
+	}
+
+	client, err := NewOCIClient(cfg)
+	if err != nil {
+		t.Fatalf("NewOCIClient: %v", err)
+	}
+	client.SetBaseURL(ts.URL)
+
+	_, newIP, err := client.RotateEphemeralIPWithOptions(ctx, "ocid1.comp.1", "ocid1.priv.1", RotateEphemeralIPOptions{
+		ExcludeSubnets: true,
+		CheckGFW:       true,
+		MaxRounds:      5,
+	})
+	if err != nil {
+		t.Fatalf("RotateEphemeralIPWithOptions: %v", err)
+	}
+
+	if newIP != "140.245.88.88" {
+		t.Errorf("expected newIP 140.245.88.88, got %s", newIP)
+	}
+	if rotationAttempts != 1 {
+		t.Errorf("expected exactly 1 allocation attempt (Round 1 success), got %d attempts! (It looped unnecessarily)", rotationAttempts)
+	}
+}

@@ -129,7 +129,10 @@ func queryGFWPingCheck(ctx context.Context, baseURL, ip string) (alive bool, los
 // CheckGFWBlocked checks whether the given IP is blocked by China's Great Firewall (GFW)
 // using differential testing between mainland China probe and overseas probe.
 // Default port is 22 (SSH).
-// Returns blocked = true if the IP is blocked in China, false otherwise.
+// Returns blocked = true ONLY when both probe nodes are functioning properly and prove that
+// the target IP is reachable overseas but blocked in mainland China.
+// If any third-party probe node itself fails (network timeout, DNS error, 5xx), it fails open (blocked = false)
+// to prevent discarding valid IPs.
 func CheckGFWBlocked(ctx context.Context, ip string, port int) (blocked bool, reason string, err error) {
 	if port <= 0 {
 		port = 22
@@ -142,32 +145,45 @@ func CheckGFWBlocked(ctx context.Context, ip string, port int) (blocked bool, re
 	log.Printf("[GFWCheck] TCP port %d check for %s: domestic=%s (err: %v), overseas=%s (err: %v)",
 		port, ip, domStatus, domErr, overseasStatus, overseasErr)
 
-	if overseasErr == nil && overseasStatus == "open" {
-		if domErr == nil && domStatus == "open" {
+	// CRITICAL: If the domestic probe service itself fails (DNS failure, network timeout, HTTP 5xx),
+	// this indicates the probe node is down, NOT that the target IP is blocked.
+	// We MUST NOT mark the IP as blocked, otherwise valid IPs would be discarded in a loop.
+	if domErr != nil {
+		return false, "Domestic probe node unavailable", fmt.Errorf("domestic probe port check failed: %w", domErr)
+	}
+
+	// If overseas probe failed, we cannot establish a reliable reachability baseline.
+	if overseasErr != nil {
+		return false, "Overseas probe node unavailable", fmt.Errorf("overseas probe port check failed: %w", overseasErr)
+	}
+
+	// At this point, both probe API calls succeeded (HTTP 200).
+	// We can now safely evaluate the target IP reachability:
+	if overseasStatus == "open" {
+		if domStatus == "open" {
 			return false, "TCP port reachable from mainland China", nil
 		}
-		if domErr == nil && domStatus != "open" {
-			return true, fmt.Sprintf("TCP port %d open overseas but blocked/filtered in mainland China (%s)", port, domStatus), nil
-		}
-		// If domestic probe request itself failed (network/DNS/HTTP error), do not falsely assume the target IP is blocked.
-		// Instead, fall through to ICMP ping check or report detection warning.
+		// Overseas is open, but mainland China probe explicitly received connection timeout (filtered) or reset (closed).
+		return true, fmt.Sprintf("TCP port %d open overseas but blocked/filtered in mainland China (%s)", port, domStatus), nil
 	}
 
-	// Step 2: Fall back to ICMP Ping differential test if port is not globally open
+	// Step 2: Fall back to ICMP Ping differential test ONLY if port 22 is not open overseas
+	// (e.g. instance SSH is on another port or firewall blocks port 22 globally).
 	domAlive, domLoss, domPingErr := queryGFWPingCheck(ctx, GFWCheckDomesticBaseURL, ip)
-	overseasAlive, _, overseasPingErr := queryGFWPingCheck(ctx, GFWCheckOverseasBaseURL, ip)
-
-	log.Printf("[GFWCheck] ICMP ping check for %s: domestic alive=%v loss=%d%% (err: %v), overseas alive=%v (err: %v)",
-		ip, domAlive, domLoss, domPingErr, overseasAlive, overseasPingErr)
-
-	if overseasPingErr == nil && overseasAlive {
-		if domPingErr == nil && (!domAlive || domLoss == 100) {
-			return true, fmt.Sprintf("ICMP ping responsive overseas but 100%% packet loss in mainland China"), nil
-		}
+	if domPingErr != nil {
+		return false, "Domestic probe ping unavailable", fmt.Errorf("domestic probe ping check failed: %w", domPingErr)
 	}
 
-	if domErr != nil && domPingErr != nil {
-		return false, "Domestic probe node unavailable", fmt.Errorf("domestic probe failed (port check: %v, ping check: %v)", domErr, domPingErr)
+	overseasAlive, _, overseasPingErr := queryGFWPingCheck(ctx, GFWCheckOverseasBaseURL, ip)
+	if overseasPingErr != nil {
+		return false, "Overseas probe ping unavailable", fmt.Errorf("overseas probe ping check failed: %w", overseasPingErr)
+	}
+
+	log.Printf("[GFWCheck] ICMP ping check for %s: domestic alive=%v loss=%d%%, overseas alive=%v",
+		ip, domAlive, domLoss, overseasAlive)
+
+	if overseasAlive && (!domAlive || domLoss == 100) {
+		return true, "ICMP ping responsive overseas but 100% packet loss in mainland China", nil
 	}
 
 	return false, "Not blocked (or port closed globally)", nil
