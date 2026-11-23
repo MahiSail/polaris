@@ -38,6 +38,7 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 
 	privKey, pemStr := generateTestRSAKey(t)
 	pubKey := &privKey.PublicKey
+	deletedOldIP := false
 
 	// Mock OCI Server
 	mockOCI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +66,11 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 				},
 			})
 
-		case r.Method == http.MethodGet && r.URL.Path == "/20160918/publicIps/actions/getPublicIpByPrivateIpId":
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			if deletedOldIP {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(OCIPublicIP{
 				ID:             "ocid1.publicip.old",
 				IPAddress:      "140.238.1.1",
@@ -74,6 +79,7 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 			})
 
 		case r.Method == http.MethodDelete && r.URL.Path == "/20160918/publicIps/ocid1.publicip.old":
+			deletedOldIP = true
 			w.WriteHeader(http.StatusNoContent)
 
 		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":

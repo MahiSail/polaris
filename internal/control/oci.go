@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -240,8 +241,11 @@ func (c *OCIClient) TestConnection(ctx context.Context) error {
 // GetPublicIPByPrivateIP retrieves the Public IP object assigned to the specified private IP OCID.
 // If no public IP is attached, it returns (nil, nil).
 func (c *OCIClient) GetPublicIPByPrivateIP(ctx context.Context, privateIPID string) (*OCIPublicIP, error) {
-	path := fmt.Sprintf("/20160918/publicIps/actions/getPublicIpByPrivateIpId?privateIpId=%s", privateIPID)
-	resp, body, err := c.do(ctx, http.MethodGet, path, nil)
+	path := "/20160918/publicIps/actions/getByPrivateIpId"
+	payload := map[string]string{
+		"privateIpId": privateIPID,
+	}
+	resp, body, err := c.do(ctx, http.MethodPost, path, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -353,9 +357,10 @@ func (c *OCIClient) GetVNIC(ctx context.Context, vnicID string) (*OCIVNIC, error
 }
 
 // RotateEphemeralIP executes the full atomic sequence:
-// 1. Look up existing public IP.
+// 1. Look up existing public IP via getByPrivateIpId.
 // 2. Delete/release the existing IP.
-// 3. Request a brand new Ephemeral Public IP from the Oracle pool.
+// 3. Wait for unassignment to take effect in OCI.
+// 4. Request a brand new Ephemeral Public IP from the Oracle pool, with automatic conflict recovery.
 func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privateIPID string) (oldIP, newIP string, err error) {
 	existing, err := c.GetPublicIPByPrivateIP(ctx, privateIPID)
 	if err != nil {
@@ -367,11 +372,51 @@ func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privat
 		if err := c.DeletePublicIP(ctx, existing.ID); err != nil {
 			return oldIP, "", fmt.Errorf("delete old public IP (%s): %w", existing.ID, err)
 		}
+
+		// Wait briefly for unassignment to propagate in OCI networking
+		for i := 0; i < 10; i++ {
+			select {
+			case <-ctx.Done():
+				return oldIP, "", ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+			curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
+			if curr == nil {
+				break
+			}
+		}
 	}
 
-	// Immediate re-creation of ephemeral public IP
-	created, err := c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
-	if err != nil {
+	// Attempt creation of new ephemeral public IP with conflict recovery
+	var created *OCIPublicIP
+	conflictRegex := regexp.MustCompile(`(ocid1\.publicip\.[^\s"']+)`)
+
+	for attempt := 0; attempt < 5; attempt++ {
+		created, err = c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
+		if err == nil {
+			break
+		}
+
+		// If conflict indicates an existing public IP is still attached, delete it and retry
+		if strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "Conflict") {
+			matches := conflictRegex.FindStringSubmatch(err.Error())
+			if len(matches) > 1 {
+				stalePublicIPID := matches[1]
+				_ = c.DeletePublicIP(ctx, stalePublicIPID)
+			}
+			select {
+			case <-ctx.Done():
+				return oldIP, "", ctx.Err()
+			case <-time.After(1 * time.Second):
+			}
+			continue
+		}
+
+		// For other non-conflict errors, return immediately
+		return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
+	}
+
+	if created == nil {
 		return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
 	}
 

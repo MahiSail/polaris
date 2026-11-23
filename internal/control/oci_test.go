@@ -97,7 +97,11 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`[{"key":"NRT","name":"ap-tokyo-1"}]`))
 
-		case r.Method == http.MethodGet && r.URL.Path == "/20160918/publicIps/actions/getPublicIpByPrivateIpId":
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			if deletedOldIP {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_ = json.NewEncoder(w).Encode(OCIPublicIP{
@@ -220,4 +224,73 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 	if instances[0].DisplayName != "vm-tokyo-1" || instances[0].PublicIP != "140.238.10.10" || instances[0].VnicID != "ocid1.vnic.test.1" {
 		t.Fatalf("unexpected instance data: %+v", instances[0])
 	}
+}
+
+func TestOCIClient_RotateEphemeralIP_ConflictRecovery(t *testing.T) {
+	privKey, pemStr := generateTestRSAKey(t)
+	pubKey := &privKey.PublicKey
+
+	deletedConflictingIP := false
+	attemptCount := 0
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		verifyOCISignature(t, pubKey, r, nil)
+
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			// Simulate that getByPrivateIpId returned 404 (e.g. edge condition or stale state)
+			w.WriteHeader(http.StatusNotFound)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":
+			attemptCount++
+			if attemptCount == 1 {
+				// First attempt fails with 409 Conflict (exactly matching the user's error message)
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{ "code" : "Conflict", "message" : "Private IP: ocid1.privateip.test.1 already has a public IP ocid1.publicip.test.stale assigned to it." }`))
+				return
+			}
+			// Second attempt succeeds
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(OCIPublicIP{
+				ID:             "ocid1.publicip.test.new2",
+				IPAddress:      "129.153.30.30",
+				Lifetime:       "EPHEMERAL",
+				LifecycleState: "ASSIGNED",
+			})
+
+		case r.Method == http.MethodDelete && r.URL.Path == "/20160918/publicIps/ocid1.publicip.test.stale":
+			deletedConflictingIP = true
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewOCIClient(OCIConfig{
+		TenancyID:     "ocid1.tenancy.test",
+		UserID:        "ocid1.user.test",
+		Fingerprint:   "aa:bb:cc:dd",
+		Region:        "ap-tokyo-1",
+		PrivateKeyPEM: pemStr,
+	})
+	if err != nil {
+		t.Fatalf("NewOCIClient: %v", err)
+	}
+	client.httpClient = ts.Client()
+	client.baseURL = ts.URL
+
+	oldIP, newIP, err := client.RotateEphemeralIP(context.Background(), "ocid1.compartment.test", "ocid1.privateip.test.1")
+	if err != nil {
+		t.Fatalf("expected successful recovery from 409 conflict, got: %v", err)
+	}
+	if newIP != "129.153.30.30" {
+		t.Errorf("expected new IP 129.153.30.30, got %s", newIP)
+	}
+	if !deletedConflictingIP {
+		t.Error("expected conflicting public IP to be deleted automatically")
+	}
+	_ = oldIP
 }
