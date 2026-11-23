@@ -28,21 +28,21 @@ func TestStore_OCIAccountsAndNodeBinding(t *testing.T) {
 	pem2 := "-----BEGIN RSA PRIVATE KEY-----\nKEY2...\n-----END RSA PRIVATE KEY-----"
 
 	// 2. Create Account 1 (Tokyo)
-	acc1, err := store.CreateOCIAccount(ctx, "东京主力号", "ocid1.tenancy.tokyo", "ocid1.user.tokyo", "11:11:11:11", "ap-tokyo-1", pem1, false)
+	acc1, err := store.CreateOCIAccount(ctx, "东京主力号", "ocid1.tenancy.tokyo", "ocid1.user.tokyo", "11:11:11:11", "ap-tokyo-1", pem1, false, true)
 	if err != nil {
 		t.Fatalf("Create Account 1: %v", err)
 	}
-	if !acc1.IsDefault {
-		t.Fatalf("first account should automatically become default")
+	if !acc1.IsDefault || !acc1.Enabled {
+		t.Fatalf("first account should automatically become default and enabled")
 	}
 
 	// 3. Create Account 2 (Frankfurt)
-	acc2, err := store.CreateOCIAccount(ctx, "法兰克福备用号", "ocid1.tenancy.fra", "ocid1.user.fra", "22:22:22:22", "eu-frankfurt-1", pem2, false)
+	acc2, err := store.CreateOCIAccount(ctx, "法兰克福备用号", "ocid1.tenancy.fra", "ocid1.user.fra", "22:22:22:22", "eu-frankfurt-1", pem2, false, true)
 	if err != nil {
 		t.Fatalf("Create Account 2: %v", err)
 	}
-	if acc2.IsDefault {
-		t.Fatalf("second account should not be default")
+	if acc2.IsDefault || !acc2.Enabled {
+		t.Fatalf("second account should not be default and should be enabled")
 	}
 
 	// 4. List accounts: Account 1 should be first (isDefault = true)

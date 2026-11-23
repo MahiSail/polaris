@@ -2977,6 +2977,7 @@ CREATE TABLE IF NOT EXISTS oci_accounts (
   region TEXT NOT NULL,
   private_key_encrypted BLOB NOT NULL,
   is_default INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -3041,6 +3042,13 @@ CREATE INDEX IF NOT EXISTS idx_ddns_change_records_domain ON ddns_change_records
 		"oci_compartment_id TEXT NOT NULL DEFAULT ''", "oci_region TEXT NOT NULL DEFAULT ''",
 	} {
 		if err := s.addNodeColumn(ctx, column); err != nil {
+			return err
+		}
+	}
+	for _, column := range []string{
+		"enabled INTEGER NOT NULL DEFAULT 1",
+	} {
+		if err := s.addOCIAccountsColumn(ctx, column); err != nil {
 			return err
 		}
 	}
@@ -3274,6 +3282,14 @@ func (s *Store) addAlertSettingsColumn(ctx context.Context, definition string) e
 		return nil
 	}
 	return fmt.Errorf("migrate alert_settings table: %w", err)
+}
+
+func (s *Store) addOCIAccountsColumn(ctx context.Context, definition string) error {
+	_, err := s.db.ExecContext(ctx, "ALTER TABLE oci_accounts ADD COLUMN "+definition)
+	if err == nil || strings.Contains(err.Error(), "duplicate column name") {
+		return nil
+	}
+	return fmt.Errorf("migrate oci_accounts table: %w", err)
 }
 
 func (s *Store) addConnectionRecordsColumn(ctx context.Context, definition string) error {

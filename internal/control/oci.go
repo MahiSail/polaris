@@ -55,6 +55,18 @@ type OCIVNIC struct {
 	IsPrimary     bool   `json:"isPrimary"`
 }
 
+// OCIInstance represents an OCI Compute Instance with attached VNIC and IP info.
+type OCIInstance struct {
+	ID             string `json:"id"`
+	DisplayName    string `json:"name"`
+	LifecycleState string `json:"state"`
+	Shape          string `json:"shape"`
+	PublicIP       string `json:"public_ip"`
+	VnicID         string `json:"vnic_id"`
+	CompartmentID  string `json:"compartment_id"`
+	Region         string `json:"region"`
+}
+
 // OCIClient is a lightweight, zero-dependency client that speaks directly to the OCI REST API.
 type OCIClient struct {
 	cfg        OCIConfig
@@ -364,4 +376,82 @@ func (c *OCIClient) RotateEphemeralIP(ctx context.Context, compartmentID, privat
 	}
 
 	return oldIP, created.IPAddress, nil
+}
+
+// ListInstances retrieves all compute instances in the tenancy and resolves their primary VNIC and public IP.
+func (c *OCIClient) ListInstances(ctx context.Context) ([]OCIInstance, error) {
+	tenancyID := strings.TrimSpace(c.cfg.TenancyID)
+	if tenancyID == "" {
+		return nil, errors.New("tenancy ID is required to list instances")
+	}
+
+	path := fmt.Sprintf("/20160918/instances?compartmentId=%s", tenancyID)
+	resp, body, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("OCI list instances (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var rawInstances []struct {
+		ID             string `json:"id"`
+		DisplayName    string `json:"displayName"`
+		LifecycleState string `json:"lifecycleState"`
+		Region         string `json:"region"`
+		Shape          string `json:"shape"`
+		CompartmentID  string `json:"compartmentId"`
+	}
+	if err := json.Unmarshal(body, &rawInstances); err != nil {
+		return nil, fmt.Errorf("unmarshal instances: %w", err)
+	}
+
+	region := strings.ToLower(strings.TrimSpace(c.cfg.Region))
+	var result []OCIInstance
+
+	for _, raw := range rawInstances {
+		if strings.EqualFold(raw.LifecycleState, "TERMINATED") {
+			continue
+		}
+
+		inst := OCIInstance{
+			ID:             raw.ID,
+			DisplayName:    raw.DisplayName,
+			LifecycleState: raw.LifecycleState,
+			Shape:          raw.Shape,
+			CompartmentID:  raw.CompartmentID,
+			Region:         region,
+		}
+
+		attPath := fmt.Sprintf("/20160918/vnicAttachments?compartmentId=%s&instanceId=%s", tenancyID, raw.ID)
+		attResp, attBody, attErr := c.do(ctx, http.MethodGet, attPath, nil)
+		if attErr == nil && attResp.StatusCode >= 200 && attResp.StatusCode < 300 {
+			var attachments []struct {
+				ID        string `json:"id"`
+				VnicID    string `json:"vnicId"`
+				NicIndex  int    `json:"nicIndex"`
+				IsPrimary bool   `json:"isPrimary"`
+			}
+			if err := json.Unmarshal(attBody, &attachments); err == nil && len(attachments) > 0 {
+				primaryVnicID := attachments[0].VnicID
+				for _, att := range attachments {
+					if att.IsPrimary || att.NicIndex == 0 {
+						primaryVnicID = att.VnicID
+						break
+					}
+				}
+				inst.VnicID = primaryVnicID
+				if vnic, err := c.GetVNIC(ctx, primaryVnicID); err == nil && vnic != nil {
+					inst.PublicIP = vnic.PublicIP
+					if vnic.CompartmentID != "" {
+						inst.CompartmentID = vnic.CompartmentID
+					}
+				}
+			}
+		}
+
+		result = append(result, inst)
+	}
+
+	return result, nil
 }

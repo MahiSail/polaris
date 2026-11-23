@@ -480,10 +480,10 @@
         <template v-else-if="editTab === 'oci'">
           <div class="m-card m-card--flat">
             <div class="m-card__top">
-              <strong style="font-size: 13px;">Oracle Cloud (OCI) 网络配置</strong>
+              <strong style="font-size: 13px;">Oracle Cloud 实例关联</strong>
             </div>
             <div class="m-card__note">
-              配置该服务器在 Oracle Cloud 上的资源标识。系统设置中启用 OCI 后，可一键更换公网 IP。
+              选择该服务器对应的 Oracle 账号，系统将自动识别并关联云服务器实例，无需手动输入任何虚拟网卡 OCID。
             </div>
           </div>
 
@@ -494,37 +494,72 @@
               :options="ociAccountOptions"
               title="选择绑定 OCI 账号"
               placeholder="默认账号（继承系统全局）"
+              @update:model-value="onMobileOciAccountChange"
             />
-            <div class="m-field__hint">指定此服务器调用哪个 Oracle 租户 API。留空则继承系统默认账号。</div>
+            <div class="m-field__hint">指定此服务器调用哪个 Oracle 租户 API。选择后将自动拉取实例。</div>
           </div>
 
-          <div class="m-field">
-            <label class="m-field__label">VNIC OCID (虚拟网卡)</label>
-            <el-input v-model="editForm.oci_vnic_id" placeholder="ocid1.vnic.oc1..aaaa..." clearable />
-            <div class="m-field__hint">推荐填写。配置 VNIC 后，换 IP 时可自动解析区间与主私有 IP。</div>
+          <div v-if="ociInstancesLoading" class="m-card m-card--flat" style="text-align: center; padding: 14px; font-size: 13px; color: var(--sb-text-sub);">
+            <el-icon class="is-loading" style="margin-right: 6px;"><Loading /></el-icon>
+            正在检索账号下的云服务器实例...
           </div>
 
-          <div class="m-field">
-            <label class="m-field__label">主私有 IP OCID (Private IP OCID)</label>
-            <el-input v-model="editForm.oci_private_ip_id" placeholder="可选，留空将自动从 VNIC 解析" clearable />
+          <div v-else-if="ociInstances.length > 0">
+            <div class="m-field">
+              <label class="m-field__label">关联的云实例 (Instance)</label>
+              <MPicker
+                :model-value="editForm.oci_vnic_id"
+                :options="ociInstanceOptions"
+                title="选择关联的云服务器实例"
+                placeholder="选择云实例"
+                @update:model-value="(vnicId) => {
+                  const inst = ociInstances.find((i) => i.vnic_id === vnicId)
+                  if (inst) applyMobileOciInstanceBinding(inst)
+                }"
+              />
+              <div class="m-field__hint">系统已根据服务器当前 IP 自动匹配实例，也可直接切换。</div>
+            </div>
+
+            <!-- Detailed Association Card: 能看到关联的是什么 -->
+            <div v-if="selectedOciInstance" class="m-card" style="margin-top: 10px; padding: 12px 14px; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);">
+              <div class="m-card__top" style="margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="m-pill m-pill--success" style="font-size: 11px;">已自动关联</span>
+                  <strong style="font-size: 13px;">{{ selectedOciInstance.name }}</strong>
+                </div>
+                <el-button type="danger" link size="small" @click="clearMobileOciBinding">解除</el-button>
+              </div>
+
+              <div class="m-stack" style="gap: 6px; font-size: 12px;">
+                <div class="m-kv-cell">
+                  <span class="m-kv-cell__key">实例状态</span>
+                  <span class="m-kv-cell__value">{{ selectedOciInstance.state }} ({{ selectedOciInstance.shape || '标准' }})</span>
+                </div>
+                <div class="m-kv-cell">
+                  <span class="m-kv-cell__key">网卡公网 IP</span>
+                  <span class="m-kv-cell__value" style="color: var(--el-color-primary); font-weight: 600;">{{ selectedOciInstance.public_ip || '—' }}</span>
+                </div>
+                <div class="m-kv-cell">
+                  <span class="m-kv-cell__key">所在区域</span>
+                  <span class="m-kv-cell__value">{{ selectedOciInstance.region }}</span>
+                </div>
+                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(59, 130, 246, 0.2); font-size: 11px; color: var(--sb-text-sub); word-break: break-all;">
+                  虚拟网卡 (VNIC): {{ selectedOciInstance.vnic_id }}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="m-field">
-            <label class="m-field__label">区间 OCID (Compartment OCID)</label>
-            <el-input v-model="editForm.oci_compartment_id" placeholder="可选，留空将自动从 VNIC 解析" clearable />
+          <div v-else-if="editForm.oci_account_id" class="m-card m-card--flat" style="text-align: center; padding: 14px; font-size: 12px; color: var(--sb-text-sub);">
+            未在该 OCI 账号中检索到运行中的计算实例，请核对区域与账号权限。
           </div>
 
-          <div class="m-field">
-            <label class="m-field__label">区域覆盖 (Region Override)</label>
-            <el-input v-model="editForm.oci_region" placeholder="例如: ap-tokyo-1（留空继承账号默认区域）" clearable />
-          </div>
-
-          <div v-if="editNode" class="m-card" style="margin-top: 14px; padding: 12px 14px;">
+          <div v-if="editNode && editForm.oci_vnic_id" class="m-card" style="margin-top: 14px; padding: 12px 14px;">
             <div class="m-card__top">
               <span class="m-card__title" style="font-size: 13px;">快捷更换公网 IP</span>
             </div>
             <div class="m-note" style="margin: 4px 0 10px;">
-              当前公网 IP：<span class="m-mono-wrap">{{ editNode.last_observed_ip || editNode.client_address || '—' }}</span>
+              当前关联实例：{{ selectedOciInstance?.name || '已绑定' }}（<span class="m-mono-wrap">{{ editNode.last_observed_ip || editNode.client_address || '—' }}</span>）
             </div>
             <el-button type="warning" :icon="Refresh" style="width: 100%;" @click="promptChangeOciIP(editNode)">
               立即一键更换 IP
@@ -753,6 +788,92 @@ function createEmptyEditForm() {
 }
 
 const ociAccounts = ref([])
+const ociInstances = ref([])
+const ociInstancesLoading = ref(false)
+const selectedOciInstance = computed(() => {
+  if (!editForm.value.oci_vnic_id) return null
+  return ociInstances.value.find((i) => i.vnic_id === editForm.value.oci_vnic_id) || null
+})
+
+const ociInstanceOptions = computed(() => {
+  return ociInstances.value.map((inst) => {
+    const isMatched = inst.public_ip && inst.public_ip === (editNode.value?.last_observed_ip || editNode.value?.client_address)
+    return {
+      value: inst.vnic_id,
+      label: `${inst.name} (${inst.public_ip || '无公网 IP'} · ${inst.state}${isMatched ? ' · 匹配' : ''})`,
+    }
+  })
+})
+
+async function onMobileOciAccountChange(accountId) {
+  editForm.value.oci_account_id = accountId || ''
+  await loadMobileOCIInstancesAndAutoBind(accountId)
+}
+
+async function loadMobileOCIInstancesAndAutoBind(accountId) {
+  let targetId = (accountId || '').trim()
+  if (!targetId) {
+    const def = ociAccounts.value.find((a) => a.is_default) || ociAccounts.value[0]
+    if (def) targetId = def.id
+  }
+  if (!targetId) {
+    ociInstances.value = []
+    return
+  }
+
+  ociInstancesLoading.value = true
+  try {
+    const res = await api(`/oci/accounts/${targetId}/instances`)
+    ociInstances.value = res.instances || []
+
+    const nodeIP = (editNode.value?.last_observed_ip || editNode.value?.client_address || '').trim()
+
+    // 1. If currently bound VNIC is found among instances, keep it
+    if (editForm.value.oci_vnic_id) {
+      const existing = ociInstances.value.find((i) => i.vnic_id === editForm.value.oci_vnic_id)
+      if (existing) {
+        editForm.value.oci_compartment_id = existing.compartment_id || ''
+        editForm.value.oci_region = existing.region || ''
+        return
+      }
+    }
+
+    // 2. Otherwise auto-match instance by current public IP of the server
+    if (nodeIP && nodeIP !== '—' && nodeIP !== '未知') {
+      const matched = ociInstances.value.find((i) => i.public_ip && i.public_ip.trim() === nodeIP)
+      if (matched) {
+        applyMobileOciInstanceBinding(matched)
+        return
+      }
+    }
+
+    // 3. If there is only exactly 1 instance under this account, auto-associate it!
+    if (ociInstances.value.length === 1) {
+      applyMobileOciInstanceBinding(ociInstances.value[0])
+    }
+  } catch {
+    ociInstances.value = []
+  } finally {
+    ociInstancesLoading.value = false
+  }
+}
+
+function applyMobileOciInstanceBinding(inst) {
+  if (!inst) return
+  editForm.value.oci_vnic_id = inst.vnic_id || ''
+  editForm.value.oci_compartment_id = inst.compartment_id || ''
+  editForm.value.oci_region = inst.region || ''
+  editForm.value.oci_private_ip_id = ''
+}
+
+function clearMobileOciBinding() {
+  editForm.value.oci_account_id = ''
+  editForm.value.oci_vnic_id = ''
+  editForm.value.oci_private_ip_id = ''
+  editForm.value.oci_compartment_id = ''
+  editForm.value.oci_region = ''
+}
+
 async function loadOCIAccounts() {
   try {
     const res = await api('/oci/accounts').catch(() => ({ accounts: [] }))
@@ -773,6 +894,7 @@ function isOracleNode(node) {
   if (!node) return false
   return (
     (node.provider && node.provider.toLowerCase().includes('oracle')) ||
+    Boolean(node.oci_account_id) ||
     Boolean(node.oci_vnic_id) ||
     Boolean(node.oci_region)
   )
@@ -780,10 +902,30 @@ function isOracleNode(node) {
 
 async function promptChangeOciIP(node) {
   if (!node) return
+  if (!node.oci_vnic_id && !node.oci_account_id) {
+    try {
+      await ElMessageBox.confirm(
+        `服务器「${node.name}」尚未绑定 Oracle 账号。\n\n系统将自动为您识别该账号下的云服务器实例及网卡。\n\n是否立即前往选择绑定账号？`,
+        '尚未绑定 Oracle 账号',
+        {
+          confirmButtonText: '前往绑定',
+          cancelButtonText: '取消',
+          type: 'info',
+        },
+      )
+      openEdit(node, 'oci')
+    } catch {}
+    return
+  }
+
   const currentIP = node.last_observed_ip || node.client_address || '未知'
+  const matchedAcc = ociAccounts.value.find((a) => a.id === node.oci_account_id)
+  const accName = matchedAcc ? `${matchedAcc.name} (${matchedAcc.region})` : '系统默认 OCI 账号'
+  const vnicDisplay = node.oci_vnic_id ? `${node.oci_vnic_id.slice(0, 18)}...${node.oci_vnic_id.slice(-8)}` : '已自动关联网卡'
+
   try {
     await ElMessageBox.confirm(
-      `确定要为服务器「${node.name}」更换公网 IP 吗？\n当前公网 IP: ${currentIP}\n\n注意：更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。`,
+      `确定要为服务器「${node.name}」更换公网 IP 吗？\n\n• 当前公网 IP：${currentIP}\n• 绑定 Oracle 账号：${accName}\n• 关联网卡：${vnicDisplay}\n\n注意：更换期间主机网络将有约 5-15 秒短暂波动，Agent 会自动重连恢复。若已开启 DDNS，系统将自动把域名解析同步更新至新 IP。`,
       '更换公网 IP (Oracle Cloud)',
       {
         confirmButtonText: '确认更换',
@@ -1256,7 +1398,9 @@ async function openEdit(node, initialTab = 'basic') {
   editTab.value = typeof initialTab === 'string' && initialTab ? initialTab : 'basic'
   editSheet.value = true
   loadCloudflareRecords()
-  loadOCIAccounts().catch(() => {})
+  loadOCIAccounts().then(() => {
+    loadMobileOCIInstancesAndAutoBind(editForm.value.oci_account_id)
+  }).catch(() => {})
   loadPingTasks().then(() => {
     if (editNode.value?.id === node.id) {
       editForm.value.custom_probes = getCustomProbesForNode(node.id)

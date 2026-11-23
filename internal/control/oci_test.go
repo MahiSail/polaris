@@ -127,6 +127,21 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 				LifecycleState: "ASSIGNED",
 			})
 
+		case r.Method == http.MethodGet && r.URL.Path == "/20160918/instances":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"id":"ocid1.instance.1","displayName":"vm-tokyo-1","lifecycleState":"RUNNING","region":"ap-tokyo-1","shape":"VM.Standard.A1.Flex","compartmentId":"ocid1.tenancy.test"}]`))
+
+		case r.Method == http.MethodGet && r.URL.Path == "/20160918/vnicAttachments":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"id":"ocid1.att.1","instanceId":"ocid1.instance.1","vnicId":"ocid1.vnic.test.1","isPrimary":true}]`))
+
+		case r.Method == http.MethodGet && r.URL.Path == "/20160918/vnics/ocid1.vnic.test.1":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"ocid1.vnic.test.1","compartmentId":"ocid1.tenancy.test","publicIp":"140.238.10.10","isPrimary":true}`))
+
 		case r.Method == http.MethodGet && r.URL.Path == "/20160918/privateIps":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -192,5 +207,17 @@ func TestOCIClient_RequestSigningAndRotation(t *testing.T) {
 	}
 	if !createdNewIP {
 		t.Error("expected new IP to be created")
+	}
+
+	// 4. Test ListInstances
+	instances, err := client.ListInstances(ctx)
+	if err != nil {
+		t.Fatalf("ListInstances: %v", err)
+	}
+	if len(instances) != 1 {
+		t.Fatalf("expected 1 instance, got %d", len(instances))
+	}
+	if instances[0].DisplayName != "vm-tokyo-1" || instances[0].PublicIP != "140.238.10.10" || instances[0].VnicID != "ocid1.vnic.test.1" {
+		t.Fatalf("unexpected instance data: %+v", instances[0])
 	}
 }

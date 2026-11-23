@@ -467,6 +467,8 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/oci/accounts", s.createOCIAccount)
 	mux.HandleFunc("PUT /api/v1/oci/accounts/{id}", s.updateOCIAccount)
 	mux.HandleFunc("DELETE /api/v1/oci/accounts/{id}", s.deleteOCIAccount)
+	mux.HandleFunc("POST /api/v1/oci/accounts/{id}/default", s.setDefaultOCIAccount)
+	mux.HandleFunc("GET /api/v1/oci/accounts/{id}/instances", s.listOCIAccountInstances)
 	mux.HandleFunc("POST /api/v1/oci/accounts/{id}/test", s.testOCIAccount)
 	mux.HandleFunc("POST /api/v1/oci/accounts/test", s.testOCIAccount)
 	mux.HandleFunc("POST /api/v1/oci/test", s.testOCIAccount)
@@ -3617,7 +3619,7 @@ func (s *Server) writer(r *http.Request) (Operator, error) {
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	if r.Body == nil {
-		writeError(w, errors.New("JSON body is required"))
+		writeError(w, errors.New("缺少请求体数据"))
 		return false
 	}
 	defer r.Body.Close()
@@ -3625,12 +3627,12 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		writeError(w, fmt.Errorf("invalid JSON: %w", err))
+		writeError(w, fmt.Errorf("JSON 解析失败: %w", err))
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		writeError(w, errors.New("JSON body must contain one object"))
+		writeError(w, errors.New("请求体只能包含单个 JSON 对象"))
 		return false
 	}
 	return true

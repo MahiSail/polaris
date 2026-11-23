@@ -318,6 +318,7 @@ const emit = defineEmits(['edit', 'probe-peers', 'upgrade-agent', 'upgrade-singb
 
 const isOracleNode = computed(() =>
   (props.node?.provider && props.node.provider.toLowerCase().includes('oracle')) ||
+  Boolean(props.node?.oci_account_id) ||
   Boolean(props.node?.oci_vnic_id) ||
   Boolean(props.node?.oci_region),
 )
@@ -550,12 +551,11 @@ const factGroups = computed(() => {
 
     if (isOracleNode.value) {
       groups.push({
-        label: 'Oracle Cloud (OCI) 网络配置',
+        label: 'Oracle Cloud 实例关联',
         facts: [
-          { label: '绑定 OCI 账号', value: n.oci_account_id ? '指定账号' : '继承系统默认' },
-          { label: 'VNIC OCID', value: n.oci_vnic_id || '自动解析', mono: true, copyable: Boolean(n.oci_vnic_id) },
-          { label: '主私有 IP OCID', value: n.oci_private_ip_id || '自动解析', mono: true, copyable: Boolean(n.oci_private_ip_id) },
-          { label: '区间 OCID', value: n.oci_compartment_id || '自动解析', mono: true, copyable: Boolean(n.oci_compartment_id) },
+          { label: '绑定 OCI 账号', value: n.oci_account_id ? '已绑定账号' : '继承系统默认' },
+          { label: '关联虚拟网卡 (VNIC)', value: n.oci_vnic_id || '自动关联网卡', mono: true, copyable: Boolean(n.oci_vnic_id) },
+          { label: '所在区间', value: n.oci_compartment_id || '自动解析', mono: true },
           { label: '区域 (Region)', value: n.oci_region || '继承账号默认', mono: true },
         ],
       })

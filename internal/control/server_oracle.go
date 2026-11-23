@@ -42,6 +42,7 @@ func (s *Server) createOCIAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
+		ID          string `json:"id"`
 		Name        string `json:"name"`
 		TenancyID   string `json:"tenancy_id"`
 		UserID      string `json:"user_id"`
@@ -49,6 +50,7 @@ func (s *Server) createOCIAccount(w http.ResponseWriter, r *http.Request) {
 		Region      string `json:"region"`
 		PrivateKey  string `json:"private_key"`
 		IsDefault   bool   `json:"is_default"`
+		Enabled     *bool  `json:"enabled"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -69,7 +71,12 @@ func (s *Server) createOCIAccount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	acc, err := s.store.CreateOCIAccount(r.Context(), input.Name, input.TenancyID, input.UserID, input.Fingerprint, input.Region, input.PrivateKey, input.IsDefault)
+	enabled := true
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+
+	acc, err := s.store.CreateOCIAccount(r.Context(), input.Name, input.TenancyID, input.UserID, input.Fingerprint, input.Region, input.PrivateKey, input.IsDefault, enabled)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -93,6 +100,7 @@ func (s *Server) updateOCIAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
+		ID          string `json:"id"`
 		Name        string `json:"name"`
 		TenancyID   string `json:"tenancy_id"`
 		UserID      string `json:"user_id"`
@@ -100,6 +108,7 @@ func (s *Server) updateOCIAccount(w http.ResponseWriter, r *http.Request) {
 		Region      string `json:"region"`
 		PrivateKey  string `json:"private_key"`
 		IsDefault   bool   `json:"is_default"`
+		Enabled     *bool  `json:"enabled"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -120,7 +129,12 @@ func (s *Server) updateOCIAccount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	acc, err := s.store.UpdateOCIAccount(r.Context(), id, input.Name, input.TenancyID, input.UserID, input.Fingerprint, input.Region, input.PrivateKey, input.IsDefault)
+	enabled := true
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+
+	acc, err := s.store.UpdateOCIAccount(r.Context(), id, input.Name, input.TenancyID, input.UserID, input.Fingerprint, input.Region, input.PrivateKey, input.IsDefault, enabled)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -149,6 +163,28 @@ func (s *Server) deleteOCIAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.store.AppendAudit(r.Context(), operator.ID, "oci.account_deleted", "system", id, "OCI 账号已删除")
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) setDefaultOCIAccount(w http.ResponseWriter, r *http.Request) {
+	operator, err := s.admin(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, errors.New("account id is required"))
+		return
+	}
+
+	if err := s.store.SetDefaultOCIAccount(r.Context(), id); err != nil {
+		writeError(w, fmt.Errorf("设置默认账号失败: %w", err))
+		return
+	}
+
+	_ = s.store.AppendAudit(r.Context(), operator.ID, "oci.account_set_default", "system", id, "已将 OCI 账号设为默认")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
@@ -205,6 +241,38 @@ func (s *Server) testOCIAccount(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "OCI API 连接成功，凭据与区域有效",
 	})
+}
+
+func (s *Server) listOCIAccountInstances(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.operator(r, false); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	accountID := r.PathValue("id")
+	cfg, err := s.store.LoadOCIAccountConfig(r.Context(), accountID)
+	if err != nil {
+		writeError(w, fmt.Errorf("加载 OCI 账号配置失败: %w", err))
+		return
+	}
+
+	client, err := NewOCIClient(cfg)
+	if err != nil {
+		writeError(w, fmt.Errorf("初始化 OCI 客户端失败: %w", err))
+		return
+	}
+
+	instances, err := client.ListInstances(r.Context())
+	if err != nil {
+		writeError(w, fmt.Errorf("查询 OCI 实例列表失败: %w", err))
+		return
+	}
+
+	if instances == nil {
+		instances = []OCIInstance{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"instances": instances})
 }
 
 func (s *Server) updateNodeOCI(w http.ResponseWriter, r *http.Request) {

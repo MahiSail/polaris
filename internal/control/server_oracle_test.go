@@ -101,6 +101,7 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 		"region":      "ap-tokyo-1",
 		"private_key": pemStr,
 		"is_default":  true,
+		"enabled":     true,
 	}
 	acc1JSON, _ := json.Marshal(acc1Body)
 	reqAcc1 := httptest.NewRequest(http.MethodPost, "/api/v1/oci/accounts", bytes.NewReader(acc1JSON))
@@ -136,6 +137,28 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 	handler.ServeHTTP(recAcc2, reqAcc2)
 	if recAcc2.Code != http.StatusOK {
 		t.Fatalf("POST /api/v1/oci/accounts 2 failed (%d): %s", recAcc2.Code, recAcc2.Body.String())
+	}
+	var createdAcc2 OCIAccount
+	if err := json.Unmarshal(recAcc2.Body.Bytes(), &createdAcc2); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2.1 Switch default to Account 2 via POST /api/v1/oci/accounts/{id}/default
+	reqSetDef := httptest.NewRequest(http.MethodPost, "/api/v1/oci/accounts/"+createdAcc2.ID+"/default", nil)
+	addAuth(reqSetDef)
+	recSetDef := httptest.NewRecorder()
+	handler.ServeHTTP(recSetDef, reqSetDef)
+	if recSetDef.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/oci/accounts/{id}/default failed (%d): %s", recSetDef.Code, recSetDef.Body.String())
+	}
+
+	// Switch back to Account 1
+	reqSetDef1 := httptest.NewRequest(http.MethodPost, "/api/v1/oci/accounts/"+createdAcc1.ID+"/default", nil)
+	addAuth(reqSetDef1)
+	recSetDef1 := httptest.NewRecorder()
+	handler.ServeHTTP(recSetDef1, reqSetDef1)
+	if recSetDef1.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/oci/accounts/{id}/default 1 failed (%d): %s", recSetDef1.Code, recSetDef1.Body.String())
 	}
 
 	// 3. List Accounts via GET /api/v1/oci/accounts

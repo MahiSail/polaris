@@ -21,6 +21,7 @@ type OCIAccount struct {
 	HasPrivateKey    bool   `json:"has_private_key"`
 	PrivateKeyMasked string `json:"private_key_masked,omitempty"`
 	IsDefault        bool   `json:"is_default"`
+	Enabled          bool   `json:"enabled"`
 	CreatedAt        int64  `json:"created_at"`
 	UpdatedAt        int64  `json:"updated_at"`
 }
@@ -42,9 +43,9 @@ func (s *Store) migrateLegacyOCISettingsIfNeeded(ctx context.Context) {
 		id, err := newID()
 		if err == nil {
 			now := nowUnix()
-			_, _ = s.db.ExecContext(ctx, `INSERT INTO oci_accounts (id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-				id, "默认 OCI 账号", tenancyID, userID, fingerprint, region, encrypted, now, now)
+			_, _ = s.db.ExecContext(ctx, `INSERT INTO oci_accounts (id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, enabled, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+				id, "默认 OCI 账号", tenancyID, userID, fingerprint, region, encrypted, enabled, now, now)
 		}
 	}
 }
@@ -53,7 +54,7 @@ func (s *Store) migrateLegacyOCISettingsIfNeeded(ctx context.Context) {
 func (s *Store) ListOCIAccounts(ctx context.Context) ([]OCIAccount, error) {
 	s.migrateLegacyOCISettingsIfNeeded(ctx)
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, created_at, updated_at
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, enabled, created_at, updated_at
 		FROM oci_accounts ORDER BY is_default DESC, name ASC, created_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list oci accounts: %w", err)
@@ -64,11 +65,12 @@ func (s *Store) ListOCIAccounts(ctx context.Context) ([]OCIAccount, error) {
 	for rows.Next() {
 		var acc OCIAccount
 		var encrypted []byte
-		var isDefault int
-		if err := rows.Scan(&acc.ID, &acc.Name, &acc.TenancyID, &acc.UserID, &acc.Fingerprint, &acc.Region, &encrypted, &isDefault, &acc.CreatedAt, &acc.UpdatedAt); err != nil {
+		var isDefault, enabledInt int
+		if err := rows.Scan(&acc.ID, &acc.Name, &acc.TenancyID, &acc.UserID, &acc.Fingerprint, &acc.Region, &encrypted, &isDefault, &enabledInt, &acc.CreatedAt, &acc.UpdatedAt); err != nil {
 			return nil, err
 		}
 		acc.IsDefault = isDefault == 1
+		acc.Enabled = enabledInt == 1
 		if len(encrypted) > 0 {
 			acc.HasPrivateKey = true
 			keyBytes, err := security.Decrypt(s.masterKey, encrypted)
@@ -87,10 +89,10 @@ func (s *Store) GetOCIAccount(ctx context.Context, id string) (OCIAccount, error
 
 	var acc OCIAccount
 	var encrypted []byte
-	var isDefault int
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, created_at, updated_at
+	var isDefault, enabledInt int
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, enabled, created_at, updated_at
 		FROM oci_accounts WHERE id = ?`, id).
-		Scan(&acc.ID, &acc.Name, &acc.TenancyID, &acc.UserID, &acc.Fingerprint, &acc.Region, &encrypted, &isDefault, &acc.CreatedAt, &acc.UpdatedAt)
+		Scan(&acc.ID, &acc.Name, &acc.TenancyID, &acc.UserID, &acc.Fingerprint, &acc.Region, &encrypted, &isDefault, &enabledInt, &acc.CreatedAt, &acc.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return OCIAccount{}, ErrNotFound
@@ -98,6 +100,7 @@ func (s *Store) GetOCIAccount(ctx context.Context, id string) (OCIAccount, error
 		return OCIAccount{}, fmt.Errorf("get oci account: %w", err)
 	}
 	acc.IsDefault = isDefault == 1
+	acc.Enabled = enabledInt == 1
 	if len(encrypted) > 0 {
 		acc.HasPrivateKey = true
 		keyBytes, err := security.Decrypt(s.masterKey, encrypted)
@@ -109,7 +112,7 @@ func (s *Store) GetOCIAccount(ctx context.Context, id string) (OCIAccount, error
 }
 
 // CreateOCIAccount adds a new OCI account.
-func (s *Store) CreateOCIAccount(ctx context.Context, name, tenancyID, userID, fingerprint, region, privateKeyPEM string, isDefault bool) (OCIAccount, error) {
+func (s *Store) CreateOCIAccount(ctx context.Context, name, tenancyID, userID, fingerprint, region, privateKeyPEM string, isDefault, enabled bool) (OCIAccount, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return OCIAccount{}, errors.New("账号名称不能为空")
@@ -161,10 +164,14 @@ func (s *Store) CreateOCIAccount(ctx context.Context, name, tenancyID, userID, f
 	if isDefault {
 		defaultVal = 1
 	}
+	enabledVal := 0
+	if enabled {
+		enabledVal = 1
+	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO oci_accounts (id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, name, tenancyID, userID, fingerprint, region, encrypted, defaultVal, now, now)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO oci_accounts (id, name, tenancy_id, user_id, fingerprint, region, private_key_encrypted, is_default, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, name, tenancyID, userID, fingerprint, region, encrypted, defaultVal, enabledVal, now, now)
 	if err != nil {
 		return OCIAccount{}, fmt.Errorf("insert oci account: %w", err)
 	}
@@ -173,7 +180,7 @@ func (s *Store) CreateOCIAccount(ctx context.Context, name, tenancyID, userID, f
 }
 
 // UpdateOCIAccount updates an existing OCI account. If privateKeyPEM is empty, the existing private key is kept.
-func (s *Store) UpdateOCIAccount(ctx context.Context, id, name, tenancyID, userID, fingerprint, region, privateKeyPEM string, isDefault bool) (OCIAccount, error) {
+func (s *Store) UpdateOCIAccount(ctx context.Context, id, name, tenancyID, userID, fingerprint, region, privateKeyPEM string, isDefault, enabled bool) (OCIAccount, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return OCIAccount{}, errors.New("账号名称不能为空")
@@ -204,6 +211,10 @@ func (s *Store) UpdateOCIAccount(ctx context.Context, id, name, tenancyID, userI
 	if isDefault {
 		defaultVal = 1
 	}
+	enabledVal := 0
+	if enabled {
+		enabledVal = 1
+	}
 
 	privateKeyPEM = strings.TrimSpace(privateKeyPEM)
 	if privateKeyPEM != "" {
@@ -211,16 +222,16 @@ func (s *Store) UpdateOCIAccount(ctx context.Context, id, name, tenancyID, userI
 		if err != nil {
 			return OCIAccount{}, fmt.Errorf("encrypt oci private key: %w", err)
 		}
-		_, err = s.db.ExecContext(ctx, `UPDATE oci_accounts SET name = ?, tenancy_id = ?, user_id = ?, fingerprint = ?, region = ?, private_key_encrypted = ?, is_default = ?, updated_at = ?
+		_, err = s.db.ExecContext(ctx, `UPDATE oci_accounts SET name = ?, tenancy_id = ?, user_id = ?, fingerprint = ?, region = ?, private_key_encrypted = ?, is_default = ?, enabled = ?, updated_at = ?
 			WHERE id = ?`,
-			name, tenancyID, userID, fingerprint, region, encrypted, defaultVal, now, id)
+			name, tenancyID, userID, fingerprint, region, encrypted, defaultVal, enabledVal, now, id)
 		if err != nil {
 			return OCIAccount{}, fmt.Errorf("update oci account: %w", err)
 		}
 	} else {
-		_, err := s.db.ExecContext(ctx, `UPDATE oci_accounts SET name = ?, tenancy_id = ?, user_id = ?, fingerprint = ?, region = ?, is_default = ?, updated_at = ?
+		_, err := s.db.ExecContext(ctx, `UPDATE oci_accounts SET name = ?, tenancy_id = ?, user_id = ?, fingerprint = ?, region = ?, is_default = ?, enabled = ?, updated_at = ?
 			WHERE id = ?`,
-			name, tenancyID, userID, fingerprint, region, defaultVal, now, id)
+			name, tenancyID, userID, fingerprint, region, defaultVal, enabledVal, now, id)
 		if err != nil {
 			return OCIAccount{}, fmt.Errorf("update oci account: %w", err)
 		}
@@ -265,21 +276,26 @@ func (s *Store) LoadOCIAccountConfig(ctx context.Context, accountID string) (OCI
 	var query string
 	var args []any
 	if strings.TrimSpace(accountID) != "" {
-		query = `SELECT tenancy_id, user_id, fingerprint, region, private_key_encrypted FROM oci_accounts WHERE id = ?`
+		query = `SELECT tenancy_id, user_id, fingerprint, region, private_key_encrypted, enabled FROM oci_accounts WHERE id = ?`
 		args = []any{accountID}
 	} else {
-		query = `SELECT tenancy_id, user_id, fingerprint, region, private_key_encrypted FROM oci_accounts ORDER BY is_default DESC, created_at ASC LIMIT 1`
+		query = `SELECT tenancy_id, user_id, fingerprint, region, private_key_encrypted, enabled FROM oci_accounts WHERE enabled = 1 ORDER BY is_default DESC, created_at ASC LIMIT 1`
 	}
 
 	var tenancyID, userID, fingerprint, region string
 	var encrypted []byte
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&tenancyID, &userID, &fingerprint, &region, &encrypted)
+	var enabledInt int
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&tenancyID, &userID, &fingerprint, &region, &encrypted, &enabledInt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// Fallback: check legacy oci_settings
 			return s.loadLegacyOCIConfig(ctx)
 		}
 		return OCIConfig{}, fmt.Errorf("load oci account config: %w", err)
+	}
+
+	if enabledInt == 0 {
+		return OCIConfig{}, errors.New("该 OCI 账号已被停用")
 	}
 
 	keyBytes, err := security.Decrypt(s.masterKey, encrypted)
@@ -373,10 +389,10 @@ func (s *Store) OCISettings(ctx context.Context) (OCISettingsView, error) {
 func (s *Store) SaveOCISettings(ctx context.Context, tenancyID, userID, fingerprint, region, privateKeyPEM string, enabled bool) error {
 	accounts, err := s.ListOCIAccounts(ctx)
 	if err == nil && len(accounts) > 0 {
-		_, err := s.UpdateOCIAccount(ctx, accounts[0].ID, accounts[0].Name, tenancyID, userID, fingerprint, region, privateKeyPEM, true)
+		_, err := s.UpdateOCIAccount(ctx, accounts[0].ID, accounts[0].Name, tenancyID, userID, fingerprint, region, privateKeyPEM, true, enabled)
 		return err
 	}
-	_, err = s.CreateOCIAccount(ctx, "默认 OCI 账号", tenancyID, userID, fingerprint, region, privateKeyPEM, true)
+	_, err = s.CreateOCIAccount(ctx, "默认 OCI 账号", tenancyID, userID, fingerprint, region, privateKeyPEM, true, enabled)
 	return err
 }
 
