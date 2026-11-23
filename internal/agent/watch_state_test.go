@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // fakeMaster stands in for the master at the other end of a real handshaken

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 func newAccessFixture(t *testing.T) (*control.Store, *control.Server, string, control.MihomoClientConfig) {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // ServeAgents accepts KCP/UDP connections from agents and runs the Noise_XK

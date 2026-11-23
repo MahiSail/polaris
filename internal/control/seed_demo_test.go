@@ -3,7 +3,7 @@ package control_test
 import (
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // Demo seeding runs on every master start. It may add sample nodes, but it must

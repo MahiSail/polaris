@@ -3,7 +3,7 @@ package control_test
 import (
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 func TestAuditManagerTranslationAndDiagnostics(t *testing.T) {

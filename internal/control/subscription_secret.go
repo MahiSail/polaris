@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // A subscription may be fenced three ways: a secret the client has to present,

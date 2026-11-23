@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 func TestListenerShareLinksCoverEnabledUsersOnly(t *testing.T) {

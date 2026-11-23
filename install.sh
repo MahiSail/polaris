@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPOSITORY="${POLARIS_REPOSITORY:-liyuwei007036/polaris}"
+REPOSITORY="${POLARIS_REPOSITORY:-MahiSail/polaris}"
 VERSION="${POLARIS_VERSION:-latest}"
 MODE=""
 START_SERVICE=1
@@ -26,7 +26,7 @@ usage() {
 
 选项：
   --version VERSION          安装指定版本；默认安装最新 Release
-  --repository OWNER/REPO   GitHub 仓库；默认 liyuwei007036/polaris
+  --repository OWNER/REPO   GitHub 仓库；默认 MahiSail/polaris
   --allow-insecure-http      允许通过明文 HTTP 登录，仅适用于可信内网或测试
   --no-start                 安装文件和配置，但不启动 systemd 服务
   -h, --help                 显示帮助

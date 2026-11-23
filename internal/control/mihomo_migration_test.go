@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 func TestLegacyMihomoConfigMigratesOnceWithoutResurrection(t *testing.T) {

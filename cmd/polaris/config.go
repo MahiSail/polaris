@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/agent"
-	"github.com/liyuwei007036/polaris/internal/control"
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/agent"
+	"github.com/MahiSail/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 	"gopkg.in/yaml.v3"
 )
 

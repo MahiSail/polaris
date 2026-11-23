@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // answerQuestions stands in for a connected node: it counts how many questions

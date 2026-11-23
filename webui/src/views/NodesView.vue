@@ -731,7 +731,7 @@ watch(masterHost, (value) => {
 })
 
 const installCommand = computed(() => [
-  'curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh',
+  'curl -fsSLo install.sh https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh',
   ` && sudo env POLARIS_MASTER_ADDRESS='${masterAddress.value}'`,
   ` POLARIS_MASTER_PUBKEY='${masterPublicKey.value}'`,
   ` POLARIS_REGISTRATION_TOKEN='${token.value}'`,

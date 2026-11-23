@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // migrateLegacyVLESSToHTTPUpgrade converts any legacy VLESS WebSocket listeners to httpupgrade.

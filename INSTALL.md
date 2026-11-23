@@ -90,13 +90,13 @@ agent 必须以 `root` 长期运行：它代表 master 写入 `/etc/sing-box`、
 ### 2.1 Master
 
 ```bash
-curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh && sudo bash install.sh master
+curl -fsSLo install.sh https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh && sudo bash install.sh master
 ```
 
 ### 2.2 Agent
 
 ```bash
-curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh && sudo bash install.sh agent
+curl -fsSLo install.sh https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh && sudo bash install.sh agent
 ```
 
 脚本会依次询问 Master 地址（`主机:端口`）、Master Noise 公钥、一次性注册令牌。令牌输入不回显；留空则跳过注册，安装完成后再手动执行注册命令。
@@ -104,7 +104,7 @@ curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/m
 ### 2.3 Combined
 
 ```bash
-curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh && sudo bash install.sh combined
+curl -fsSLo install.sh https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh && sudo bash install.sh combined
 ```
 
 Combined 会先生成 Master 公钥并写好本机 agent 配置，再启动服务。终端停在等待令牌输入时，登录控制台创建一次性注册令牌并粘贴回终端。
@@ -114,7 +114,7 @@ Combined 会先生成 Master 公钥并写好本机 agent 配置，再启动服�
 | 参数 | 说明 |
 | --- | --- |
 | `--version VERSION` | 安装指定版本，默认最新 Release |
-| `--repository OWNER/REPO` | 指定 GitHub 仓库，默认 `liyuwei007036/polaris` |
+| `--repository OWNER/REPO` | 指定 GitHub 仓库，默认 `MahiSail/polaris` |
 | `--allow-insecure-http` | 允许明文 HTTP 登录，仅限可信内网或测试 |
 | `--no-start` | 只安装文件和配置，不启动 systemd 服务 |
 | `-h`, `--help` | 查看帮助 |
@@ -130,7 +130,7 @@ Combined 会先生成 Master 公钥并写好本机 agent 配置，再启动服�
 面板控制台、`ssh host '命令'`、CI、cron 等没有控制终端的环境无法交互输入，必须预设环境变量：
 
 ```bash
-cd /tmp && curl -fsSLo install.sh https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh
+cd /tmp && curl -fsSLo install.sh https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh
 sudo env POLARIS_MASTER_ADDRESS='master主机:19994' POLARIS_MASTER_PUBKEY='Master的Noise公钥' POLARIS_REGISTRATION_TOKEN='一次性注册令牌' bash install.sh agent
 ```
 
@@ -139,7 +139,7 @@ sudo env POLARIS_MASTER_ADDRESS='master主机:19994' POLARIS_MASTER_PUBKEY='Mast
 不放心直接把远程脚本交给 root 执行时，先下载检查再运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/liyuwei007036/polaris/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/MahiSail/polaris/main/install.sh -o install.sh
 less install.sh
 sudo bash install.sh master
 ```
@@ -165,7 +165,7 @@ case "$(uname -m)" in
 esac
 
 VERSION=0.1.0
-REPOSITORY=liyuwei007036/polaris
+REPOSITORY=MahiSail/polaris
 PACKAGE="polaris_${VERSION}_linux_${ARCH}"
 
 curl -fLO "https://github.com/${REPOSITORY}/releases/download/v${VERSION}/${PACKAGE}.tar.gz"

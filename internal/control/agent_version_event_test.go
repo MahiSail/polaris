@@ -3,7 +3,7 @@ package control
 import (
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // An agent reports its new build right after an upgrade restart. The console

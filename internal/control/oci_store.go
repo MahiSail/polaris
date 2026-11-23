@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // OCIAccount represents a configured Oracle Cloud account.

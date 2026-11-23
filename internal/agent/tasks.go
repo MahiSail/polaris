@@ -27,10 +27,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
-	"github.com/liyuwei007036/polaris/internal/selfupdate"
-	"github.com/liyuwei007036/polaris/internal/version"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/selfupdate"
+	"github.com/MahiSail/polaris/internal/version"
+	"github.com/MahiSail/polaris/internal/wire"
 	"golang.org/x/net/proxy"
 )
 

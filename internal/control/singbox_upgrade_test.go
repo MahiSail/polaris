@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/agent"
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/agent"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // sing-box is installed automatically exactly once, when a server first comes

@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 )
 
 // nginxSiteEdit is a site file rewritten to free a port, kept together with its

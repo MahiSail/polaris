@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/selfupdate"
-	"github.com/liyuwei007036/polaris/internal/version"
+	"github.com/MahiSail/polaris/internal/selfupdate"
+	"github.com/MahiSail/polaris/internal/version"
 )
 
 // polarisReleaseAPI is a variable so tests can point it at a local server.
-var polarisReleaseAPI = "https://api.github.com/repos/liyuwei007036/polaris/releases/latest"
+var polarisReleaseAPI = "https://api.github.com/repos/MahiSail/polaris/releases/latest"
 
 // polarisArtifactHTTPClient is a variable so tests can serve release archives locally.
 var polarisArtifactHTTPClient = &http.Client{Timeout: 5 * time.Minute}

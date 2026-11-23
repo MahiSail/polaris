@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 var ddnsReconcileBackoff = []time.Duration{0, 15 * time.Second, 30 * time.Second, 1 * time.Minute, 2 * time.Minute, 5 * time.Minute}

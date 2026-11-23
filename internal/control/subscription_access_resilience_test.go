@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // The access trail is an audit aid, not a precondition. A client entitled to

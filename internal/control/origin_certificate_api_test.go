@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // TestOriginCertificateAPIKeepsThePrivateKeyOnTheServer walks the whole

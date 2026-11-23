@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/agent"
-	"github.com/liyuwei007036/polaris/internal/control"
-	"github.com/liyuwei007036/polaris/internal/version"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/agent"
+	"github.com/MahiSail/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/version"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 func main() {

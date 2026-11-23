@@ -14,7 +14,7 @@ func TestOpenClashMirrorCoreVersionFeedAndTarball(t *testing.T) {
 	var upstream *httptest.Server
 	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/liyuwei007036/mihomo/releases":
+		case "/repos/MahiSail/mihomo/releases":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{
 					"tag_name":     "v1.19.34-ttl.2",

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // getNodeLocationLabel resolves a human-readable location label for a node based on its observed IP and ASN.

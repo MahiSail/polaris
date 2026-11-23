@@ -199,7 +199,7 @@ func (s *Store) SignedSingBoxReleasePayload(release SingBoxRelease) (string, err
 	return string(payload), nil
 }
 
-var singBoxReleaseRepos = []string{"liyuwei007036/sing-box", "SagerNet/sing-box"}
+var singBoxReleaseRepos = []string{"MahiSail/sing-box", "SagerNet/sing-box"}
 
 func LatestOfficialSingBoxRelease(ctx context.Context, architecture string) (SingBoxRelease, error) {
 	if architecture != "amd64" && architecture != "arm64" {

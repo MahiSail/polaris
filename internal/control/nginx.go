@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 )
 
 type IngressRoute struct {

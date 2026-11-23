@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 func TestProxyRoutingFlagsDomesticOrLANThroughProxy(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // singBoxLogPath is where compiled configurations tell sing-box to write its

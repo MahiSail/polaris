@@ -1,4 +1,4 @@
-module github.com/liyuwei007036/polaris
+module github.com/MahiSail/polaris
 
 go 1.26.0
 

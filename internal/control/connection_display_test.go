@@ -3,7 +3,7 @@ package control
 import (
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // The Clash API names the inbound in metadata.type, never in chains. An agent

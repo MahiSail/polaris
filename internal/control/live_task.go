@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 // liveTaskTimeout bounds how long a request-response task may take. Reading or

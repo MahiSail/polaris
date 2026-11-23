@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // newFeatureServer builds the usual store/server/session trio the tests below

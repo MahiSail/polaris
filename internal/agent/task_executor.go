@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/liyuwei007036/polaris/internal/version"
+	"github.com/MahiSail/polaris/internal/version"
 )
 
 var taskIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)

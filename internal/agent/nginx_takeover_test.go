@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 )
 
 const sampleNginxDump = `# configuration file /etc/nginx/nginx.conf:

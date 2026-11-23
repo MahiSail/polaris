@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // CloudflareRecordView is a record as it exists at Cloudflare right now,

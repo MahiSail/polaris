@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // A user or service that is switched off is a reversible, everyday state. It

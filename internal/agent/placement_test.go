@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 )
 
 func testAllocator(start uint16) func() (uint16, bool) {

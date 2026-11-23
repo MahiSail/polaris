@@ -15,8 +15,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 func approveTestNode(t *testing.T, server *control.Server, baseURL, session, csrfToken, nodeName string) string {

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // nodeConnections returns the connection list exactly as the agent last

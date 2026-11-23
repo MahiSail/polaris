@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/liyuwei007036/polaris/internal/nginxroute"
+	"github.com/MahiSail/polaris/internal/nginxroute"
 )
 
 // Where a service actually listens is decided here, on the node, and not by

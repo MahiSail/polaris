@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/liyuwei007036/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/control"
 )
 
 // TestManagedOutboundCompilation exercises the managed-outbound surface end to

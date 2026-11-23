@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/liyuwei007036/polaris/internal/security"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 const noisePrivateKeyFile = "master-noise.key.enc"

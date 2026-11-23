@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/control"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/control"
+	"github.com/MahiSail/polaris/internal/wire"
 )
 
 type combinedFlagValues struct {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/security"
 )
 
 // OriginCertificate is an operator-supplied origin certificate, normally the

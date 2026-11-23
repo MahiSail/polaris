@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/liyuwei007036/polaris/internal/security"
-	"github.com/liyuwei007036/polaris/internal/selfupdate"
-	"github.com/liyuwei007036/polaris/internal/wire"
+	"github.com/MahiSail/polaris/internal/security"
+	"github.com/MahiSail/polaris/internal/selfupdate"
+	"github.com/MahiSail/polaris/internal/wire"
 	"github.com/oschwald/geoip2-golang"
 )
 

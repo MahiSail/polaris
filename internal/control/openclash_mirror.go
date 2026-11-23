@@ -20,7 +20,7 @@ import (
 
 const (
 	openClashMirrorPrefix       = "/openclash-mirror/"
-	defaultOpenClashMihomoRepo  = "liyuwei007036/mihomo"
+	defaultOpenClashMihomoRepo  = "MahiSail/mihomo"
 	openClashReleasesCacheTTL   = 2 * time.Minute
 	openClashMaxMetaResponseLen = 2 << 20   // 2 MiB for text/atom/version feeds
 	openClashMaxBinaryLen       = 128 << 20 // 128 MiB for core tarballs & geo assets
