@@ -468,6 +468,7 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/oci/accounts/{id}", s.updateOCIAccount)
 	mux.HandleFunc("DELETE /api/v1/oci/accounts/{id}", s.deleteOCIAccount)
 	mux.HandleFunc("POST /api/v1/oci/accounts/{id}/test", s.testOCIAccount)
+	mux.HandleFunc("POST /api/v1/oci/accounts/test", s.testOCIAccount)
 	mux.HandleFunc("POST /api/v1/oci/test", s.testOCIAccount)
 	mux.HandleFunc("GET /api/v1/oci/settings", s.ociSettings)
 	mux.HandleFunc("PUT /api/v1/oci/settings", s.setOCISettings)

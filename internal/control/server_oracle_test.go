@@ -160,6 +160,32 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 		t.Fatalf("expected masked private key, got %q", listResp.Accounts[0].PrivateKeyMasked)
 	}
 
+	// 3.1 Verify POST /api/v1/oci/accounts/test route works (not 404)
+	testPayload := map[string]string{
+		"tenancy_id":  "invalid",
+		"user_id":     "invalid",
+		"fingerprint": "invalid",
+		"region":      "ap-singapore-1",
+		"private_key": "not-a-valid-key",
+	}
+	testJSON, _ := json.Marshal(testPayload)
+	reqTestRoute := httptest.NewRequest(http.MethodPost, "/api/v1/oci/accounts/test", bytes.NewReader(testJSON))
+	addAuth(reqTestRoute)
+	recTestRoute := httptest.NewRecorder()
+	handler.ServeHTTP(recTestRoute, reqTestRoute)
+	if recTestRoute.Code == http.StatusNotFound {
+		t.Fatalf("POST /api/v1/oci/accounts/test returned 404 Not Found")
+	}
+
+	// 3.2 Verify POST /api/v1/oci/accounts/{id}/test route works (not 404)
+	reqTestIDRoute := httptest.NewRequest(http.MethodPost, "/api/v1/oci/accounts/nonexistent-id/test", bytes.NewReader([]byte("{}")))
+	addAuth(reqTestIDRoute)
+	recTestIDRoute := httptest.NewRecorder()
+	handler.ServeHTTP(recTestIDRoute, reqTestIDRoute)
+	if recTestIDRoute.Code == http.StatusNotFound {
+		t.Fatalf("POST /api/v1/oci/accounts/{id}/test returned 404 Not Found")
+	}
+
 	// 4. Create a test Node in DB
 	nodeID := "node-oracle-multi-test-1"
 	_, err = store.db.Exec(`INSERT INTO nodes (id, name, public_key, client_address, last_observed_ip, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())`,

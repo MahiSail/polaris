@@ -194,12 +194,31 @@ func (c *OCIClient) do(ctx context.Context, method, path string, bodyData any) (
 	return resp, respBytes, nil
 }
 
-// TestConnection verifies credentials by querying the OCI regions endpoint.
+// TestConnection verifies credentials by querying the OCI regions endpoint on the Identity service.
 func (c *OCIClient) TestConnection(ctx context.Context) error {
-	resp, body, err := c.do(ctx, http.MethodGet, "/20160918/regions", nil)
-	if err != nil {
-		return fmt.Errorf("connect to OCI: %w", err)
+	region := strings.ToLower(strings.TrimSpace(c.cfg.Region))
+	baseURL := fmt.Sprintf("https://identity.%s.oraclecloud.com", region)
+	if !strings.HasPrefix(c.baseURL, "https://iaas.") {
+		baseURL = c.baseURL
 	}
+
+	url := baseURL + "/20160918/regions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("create test request: %w", err)
+	}
+
+	if err := c.signRequest(req, nil); err != nil {
+		return fmt.Errorf("sign test request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to OCI identity: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("OCI API returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
