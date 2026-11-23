@@ -22,6 +22,14 @@
         <el-button v-if="canWrite && !isShareMode" @click="emit('edit', 'basic')">
           配置
         </el-button>
+        <el-button
+          v-if="canWrite && !isShareMode && isOracleNode"
+          type="warning"
+          plain
+          @click="emit('change-oci-ip', node)"
+        >
+          更换 IP
+        </el-button>
         <el-button v-if="!isShareMode" @click="emit('probe-peers', node)">
           线路排查
         </el-button>
@@ -306,7 +314,13 @@ const props = defineProps({
   isAdmin: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['edit', 'probe-peers', 'upgrade-agent', 'upgrade-singbox', 'revoke', 'refresh'])
+const emit = defineEmits(['edit', 'probe-peers', 'upgrade-agent', 'upgrade-singbox', 'revoke', 'refresh', 'change-oci-ip'])
+
+const isOracleNode = computed(() =>
+  (props.node?.provider && props.node.provider.toLowerCase().includes('oracle')) ||
+  Boolean(props.node?.oci_vnic_id) ||
+  Boolean(props.node?.oci_region),
+)
 
 const ranges = [
   { label: '1小时', hours: 1 },
@@ -531,6 +545,19 @@ const factGroups = computed(() => {
         facts: aliasEntries.length
           ? aliasEntries.map(([ip, alias]) => ({ label: alias || '默认出口', value: ip, mono: true, copyable: true }))
           : (n.ip_addresses || []).map((ip, idx) => ({ label: `出口 #${idx + 1}`, value: ip, mono: true, copyable: true })),
+      })
+    }
+
+    if (isOracleNode.value) {
+      groups.push({
+        label: 'Oracle Cloud (OCI) 网络配置',
+        facts: [
+          { label: '绑定 OCI 账号', value: n.oci_account_id ? '指定账号' : '继承系统默认' },
+          { label: 'VNIC OCID', value: n.oci_vnic_id || '自动解析', mono: true, copyable: Boolean(n.oci_vnic_id) },
+          { label: '主私有 IP OCID', value: n.oci_private_ip_id || '自动解析', mono: true, copyable: Boolean(n.oci_private_ip_id) },
+          { label: '区间 OCID', value: n.oci_compartment_id || '自动解析', mono: true, copyable: Boolean(n.oci_compartment_id) },
+          { label: '区域 (Region)', value: n.oci_region || '继承账号默认', mono: true },
+        ],
       })
     }
   }

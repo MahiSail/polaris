@@ -2,7 +2,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
-import { api, post, put, uploadFile } from '../../api'
+import { api, del, post, put, uploadFile } from '../../api'
 import { formatDateTime, includesText } from '../../format'
 import MPage from '../components/MPage.vue'
 import MSegmented from '../components/MSegmented.vue'
@@ -15,11 +15,12 @@ const loading = ref(false)
 
 const initialTab = () => {
   const qTab = new URLSearchParams(location.search || '').get('tab')
-  if (qTab && ['operators', 'alerts', 'tools', 'ipdb'].includes(qTab)) return qTab
+  if (qTab && ['operators', 'alerts', 'tools', 'ipdb', 'oci'].includes(qTab)) return qTab
   const hash = location.hash || ''
   if (hash.includes('alerts')) return 'alerts'
   if (hash.includes('tools')) return 'tools'
   if (hash.includes('ipdb')) return 'ipdb'
+  if (hash.includes('oci')) return 'oci'
   return isAdmin.value ? 'operators' : 'tools'
 }
 const tab = ref(initialTab())
@@ -91,6 +92,7 @@ const tabs = computed(() => (isAdmin.value
       { value: 'alerts', label: '通知' },
       { value: 'tools', label: '工具' },
       { value: 'ipdb', label: 'IP 库' },
+      { value: 'oci', label: 'Oracle' },
     ]
   : [{ value: 'tools', label: '网络工具' }]))
 
@@ -247,9 +249,196 @@ async function lookupTestIP() {
   }
 }
 
+// Oracle Cloud (OCI) 多账号管理
+const ociAccounts = ref([])
+const ociLoading = ref(false)
+const ociSheet = ref(false)
+const ociAccountForm = reactive({
+  id: '',
+  name: '',
+  tenancy_id: '',
+  user_id: '',
+  fingerprint: '',
+  region: 'ap-tokyo-1',
+  private_key: '',
+  has_private_key: false,
+  private_key_masked: '',
+  is_default: false,
+  enabled: true,
+})
+const ociSaving = ref(false)
+const ociTesting = ref(false)
+
+async function loadOCIAccounts() {
+  if (!isAdmin.value) return
+  ociLoading.value = true
+  try {
+    const res = await api('/oci/accounts')
+    ociAccounts.value = (res.accounts || []).map((acc) => ({ ...acc, _testing: false }))
+  } catch {
+    // ignore
+  } finally {
+    ociLoading.value = false
+  }
+}
+
+function openCreateOCIAccount() {
+  Object.assign(ociAccountForm, {
+    id: '',
+    name: '',
+    tenancy_id: '',
+    user_id: '',
+    fingerprint: '',
+    region: 'ap-tokyo-1',
+    private_key: '',
+    has_private_key: false,
+    private_key_masked: '',
+    is_default: ociAccounts.value.length === 0,
+    enabled: true,
+  })
+  ociSheet.value = true
+}
+
+function openEditOCIAccount(account) {
+  Object.assign(ociAccountForm, {
+    id: account.id,
+    name: account.name,
+    tenancy_id: account.tenancy_id,
+    user_id: account.user_id,
+    fingerprint: account.fingerprint,
+    region: account.region,
+    private_key: '',
+    has_private_key: Boolean(account.has_private_key),
+    private_key_masked: account.private_key_masked || '',
+    is_default: Boolean(account.is_default),
+    enabled: Boolean(account.enabled),
+  })
+  ociSheet.value = true
+}
+
+async function saveOCIAccount() {
+  if (!ociAccountForm.name.trim()) return ElMessage.warning('请输入账号备注名称')
+  if (!ociAccountForm.tenancy_id.trim()) return ElMessage.warning('请输入租户 OCID')
+  if (!ociAccountForm.user_id.trim()) return ElMessage.warning('请输入用户 OCID')
+  if (!ociAccountForm.fingerprint.trim()) return ElMessage.warning('请输入公钥指纹')
+  if (!ociAccountForm.region.trim()) return ElMessage.warning('请输入默认区域')
+  if (!ociAccountForm.id && !ociAccountForm.private_key.trim()) {
+    return ElMessage.warning('新建账号必须提供 API RSA 私钥')
+  }
+
+  ociSaving.value = true
+  try {
+    const payload = {
+      name: ociAccountForm.name.trim(),
+      tenancy_id: ociAccountForm.tenancy_id.trim(),
+      user_id: ociAccountForm.user_id.trim(),
+      fingerprint: ociAccountForm.fingerprint.trim(),
+      region: ociAccountForm.region.trim(),
+      private_key: ociAccountForm.private_key,
+      is_default: ociAccountForm.is_default,
+      enabled: ociAccountForm.enabled,
+    }
+    if (ociAccountForm.id) {
+      await put(`/oci/accounts/${ociAccountForm.id}`, payload)
+      ElMessage.success('OCI 账号已更新')
+    } else {
+      await post('/oci/accounts', payload)
+      ElMessage.success('OCI 账号已创建')
+    }
+    ociSheet.value = false
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存失败')
+  } finally {
+    ociSaving.value = false
+  }
+}
+
+async function setDefaultAccount(row) {
+  try {
+    await post(`/oci/accounts/${row.id}/default`, {})
+    ElMessage.success(`已将「${row.name}」设为默认 OCI 账号`)
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '设置默认账号失败')
+  }
+}
+
+async function deleteAccount(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 OCI 账号「${row.name}」吗？绑定该账号的节点将无法更换 IP。`,
+      '删除账号',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await del(`/oci/accounts/${row.id}`)
+    ElMessage.success('账号已删除')
+    await loadOCIAccounts()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '删除失败')
+  }
+}
+
+async function testExistingAccount(row) {
+  row._testing = true
+  try {
+    const res = await post(`/oci/accounts/${row.id}/test`, {})
+    ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+  } finally {
+    row._testing = false
+  }
+}
+
+async function testFormAccount() {
+  if (ociAccountForm.id && !ociAccountForm.private_key.trim()) {
+    ociTesting.value = true
+    try {
+      const res = await post(`/oci/accounts/${ociAccountForm.id}/test`, {})
+      ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+    } finally {
+      ociTesting.value = false
+    }
+    return
+  }
+
+  if (
+    !ociAccountForm.tenancy_id.trim() ||
+    !ociAccountForm.user_id.trim() ||
+    !ociAccountForm.fingerprint.trim() ||
+    !ociAccountForm.region.trim() ||
+    !ociAccountForm.private_key.trim()
+  ) {
+    return ElMessage.warning('请填写完整的租户、用户、指纹、区域和私钥后测试')
+  }
+
+  ociTesting.value = true
+  try {
+    const res = await post('/oci/accounts/test', {
+      tenancy_id: ociAccountForm.tenancy_id.trim(),
+      user_id: ociAccountForm.user_id.trim(),
+      fingerprint: ociAccountForm.fingerprint.trim(),
+      region: ociAccountForm.region.trim(),
+      private_key: ociAccountForm.private_key,
+    })
+    ElMessage.success(res?.message || 'OCI API 连通性测试成功')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '连通性测试失败')
+  } finally {
+    ociTesting.value = false
+  }
+}
+
 function syncTabFromLocation() {
   const qTab = new URLSearchParams(location.search || '').get('tab')
-  if (qTab && ['operators', 'alerts', 'tools', 'ipdb'].includes(qTab)) {
+  if (qTab && ['operators', 'alerts', 'tools', 'ipdb', 'oci'].includes(qTab)) {
     tab.value = !isAdmin.value && qTab !== 'tools' ? 'tools' : qTab
     return
   }
@@ -257,6 +446,7 @@ function syncTabFromLocation() {
   if (hash.includes('alerts') && isAdmin.value) tab.value = 'alerts'
   else if (hash.includes('tools')) tab.value = 'tools'
   else if (hash.includes('ipdb') && isAdmin.value) tab.value = 'ipdb'
+  else if (hash.includes('oci') && isAdmin.value) tab.value = 'oci'
   else if (hash.includes('operators') && isAdmin.value) tab.value = 'operators'
 }
 
@@ -275,7 +465,9 @@ async function load() {
       }
     }
     markAlertSaved()
-    if (isAdmin.value) await loadIPDBStatus()
+    if (isAdmin.value) {
+      await Promise.all([loadIPDBStatus(), loadOCIAccounts()])
+    }
   } finally { loading.value = false }
 }
 
@@ -750,6 +942,66 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
+    <!-- Oracle Cloud (OCI) 多账号管理 -->
+    <template v-else-if="tab === 'oci' && isAdmin">
+      <div class="m-stack" style="gap: 8px; margin-bottom: 10px;">
+        <div class="m-card m-card--flat" style="padding: 12px 14px;">
+          <div class="m-card__top">
+            <span class="m-card__title">Oracle Cloud 多账号凭据</span>
+            <el-button type="primary" size="small" :icon="Plus" @click="openCreateOCIAccount">添加账号</el-button>
+          </div>
+          <div class="m-card__note">
+            管理 Oracle Cloud 租户凭据。节点可绑定指定账号或继承默认账号，执行一键更换公网 IP。
+          </div>
+        </div>
+      </div>
+
+      <div class="m-count">共 {{ ociAccounts.length }} 个 OCI 账号</div>
+
+      <article
+        v-for="acc in ociAccounts"
+        :key="acc.id"
+        class="m-item"
+        :class="{ 'is-off': !acc.enabled }"
+      >
+        <div class="m-item__hit" style="cursor: default;">
+          <div class="m-item__head" style="align-items: center;">
+            <span class="m-item__title" style="font-weight: 600;">{{ acc.name }}</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span v-if="acc.is_default" class="m-pill m-pill--success">默认</span>
+              <span class="m-pill" :class="acc.enabled ? 'm-pill--success' : 'm-pill--info'">
+                {{ acc.enabled ? '已启用' : '停用' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="m-kv-grid" style="margin-top: 8px;">
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">区域 (Region)</span>
+              <span class="m-kv-cell__value">{{ acc.region }}</span>
+            </div>
+            <div class="m-kv-cell">
+              <span class="m-kv-cell__label">公钥指纹</span>
+              <span class="m-kv-cell__value m-mono-wrap" style="font-size: 11px;">{{ acc.fingerprint }}</span>
+            </div>
+            <div class="m-kv-cell" style="grid-column: 1 / -1;">
+              <span class="m-kv-cell__label">租户 OCID</span>
+              <span class="m-kv-cell__value m-mono-wrap" style="font-size: 11px;">{{ acc.tenancy_id }}</span>
+            </div>
+          </div>
+
+          <div class="m-filter-row" style="margin-top: 10px; justify-content: flex-end; gap: 6px;">
+            <el-button size="small" :loading="acc._testing" @click="testExistingAccount(acc)">测试</el-button>
+            <el-button v-if="!acc.is_default" size="small" @click="setDefaultAccount(acc)">设为默认</el-button>
+            <el-button size="small" @click="openEditOCIAccount(acc)">编辑</el-button>
+            <el-button size="small" type="danger" plain @click="deleteAccount(acc)">删除</el-button>
+          </div>
+        </div>
+      </article>
+
+      <div v-if="!ociAccounts.length && !ociLoading" class="m-empty">尚未添加任何 OCI 账号</div>
+    </template>
+
     <MActionSheet v-model="actionsOpen" :title="actionTarget?.username" :details="details" :actions="actions" @select="runAction" />
 
     <MSheet v-model="roleSheet" :title="`修改 ${roleTarget?.username || ''} 的权限`">
@@ -782,8 +1034,81 @@ onBeforeUnmount(() => {
         <el-button type="primary" :disabled="!operator.username || operator.password.length < 12" @click="saveOperator">创建</el-button>
       </template>
     </MSheet>
+
+    <MSheet v-model="ociSheet" :title="ociAccountForm.id ? '编辑 OCI 账号' : '添加 OCI 账号'">
+      <div class="m-field">
+        <label class="m-field__label">账号备注名称 <em>*</em></label>
+        <el-input v-model="ociAccountForm.name" placeholder="例如：个人主力号 / 团队测试号" />
+      </div>
+
+      <div class="m-field">
+        <div class="m-filter-bar">
+          <label class="m-field__label" style="margin: 0;">设为默认账号</label>
+          <el-switch v-model="ociAccountForm.is_default" />
+        </div>
+        <div class="m-field__hint">未单独指定 OCI 账号的节点将自动继承默认账号。</div>
+      </div>
+
+      <div class="m-field">
+        <label class="m-field__label">租户 OCID (Tenancy ID) <em>*</em></label>
+        <el-input v-model="ociAccountForm.tenancy_id" placeholder="ocid1.tenancy.oc1..aaaa..." />
+      </div>
+
+      <div class="m-field">
+        <label class="m-field__label">用户 OCID (User ID) <em>*</em></label>
+        <el-input v-model="ociAccountForm.user_id" placeholder="ocid1.user.oc1..aaaa..." />
+      </div>
+
+      <div class="m-field">
+        <label class="m-field__label">公钥指纹 (Fingerprint) <em>*</em></label>
+        <el-input v-model="ociAccountForm.fingerprint" placeholder="例如：20:3b:97:13:55:1c:..." />
+      </div>
+
+      <div class="m-field">
+        <label class="m-field__label">默认区域 (Region) <em>*</em></label>
+        <el-input v-model="ociAccountForm.region" placeholder="例如：ap-tokyo-1, us-ashburn-1" />
+      </div>
+
+      <div class="m-field">
+        <label class="m-field__label">API RSA 私钥 (PEM 格式) <em v-if="!ociAccountForm.id">*</em></label>
+        <div v-if="ociAccountForm.has_private_key && !ociAccountForm.private_key" style="margin-bottom: 6px;">
+          <el-tag type="success" size="small">已配置私钥</el-tag>
+          <span class="m-note" style="margin-left: 6px;">{{ ociAccountForm.private_key_masked }}（留空保持不变）</span>
+        </div>
+        <el-input
+          v-model="ociAccountForm.private_key"
+          type="textarea"
+          :rows="4"
+          placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+          class="font-mono"
+        />
+      </div>
+
+      <div class="m-field">
+        <div class="m-filter-bar">
+          <label class="m-field__label" style="margin: 0;">启用状态</label>
+          <el-switch v-model="ociAccountForm.enabled" active-text="启用" inactive-text="停用" />
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="m-filter-row" style="width: 100%; justify-content: space-between;">
+          <el-button :loading="ociTesting" @click="testFormAccount">连通性测试</el-button>
+          <div style="display: flex; gap: 8px;">
+            <el-button @click="ociSheet = false">取消</el-button>
+            <el-button type="primary" :loading="ociSaving" @click="saveOCIAccount">保存</el-button>
+          </div>
+        </div>
+      </template>
+    </MSheet>
+
     <template v-if="isAdmin && tab === 'operators'" #fab>
       <button type="button" class="m-fab" aria-label="新建管理账户" @click="openOperator">
+        <el-icon :size="24"><Plus /></el-icon>
+      </button>
+    </template>
+    <template v-if="isAdmin && tab === 'oci'" #fab>
+      <button type="button" class="m-fab" aria-label="添加 OCI 账号" @click="openCreateOCIAccount">
         <el-icon :size="24"><Plus /></el-icon>
       </button>
     </template>
