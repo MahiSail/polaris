@@ -343,6 +343,7 @@ func runAgentLoop(ctx context.Context, dataDir, masterAddr string, masterPub [wi
 		fmt.Fprintln(os.Stderr, "managed Nginx capacity check failed:", err)
 	}
 	agent.InitPingRunner(dataDir)
+	agent.SetProtectedMasterHost(masterAddr)
 	handler := agent.NewTaskHandlerWithOptions(agent.TaskOptions{
 		DataDir:                dataDir,
 		MasterAddress:          masterAddr,
@@ -355,6 +356,9 @@ func runAgentLoop(ctx context.Context, dataDir, masterAddr string, masterPub [wi
 		conn, err := agent.Connect(ctx, masterAddr, keypair, masterPub)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "connect failed:", err)
+			if agent.PurgeHostFromHostsFile(masterAddr) {
+				fmt.Fprintln(os.Stderr, "purged stale master hostname from /etc/hosts; retrying via DNS")
+			}
 			if !sleepContext(ctx, backoff) {
 				return nil
 			}

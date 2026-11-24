@@ -42,6 +42,97 @@ func flushSystemDNSCache(ctx context.Context) {
 	_ = exec.CommandContext(ctx, "systemctl", "restart", "nscd").Run()
 }
 
+var (
+	protectedMasterHostMu sync.RWMutex
+	protectedMasterHost   string
+)
+
+// extractDomainHost extracts a lowercase hostname from host or host:port,
+// returning empty string if the input is empty or already an IP literal.
+func extractDomainHost(addr string) string {
+	s := strings.TrimSpace(addr)
+	if s == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		s = h
+	}
+	s = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+	if s == "" || net.ParseIP(s) != nil {
+		return ""
+	}
+	return s
+}
+
+// SetProtectedMasterHost registers the master's control-plane hostname so the agent
+// will never pin it into /etc/hosts (preventing permanent reconnect deadlocks if
+// the master's IP rotates).
+func SetProtectedMasterHost(masterAddr string) {
+	host := extractDomainHost(masterAddr)
+	protectedMasterHostMu.Lock()
+	protectedMasterHost = host
+	protectedMasterHostMu.Unlock()
+}
+
+func getProtectedMasterHost() string {
+	protectedMasterHostMu.RLock()
+	h := protectedMasterHost
+	protectedMasterHostMu.RUnlock()
+	return h
+}
+
+// PurgeHostFromHostsFile removes any /etc/hosts line referencing the given host
+// (or host:port) so control-plane reconnects always resolve via live DNS.
+// Returns true if /etc/hosts was modified.
+func PurgeHostFromHostsFile(masterAddr string) bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	return purgeHostFromFile("/etc/hosts", masterAddr)
+}
+
+func purgeHostFromFile(hostsPath, masterAddr string) bool {
+	host := extractDomainHost(masterAddr)
+	if host == "" {
+		return false
+	}
+	content, err := os.ReadFile(hostsPath)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(content), "\n")
+	var kept []string
+	removed := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			fields := strings.Fields(line)
+			if len(fields) > 1 {
+				matched := false
+				for _, f := range fields[1:] {
+					if strings.ToLower(strings.TrimSuffix(f, ".")) == host {
+						matched = true
+						break
+					}
+				}
+				if matched {
+					removed = true
+					continue
+				}
+			}
+		}
+		kept = append(kept, line)
+	}
+	if !removed {
+		return false
+	}
+	newContent := strings.Join(kept, "\n")
+	if err := os.WriteFile(hostsPath, []byte(newContent), 0o644); err != nil {
+		return false
+	}
+	return true
+}
+
 // syncHostsFile best-effort updates /etc/hosts with a managed polaris block.
 // Returns changed=true if /etc/hosts was rewritten, alreadyUpToDate=true if already identical.
 // Returns ok=true if /etc/hosts matches desired state or was written successfully.
@@ -58,7 +149,12 @@ func syncHostsFile(mappings []DNSMappingItem) (changed bool, alreadyUpToDate boo
 		return false, false, false
 	}
 
+	protectedHost := getProtectedMasterHost()
 	managedDomainMap := make(map[string]bool)
+	if protectedHost != "" {
+		// Also strip any stale line for the master control-plane host outside the block.
+		managedDomainMap[protectedHost] = true
+	}
 	for _, m := range mappings {
 		for _, d := range m.Domains {
 			d = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(d, ".")))
@@ -105,7 +201,8 @@ func syncHostsFile(mappings []DNSMappingItem) (changed bool, alreadyUpToDate boo
 		ip := strings.TrimSpace(m.IP)
 		for _, d := range m.Domains {
 			d = strings.TrimSpace(d)
-			if d != "" && ip != "" {
+			norm := strings.ToLower(strings.TrimSuffix(d, "."))
+			if d != "" && ip != "" && norm != protectedHost {
 				managedBlock = append(managedBlock, fmt.Sprintf("%s %s", ip, d))
 			}
 		}

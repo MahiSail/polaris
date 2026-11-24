@@ -621,7 +621,7 @@ type NodeChainedDDNSTarget struct {
 // that the given node chains to.
 func (s *Store) NodeChainedDDNSTargets(ctx context.Context, nodeID string) ([]NodeChainedDDNSTarget, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT target_n.id, target_n.ddns_domain, target_n.ddns_domains, target_n.last_observed_ip
+		SELECT DISTINCT target_n.id, target_n.client_address, target_n.ddns_domain, target_n.ddns_domains, target_n.last_observed_ip
 		FROM listeners l
 		LEFT JOIN endpoints e ON e.listener_id = l.id
 		JOIN endpoints target_e ON (
@@ -642,6 +642,7 @@ func (s *Store) NodeChainedDDNSTargets(ctx context.Context, nodeID string) ([]No
 
 	type rawTarget struct {
 		targetID       string
+		clientAddress  string
 		ddnsDomain     string
 		rawDDNSDomains string
 		lastObservedIP string
@@ -649,7 +650,7 @@ func (s *Store) NodeChainedDDNSTargets(ctx context.Context, nodeID string) ([]No
 	var raws []rawTarget
 	for rows.Next() {
 		var item rawTarget
-		if err := rows.Scan(&item.targetID, &item.ddnsDomain, &item.rawDDNSDomains, &item.lastObservedIP); err != nil {
+		if err := rows.Scan(&item.targetID, &item.clientAddress, &item.ddnsDomain, &item.rawDDNSDomains, &item.lastObservedIP); err != nil {
 			return nil, fmt.Errorf("read node chained ddns target: %w", err)
 		}
 		raws = append(raws, item)
@@ -661,19 +662,33 @@ func (s *Store) NodeChainedDDNSTargets(ctx context.Context, nodeID string) ([]No
 
 	var targets []NodeChainedDDNSTarget
 	for _, item := range raws {
-		var domains []string
-		if item.rawDDNSDomains != "" {
-			var parsed []string
-			if err := json.Unmarshal([]byte(item.rawDDNSDomains), &parsed); err == nil {
-				domains = append(domains, parsed...)
-			}
-		}
-		if item.ddnsDomain != "" {
-			domains = append(domains, item.ddnsDomain)
-		}
+		// Prefer only actual proxy/connection domains (listener domains + non-IP client_address)
+		// so unrelated control-plane DDNS records (e.g. master agent domain int.* or panel domain)
+		// are NEVER pushed into chained nodes' /etc/hosts (which would deadlock agent reconnects
+		// whenever the master rotates its IP).
+		var proxyDomains []string
 		listenerDomains, _ := s.NodeConnectionDomains(ctx, item.targetID)
-		domains = append(domains, listenerDomains...)
-		domains = deduplicateStrings(domains)
+		proxyDomains = append(proxyDomains, listenerDomains...)
+		if host := extractHostnameIfDomain(item.clientAddress); host != "" {
+			proxyDomains = append(proxyDomains, host)
+		}
+		proxyDomains = deduplicateStrings(proxyDomains)
+
+		var domains []string
+		if len(proxyDomains) > 0 {
+			domains = proxyDomains
+		} else {
+			if item.rawDDNSDomains != "" {
+				var parsed []string
+				if err := json.Unmarshal([]byte(item.rawDDNSDomains), &parsed); err == nil {
+					domains = append(domains, parsed...)
+				}
+			}
+			if item.ddnsDomain != "" {
+				domains = append(domains, item.ddnsDomain)
+			}
+			domains = deduplicateStrings(domains)
+		}
 
 		if len(domains) > 0 && item.lastObservedIP != "" {
 			targets = append(targets, NodeChainedDDNSTarget{
@@ -684,6 +699,21 @@ func (s *Store) NodeChainedDDNSTargets(ctx context.Context, nodeID string) ([]No
 		}
 	}
 	return targets, nil
+}
+
+func extractHostnameIfDomain(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		s = h
+	}
+	s = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+	if s == "" || net.ParseIP(s) != nil {
+		return ""
+	}
+	return s
 }
 
 
