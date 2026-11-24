@@ -14,9 +14,23 @@ import (
 	"time"
 )
 
+type ociRotationState struct {
+	TaskID        string `json:"task_id"`
+	NodeID        string `json:"node_id"`
+	Status        string `json:"status"` // "idle" | "running" | "succeeded" | "failed"
+	Stage         string `json:"stage,omitempty"`
+	OldIP         string `json:"old_ip,omitempty"`
+	NewIP         string `json:"new_ip,omitempty"`
+	DDNSTriggered bool   `json:"ddns_triggered"`
+	Message       string `json:"message,omitempty"`
+	Error         string `json:"error,omitempty"`
+	StartedAt     int64  `json:"started_at,omitempty"`
+	FinishedAt    int64  `json:"finished_at,omitempty"`
+}
+
 var (
-	ociRotateMu      sync.Mutex
-	ociRotatingNodes = make(map[string]bool)
+	ociRotateMu       sync.Mutex
+	ociRotationStates = make(map[string]*ociRotationState)
 )
 
 func (s *Server) listOCIAccounts(w http.ResponseWriter, r *http.Request) {
@@ -360,18 +374,31 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ociRotateMu.Lock()
-	if ociRotatingNodes[nodeID] {
+	if prev := ociRotationStates[nodeID]; prev != nil && prev.Status == "running" {
 		ociRotateMu.Unlock()
 		writeError(w, errors.New("该服务器正在更换 IP 中，请勿重复操作"))
 		return
 	}
-	ociRotatingNodes[nodeID] = true
+	taskID := fmt.Sprintf("oci-rot-%d", time.Now().UnixNano())
+	state := &ociRotationState{
+		TaskID:    taskID,
+		NodeID:    nodeID,
+		Status:    "running",
+		Stage:     "正在校验节点与 OCI 网卡信息…",
+		StartedAt: time.Now().Unix(),
+	}
+	ociRotationStates[nodeID] = state
 	ociRotateMu.Unlock()
 
+	cleanupPending := true
 	defer func() {
-		ociRotateMu.Lock()
-		delete(ociRotatingNodes, nodeID)
-		ociRotateMu.Unlock()
+		if cleanupPending {
+			ociRotateMu.Lock()
+			if ociRotationStates[nodeID] == state {
+				delete(ociRotationStates, nodeID)
+			}
+			ociRotateMu.Unlock()
+		}
 	}()
 
 	node, err := s.store.GetNode(r.Context(), nodeID)
@@ -429,26 +456,86 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use an independent operation context with a safe timeout (180s).
-	// This ensures that multi-round subnet filtering (up to 8 rounds)
-	// won't be interrupted midway even if client cancels or disconnects.
-	opCtx, opCancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ociRotateMu.Lock()
+	state.OldIP = node.LastObservedIP
+	state.Stage = "任务已启动，正在准备更换公网 IP…"
+	snapshot := *state
+	ociRotateMu.Unlock()
+
+	cleanupPending = false
+	go s.runNodeOCIRotation(state, operator.ID, node, client, compartmentID, privateIPID, opts)
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"async":      true,
+		"task_id":    snapshot.TaskID,
+		"node_id":    snapshot.NodeID,
+		"status":     snapshot.Status,
+		"stage":      snapshot.Stage,
+		"old_ip":     snapshot.OldIP,
+		"started_at": snapshot.StartedAt,
+	})
+}
+
+func (s *Server) runNodeOCIRotation(state *ociRotationState, operatorID string, node Node, client *OCIClient, compartmentID, privateIPID string, opts RotateEphemeralIPOptions) {
+	updateStage := func(stage string) {
+		ociRotateMu.Lock()
+		state.Stage = stage
+		ociRotateMu.Unlock()
+	}
+	opts.OnProgress = updateStage
+
+	// Use an independent operation context with a generous timeout (300s) so multi-round
+	// subnet filtering + GFW settle/probing never gets cut off by Cloudflare's 100s timeout.
+	opCtx, opCancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer opCancel()
 
-	// Perform atomic IP rotation on OCI
 	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(opCtx, compartmentID, privateIPID, opts)
 	if err != nil {
-		writeError(w, fmt.Errorf("OCI 更换公网 IP 失败: %w", err))
+		// Even if rotation returned an error, the safety net may have recovered an IP.
+		// Persist and sync DDNS with an independent context so Cloudflare never stays stale.
+		ddnsTriggered := false
+		if newIP != "" {
+			persistCtx, persistCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer persistCancel()
+			_ = s.store.SetNodeLastObservedIP(persistCtx, node.ID, newIP)
+			trimmedAddr := strings.TrimSpace(node.ClientAddress)
+			if net.ParseIP(trimmedAddr) != nil || trimmedAddr == oldIP {
+				_ = s.store.UpdateNode(persistCtx, node.ID, node.Name, newIP)
+			}
+			if node.DDNSEnabled && (len(node.DDNSRecordIDs) > 0 || node.DDNSRecordID != "") {
+				ddnsTriggered = true
+				go s.triggerNodeDDNS(context.Background(), node.ID, newIP)
+			}
+			_ = s.store.AppendAudit(persistCtx, operatorID, "node.oci_ip_changed", "node", node.ID,
+				fmt.Sprintf("Oracle 公网 IP 更换异常但安全网已兜底恢复为 %s (原 IP: %s): %v", newIP, oldIP, err))
+		}
+		errMsg := fmt.Sprintf("OCI 更换公网 IP 失败: %v", err)
+		ociRotateMu.Lock()
+		state.Status = "failed"
+		state.OldIP = oldIP
+		state.NewIP = newIP
+		state.DDNSTriggered = ddnsTriggered
+		state.Error = errMsg
+		state.Stage = errMsg
+		state.FinishedAt = time.Now().Unix()
+		ociRotateMu.Unlock()
 		return
 	}
 
+	updateStage(fmt.Sprintf("已获取新公网 IP %s，正在同步节点记录与 DDNS…", newIP))
+
+	// Use an independent context for post-rotation persistence so that even if the
+	// master node rotated its own IP, DB updates, DDNS sync, and audit logs still succeed.
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer persistCancel()
+
 	// Update node's observed IP
-	_ = s.store.SetNodeLastObservedIP(r.Context(), node.ID, newIP)
+	_ = s.store.SetNodeLastObservedIP(persistCtx, node.ID, newIP)
 
 	// If node's client address is directly set to an IP address, update client address as well
 	trimmedAddr := strings.TrimSpace(node.ClientAddress)
 	if net.ParseIP(trimmedAddr) != nil || trimmedAddr == oldIP {
-		_ = s.store.UpdateNode(r.Context(), node.ID, node.Name, newIP)
+		_ = s.store.UpdateNode(persistCtx, node.ID, node.Name, newIP)
 	}
 
 	// Trigger DDNS update if enabled on this node
@@ -478,15 +565,43 @@ func (s *Server) rotateNodeOCIIP(w http.ResponseWriter, r *http.Request) {
 	if ddnsTriggered {
 		auditMsg += " (已触发 DDNS 自动更新)"
 	}
-	_ = s.store.AppendAudit(r.Context(), operator.ID, "node.oci_ip_changed", "node", node.ID, auditMsg)
+	_ = s.store.AppendAudit(persistCtx, operatorID, "node.oci_ip_changed", "node", node.ID, auditMsg)
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success":        true,
-		"old_ip":         oldIP,
-		"new_ip":         newIP,
-		"ddns_triggered": ddnsTriggered,
-		"message":        auditMsg,
-	})
+	ociRotateMu.Lock()
+	state.Status = "succeeded"
+	state.OldIP = oldIP
+	state.NewIP = newIP
+	state.DDNSTriggered = ddnsTriggered
+	state.Message = auditMsg
+	state.Stage = auditMsg
+	state.FinishedAt = time.Now().Unix()
+	ociRotateMu.Unlock()
+}
+
+func (s *Server) getNodeOCIRotateStatus(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.operator(r, false); err != nil {
+		writeError(w, err)
+		return
+	}
+	nodeID := r.PathValue("id")
+	if nodeID == "" {
+		writeError(w, errors.New("node id is required"))
+		return
+	}
+
+	ociRotateMu.Lock()
+	st := ociRotationStates[nodeID]
+	if st == nil {
+		ociRotateMu.Unlock()
+		writeJSON(w, http.StatusOK, ociRotationState{
+			NodeID: nodeID,
+			Status: "idle",
+		})
+		return
+	}
+	snapshot := *st
+	ociRotateMu.Unlock()
+	writeJSON(w, http.StatusOK, snapshot)
 }
 
 // Backward-compatible single-settings handlers

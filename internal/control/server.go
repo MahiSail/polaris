@@ -476,6 +476,7 @@ func (s *Server) registerBrowserRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/oci/settings", s.setOCISettings)
 	mux.HandleFunc("PUT /api/v1/nodes/{id}/oci", s.updateNodeOCI)
 	mux.HandleFunc("POST /api/v1/nodes/{id}/oci/change-ip", s.rotateNodeOCIIP)
+	mux.HandleFunc("GET /api/v1/nodes/{id}/oci/change-ip/status", s.getNodeOCIRotateStatus)
 	mux.HandleFunc("GET /api/v1/cloudflare/records", s.listCloudflareRecords)
 	mux.HandleFunc("POST /api/v1/cloudflare/records", s.createCloudflareRecord)
 	mux.HandleFunc("PUT /api/v1/cloudflare/records/{id}", s.updateCloudflareRecord)

@@ -1053,16 +1053,66 @@ async function confirmRotateOCI() {
   ociRotateVisible.value = false
   const loadingInstance = ElLoading.service({
     lock: true,
-    text: `正在通过 Oracle Cloud API 为「${node.name}」更换公网 IP 并同步...`,
+    text: `正在通过 Oracle Cloud API 为「${node.name}」启动换 IP 任务...`,
     background: 'rgba(0, 0, 0, 0.7)',
   })
 
   try {
-    const res = await post(`/nodes/${node.id}/oci/change-ip`, {
+    let res = await post(`/nodes/${node.id}/oci/change-ip`, {
       exclude_subnets: ociRotateForm.exclude_subnets,
       check_gfw: ociRotateForm.check_gfw,
       max_rounds: ociRotateForm.max_rounds,
     })
+
+    if (res?.async || res?.status === 'running') {
+      const taskId = res.task_id
+      const deadline = Date.now() + 310_000
+      let reconnectCount = 0
+      let rotationError = ''
+      if (res.stage) {
+        loadingInstance.setText(`「${node.name}」${res.stage}`)
+      }
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2500))
+        try {
+          const st = await api(`/nodes/${node.id}/oci/change-ip/status`)
+          reconnectCount = 0
+          if (st.status === 'succeeded') {
+            res = st
+            break
+          }
+          if (st.status === 'failed') {
+            rotationError = st.error || st.message || '更换公网 IP 失败'
+            break
+          }
+          if (st.status === 'running') {
+            loadingInstance.setText(`「${node.name}」${st.stage || '正在更换公网 IP...'}`)
+            continue
+          }
+          if (st.status === 'idle' && (!taskId || st.task_id !== taskId)) {
+            res = { message: `「${node.name}」换 IP 任务已结束，正在刷新节点状态` }
+            break
+          }
+        } catch (pollErr) {
+          // If the master itself is rotating its IP, Cloudflare/browser will briefly
+          // see 520/521/522/524 or network errors until DDNS propagates. Keep retrying!
+          if (pollErr && (pollErr.status === 401 || pollErr.status === 403)) {
+            throw pollErr
+          }
+          reconnectCount++
+          loadingInstance.setText(
+            `「${node.name}」IP 切换与 DDNS 同步中，正在自动重连控制台（第 ${reconnectCount} 次）...`,
+          )
+        }
+      }
+      if (rotationError) {
+        throw new Error(rotationError)
+      }
+      if (res?.status === 'running') {
+        throw new Error('等待换 IP 结果超时，请稍后刷新页面查看最新 IP')
+      }
+    }
+
     loadingInstance.close()
     ElNotification({
       title: '更换公网 IP 成功',

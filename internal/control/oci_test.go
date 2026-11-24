@@ -381,3 +381,102 @@ func TestOCIClient_RotateEphemeralIP_SubnetFiltering(t *testing.T) {
 		t.Errorf("expected 2 allocation rounds, got %d", allocatedCount)
 	}
 }
+
+func TestOCIClient_DualStackDefaultEndpoint(t *testing.T) {
+	_, pemStr := generateTestRSAKey(t)
+	client, err := NewOCIClient(OCIConfig{
+		TenancyID:     "ocid1.tenancy.test",
+		UserID:        "ocid1.user.test",
+		Fingerprint:   "aa:bb:cc:dd",
+		Region:        "ap-singapore-1",
+		PrivateKeyPEM: pemStr,
+	})
+	if err != nil {
+		t.Fatalf("NewOCIClient: %v", err)
+	}
+	want := "https://iaas.ap-singapore-1.ds.oci.oraclecloud.com"
+	if client.baseURL != want {
+		t.Fatalf("expected dual-stack baseURL %q, got %q", want, client.baseURL)
+	}
+}
+
+func TestOCIClient_RotateEphemeralIP_SafetyNetAndUnassignErrorHandling(t *testing.T) {
+	_, pemStr := generateTestRSAKey(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	getCalls := 0
+	emergencyAllocated := false
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps/actions/getByPrivateIpId":
+			getCalls++
+			if getCalls == 1 {
+				// Initial lookup: existing IP present
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(OCIPublicIP{
+					ID:        "ocid1.publicip.test.old",
+					IPAddress: "129.221.1.1",
+				})
+				return
+			}
+			if getCalls == 2 {
+				// Simulate transient 500 during unassignment poll: must NOT be treated as unassigned!
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"code":"InternalError"}`))
+				// Cancel rotation context so safety net is exercised right after.
+				cancel()
+				return
+			}
+			// Safety net check: confirm no IP is currently attached
+			w.WriteHeader(http.StatusNotFound)
+
+		case r.Method == http.MethodDelete && r.URL.Path == "/20160918/publicIps/ocid1.publicip.test.old":
+			w.WriteHeader(http.StatusNoContent)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/20160918/publicIps":
+			emergencyAllocated = true
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(OCIPublicIP{
+				ID:        "ocid1.publicip.test.rescued",
+				IPAddress: "140.245.99.88",
+			})
+
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewOCIClient(OCIConfig{
+		TenancyID:     "ocid1.tenancy.test",
+		UserID:        "ocid1.user.test",
+		Fingerprint:   "aa:bb:cc:dd",
+		Region:        "ap-singapore-1",
+		PrivateKeyPEM: pemStr,
+	})
+	if err != nil {
+		t.Fatalf("NewOCIClient: %v", err)
+	}
+	client.SetBaseURL(ts.URL)
+
+	oldIP, newIP, err := client.RotateEphemeralIPWithOptions(ctx, "ocid1.compartment.test", "ocid1.privateip.test.1", RotateEphemeralIPOptions{
+		ExcludeSubnets: false,
+		CheckGFW:       false,
+		MaxRounds:      1,
+	})
+	if err == nil {
+		t.Fatal("expected context canceled error, got nil")
+	}
+	if oldIP != "129.221.1.1" {
+		t.Errorf("expected oldIP 129.221.1.1, got %q", oldIP)
+	}
+	if !emergencyAllocated {
+		t.Error("expected safety net to allocate an emergency public IP")
+	}
+	if newIP != "140.245.99.88" {
+		t.Errorf("expected safety net recovered IP 140.245.99.88, got %q", newIP)
+	}
+}

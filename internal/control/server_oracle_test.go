@@ -270,4 +270,20 @@ func TestServer_OCIAccountsAndIPRotation(t *testing.T) {
 	if oldIP != "140.238.1.1" || newIP != "140.245.2.2" {
 		t.Fatalf("unexpected rotation: old=%s, new=%s", oldIP, newIP)
 	}
+
+	// 7. Verify GET /api/v1/nodes/{id}/oci/change-ip/status returns idle state
+	reqStatus := httptest.NewRequest(http.MethodGet, "/api/v1/nodes/"+nodeID+"/oci/change-ip/status", nil)
+	addAuth(reqStatus)
+	recStatus := httptest.NewRecorder()
+	handler.ServeHTTP(recStatus, reqStatus)
+	if recStatus.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/nodes/{id}/oci/change-ip/status failed (%d): %s", recStatus.Code, recStatus.Body.String())
+	}
+	var statusResp ociRotationState
+	if err := json.Unmarshal(recStatus.Body.Bytes(), &statusResp); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if statusResp.Status != "idle" || statusResp.NodeID != nodeID {
+		t.Fatalf("expected idle status for %s, got %+v", nodeID, statusResp)
+	}
 }

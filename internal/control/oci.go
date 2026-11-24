@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -116,14 +117,41 @@ func NewOCIClient(cfg OCIConfig) (*OCIClient, error) {
 	}
 
 	region := strings.ToLower(strings.TrimSpace(cfg.Region))
-	baseURL := fmt.Sprintf("https://iaas.%s.oraclecloud.com", region)
+	// Use OCI dual-stack (.ds.) endpoint so calls can seamlessly fail over to IPv6
+	// when the host's own IPv4 public IP is temporarily unassigned during rotation.
+	baseURL := fmt.Sprintf("https://iaas.%s.ds.oci.oraclecloud.com", region)
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:       10 * time.Second,
+			KeepAlive:     30 * time.Second,
+			FallbackDelay: 150 * time.Millisecond,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 
 	return &OCIClient{
 		cfg:        cfg,
 		privateKey: rsaKey,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    baseURL,
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		},
+		baseURL: baseURL,
 	}, nil
+}
+
+// closeIdleConnections drops pooled TCP connections so subsequent calls dial fresh
+// (critical after deleting this host's own IPv4 public IP so stale IPv4 sockets aren't reused).
+func (c *OCIClient) closeIdleConnections() {
+	if c.httpClient != nil {
+		c.httpClient.CloseIdleConnections()
+	}
 }
 
 // SetBaseURL overrides the base URL (primarily used for unit testing).
@@ -172,18 +200,6 @@ func (c *OCIClient) signRequest(req *http.Request, bodyBytes []byte) error {
 	return nil
 }
 
-// DoRaw performs an authenticated raw OCI request, returning the HTTP status code and response body.
-func (c *OCIClient) DoRaw(ctx context.Context, method, path string, bodyData any) (int, string, error) {
-	resp, body, err := c.do(ctx, method, path, bodyData)
-	if err != nil {
-		if resp != nil {
-			return resp.StatusCode, string(body), err
-		}
-		return 0, "", err
-	}
-	return resp.StatusCode, string(body), nil
-}
-
 func (c *OCIClient) do(ctx context.Context, method, path string, bodyData any) (*http.Response, []byte, error) {
 	var bodyBytes []byte
 	var bodyReader io.Reader
@@ -223,7 +239,7 @@ func (c *OCIClient) do(ctx context.Context, method, path string, bodyData any) (
 // TestConnection verifies credentials by querying the OCI regions endpoint on the Identity service.
 func (c *OCIClient) TestConnection(ctx context.Context) error {
 	region := strings.ToLower(strings.TrimSpace(c.cfg.Region))
-	baseURL := fmt.Sprintf("https://identity.%s.oraclecloud.com", region)
+	baseURL := fmt.Sprintf("https://identity.%s.ds.oci.oraclecloud.com", region)
 	if !strings.HasPrefix(c.baseURL, "https://iaas.") {
 		baseURL = c.baseURL
 	}
@@ -400,8 +416,14 @@ type RotateEphemeralIPOptions struct {
 	CheckGFW bool
 	// GFWCheckPort is the TCP port tested against GFW (defaults to 22 if <= 0).
 	GFWCheckPort int
+	// GFWSettleDelay is the wait duration after allocating a new public IP before probing
+	// China mainland reachability so OCI gateway routing has time to propagate.
+	// Defaults to 3 seconds when 0; set negative (e.g. -1) to skip waiting in tests.
+	GFWSettleDelay time.Duration
 	// MaxRounds is the maximum total rotation attempts across subnet filtering and GFW checks (defaults to 5, clamped between 1 and 20).
 	MaxRounds int
+	// OnProgress is an optional callback invoked with human-readable status updates during rotation.
+	OnProgress func(stage string)
 }
 
 // RotateEphemeralIP executes ephemeral IP rotation with default settings (subnet filtering enabled, GFW check enabled, max 8 rounds).
@@ -428,6 +450,17 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 		gfwPort = 22
 	}
 
+	gfwSettleDelay := opts.GFWSettleDelay
+	if gfwSettleDelay == 0 {
+		gfwSettleDelay = 3 * time.Second
+	}
+
+	report := func(stage string) {
+		if opts.OnProgress != nil {
+			opts.OnProgress(stage)
+		}
+	}
+
 	prefixes := opts.ExcludedSubnetPrefixes
 	if len(prefixes) == 0 {
 		prefixes = DefaultExcludedSubnetPrefixes
@@ -442,13 +475,48 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 	}
 
 	var currentToReleaseID string
+	var currentPublicIP string
 	if existing != nil && existing.ID != "" {
 		oldIP = existing.IPAddress
+		currentPublicIP = existing.IPAddress
 		currentToReleaseID = existing.ID
 		log.Printf("[OCI] Found existing public IP: %s (ID: %s)", oldIP, existing.ID)
 	} else {
 		log.Printf("[OCI] No existing public IP found on private IP %s, allocating new directly", privateIPID)
 	}
+
+	// Safety net: if this function exits after releasing a public IP (or starting with none)
+	// and has not attached a replacement, attempt an emergency allocation with a fresh context
+	// so the instance is never left stranded without a public IP.
+	defer func() {
+		if currentPublicIP != "" || newIP != "" {
+			return
+		}
+		log.Printf("[OCI SAFETY NET] Rotation exited with no attached public IP for %s; verifying and attempting emergency recovery...", privateIPID)
+		rescueCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		c.closeIdleConnections()
+		if curr, qErr := c.GetPublicIPByPrivateIP(rescueCtx, privateIPID); qErr == nil && curr != nil && curr.IPAddress != "" {
+			log.Printf("[OCI SAFETY NET] Public IP %s is already attached; no emergency allocation needed.", curr.IPAddress)
+			newIP = curr.IPAddress
+			return
+		}
+		for attempt := 1; attempt <= 5; attempt++ {
+			pub, emErr := c.CreateEphemeralPublicIP(rescueCtx, compartmentID, privateIPID, "polaris-emergency-ip")
+			if emErr == nil && pub != nil && pub.IPAddress != "" {
+				log.Printf("[OCI SAFETY NET] Successfully recovered public IP: %s (ID: %s)", pub.IPAddress, pub.ID)
+				newIP = pub.IPAddress
+				return
+			}
+			log.Printf("[OCI SAFETY NET] Attempt %d failed: %v", attempt, emErr)
+			c.closeIdleConnections()
+			select {
+			case <-rescueCtx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}()
 
 	conflictRegex := regexp.MustCompile(`(ocid1\.publicip\.[a-z0-9_.-]+)`)
 	var lastCreated *OCIPublicIP
@@ -456,10 +524,14 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 	for round := 1; round <= maxRounds; round++ {
 		// Step A: If there is an IP to release, delete it and wait for unassignment to propagate
 		if currentToReleaseID != "" {
+			report(fmt.Sprintf("第 %d/%d 轮：正在释放旧公网 IP…", round, maxRounds))
 			log.Printf("[OCI] Round %d: Deleting public IP (ID: %s)...", round, currentToReleaseID)
 			if err := c.DeletePublicIP(ctx, currentToReleaseID); err != nil {
 				return oldIP, "", fmt.Errorf("delete public IP (%s): %w", currentToReleaseID, err)
 			}
+			currentPublicIP = ""
+			// Drop idle TCP sockets so subsequent calls dial fresh (e.g., over IPv6 if local IPv4 just vanished).
+			c.closeIdleConnections()
 
 			for i := 0; i < 20; i++ {
 				select {
@@ -467,7 +539,12 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 					return oldIP, "", ctx.Err()
 				case <-time.After(1 * time.Second):
 				}
-				curr, _ := c.GetPublicIPByPrivateIP(ctx, privateIPID)
+				curr, getErr := c.GetPublicIPByPrivateIP(ctx, privateIPID)
+				if getErr != nil {
+					log.Printf("[OCI] Round %d: Checking unassignment status error (retrying): %v", round, getErr)
+					c.closeIdleConnections()
+					continue
+				}
 				if curr == nil {
 					log.Printf("[OCI] Round %d: Public IP unassigned after %d seconds", round, i+1)
 					break
@@ -476,7 +553,8 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 			currentToReleaseID = ""
 		}
 
-		// Step B: Allocate new ephemeral public IP with conflict recovery
+		// Step B: Allocate new ephemeral public IP with conflict and transient network recovery
+		report(fmt.Sprintf("第 %d/%d 轮：正在申请新的临时公网 IP…", round, maxRounds))
 		var created *OCIPublicIP
 		for attempt := 1; attempt <= 20; attempt++ {
 			created, err = c.CreateEphemeralPublicIP(ctx, compartmentID, privateIPID, "polaris-rotated-ip")
@@ -502,6 +580,17 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 				continue
 			}
 
+			if !isOCIPermanentClientError(err) && attempt < 20 {
+				log.Printf("[OCI] Round %d Attempt %d: Transient allocation error (retrying in 2s): %v", round, attempt, err)
+				c.closeIdleConnections()
+				select {
+				case <-ctx.Done():
+					return oldIP, "", ctx.Err()
+				case <-time.After(2 * time.Second):
+				}
+				continue
+			}
+
 			return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
 		}
 
@@ -509,9 +598,11 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 			return oldIP, "", fmt.Errorf("allocate new ephemeral public IP: %w", err)
 		}
 		lastCreated = created
+		currentPublicIP = created.IPAddress
 
 		// Step C: Check if the newly allocated IP matches excluded subnets (if enabled)
 		if opts.ExcludeSubnets && IsExcludedSubnet(created.IPAddress, prefixes) {
+			report(fmt.Sprintf("第 %d/%d 轮：分配到排除网段 IP (%s)，准备重试…", round, maxRounds, created.IPAddress))
 			log.Printf("[OCI] Round %d: Allocated IP %s belongs to excluded/ordinary subnet. Filtering out...", round, created.IPAddress)
 			if round < maxRounds {
 				currentToReleaseID = created.ID
@@ -527,11 +618,21 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 
 		// Step D: Verify if the newly allocated IP is blocked by the GFW (if enabled)
 		if opts.CheckGFW {
+			if gfwSettleDelay > 0 {
+				report(fmt.Sprintf("第 %d/%d 轮：已分配 %s，等待 %d 秒路由生效后检测国内连通性…", round, maxRounds, created.IPAddress, int(gfwSettleDelay.Seconds())))
+				select {
+				case <-ctx.Done():
+					return oldIP, created.IPAddress, ctx.Err()
+				case <-time.After(gfwSettleDelay):
+				}
+			}
+			report(fmt.Sprintf("第 %d/%d 轮：正在探测 %s 的国内连通性…", round, maxRounds, created.IPAddress))
 			log.Printf("[OCI] Round %d: Testing GFW accessibility via third-party probes for %s...", round, created.IPAddress)
 			gfwBlocked, reason, checkErr := CheckGFWBlocked(ctx, created.IPAddress, gfwPort)
 			if checkErr != nil {
 				log.Printf("[OCI] Round %d: GFW detection warning: %v (continuing with allocation)", round, checkErr)
 			} else if gfwBlocked {
+				report(fmt.Sprintf("第 %d/%d 轮：%s 疑似被墙阻断，准备丢弃重试…", round, maxRounds, created.IPAddress))
 				log.Printf("[OCI] Round %d: Allocated IP %s is BLOCKED by GFW in mainland China (%s)! Discarding and rotating...", round, created.IPAddress, reason)
 				if round < maxRounds {
 					currentToReleaseID = created.ID
@@ -553,6 +654,19 @@ func (c *OCIClient) RotateEphemeralIPWithOptions(ctx context.Context, compartmen
 	// Fallback: If max rounds reached, keep the last valid allocated IP to avoid leaving instance offline
 	log.Printf("[OCI] Reached max rotation rounds (%d). Keeping last allocated IP %s.", maxRounds, lastCreated.IPAddress)
 	return oldIP, lastCreated.IPAddress, nil
+}
+
+// isOCIPermanentClientError reports whether err is a non-retryable OCI 4xx client error
+// (400/401/403/404). Transient network errors, 409 Conflict, 429, and 5xx return false.
+func isOCIPermanentClientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "(HTTP 400)") ||
+		strings.Contains(msg, "(HTTP 401)") ||
+		strings.Contains(msg, "(HTTP 403)") ||
+		strings.Contains(msg, "(HTTP 404)")
 }
 
 // ListInstances retrieves all compute instances in the tenancy and resolves their primary VNIC and public IP.
