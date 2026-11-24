@@ -172,6 +172,18 @@ func (c *OCIClient) signRequest(req *http.Request, bodyBytes []byte) error {
 	return nil
 }
 
+// DoRaw performs an authenticated raw OCI request, returning the HTTP status code and response body.
+func (c *OCIClient) DoRaw(ctx context.Context, method, path string, bodyData any) (int, string, error) {
+	resp, body, err := c.do(ctx, method, path, bodyData)
+	if err != nil {
+		if resp != nil {
+			return resp.StatusCode, string(body), err
+		}
+		return 0, "", err
+	}
+	return resp.StatusCode, string(body), nil
+}
+
 func (c *OCIClient) do(ctx context.Context, method, path string, bodyData any) (*http.Response, []byte, error) {
 	var bodyBytes []byte
 	var bodyReader io.Reader
